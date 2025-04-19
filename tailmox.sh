@@ -71,7 +71,7 @@ fi
 ### Probably need to ensure that two "HOSTNAME"s being in the hosts file aren't a thing
 
 # Get all other nodes with the "tailmox" tag
-TAILMOX_PEERS=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], online: .Online, dnsName: .DNSName}');
+TAILMOX_PEERS=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}');
 
 
 ### Need to add the "tailmox" tag to the Tailscale ACL some way
