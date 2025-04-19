@@ -36,8 +36,8 @@ else
 fi
 
 # Bring up Tailscale
-echo "Starting Tailscale..."
-tailscale up
+echo "Starting Tailscale with --advertise-tags 'tag:tailmox'..."
+tailscale up --advertise-tags "tag:tailmox"
 if [ $? -ne 0 ]; then
     echo "Failed to start Tailscale."
     exit 1
