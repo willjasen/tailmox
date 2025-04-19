@@ -72,6 +72,7 @@ else
 fi
 
 # Add entries for all Proxmox nodes with the "tailmox" tag
+echo "Getting Proxmox nodes with the 'tailmox' tag...";
 PROXMOX_NODES=$(get_proxmox_nodes)
 echo "$PROXMOX_NODES" | jq -c '.[]' | while read -r NODE; do
     NODE_HOSTNAME=$(echo "$NODE" | jq -r '.hostname')
