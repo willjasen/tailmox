@@ -52,16 +52,16 @@ echo "This host's Tailscale IPv4 address: $TAILSCALE_IP"
 # Update /etc/hosts for local resolution of Tailscale hostnames for the clustered Proxmox nodes
 echo "This host's hostname: $HOSTNAME"
 MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//');
-# HOST=$(echo "$FULL_MAGICDNS_NAME" | cut -d'.' -f1)
 echo "MagicDNS domain name for this tailnet: $MAGICDNS_DOMAIN_NAME"
 HOSTS_FILE_ENTRY="$TAILSCALE_IP ${HOSTNAME} ${HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
 echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
 
-
-# if ! grep -q "$HOSTNAME.tailscale" /etc/hosts; then
-#     echo "Adding local host entry to /etc/hosts: $HOSTS_ENTRY"
-#     echo "$HOSTS_ENTRY" >> /etc/hosts
-# fi
+if ! grep -q "$HOSTS_FILE_ENTRY" /etc/hosts; then
+      echo "Adding local host entry to /etc/hosts: $HOSTS_ENTRY"
+      echo "$HOSTS_ENTRY" >> /etc/hosts
+else
+      echo "Local host entry already exists in /etc/hosts: $HOSTS_ENTRY"
+fi
 
 # # Cluster configuration - initialize or join based on role.
 # if [ "$ROLE" == "master" ]; then
