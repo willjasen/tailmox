@@ -32,6 +32,12 @@ check_all_peers_online() {
     # Get the peers data
     local peers_data=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox")))')
     
+    # If no peers are found, return 1
+    if [ -z "$peers_data" ]; then
+        echo "No tailmox peers found."
+        return 1
+    fi
+    
     # Check each peer's status
     echo "$peers_data" | jq -c '.HostName + ":" + (.Online|tostring)' | while read -r peer_status; do
         local hostname=$(echo "$peer_status" | cut -d: -f1)
