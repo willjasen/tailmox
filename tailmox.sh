@@ -73,13 +73,37 @@ fi
 # Get all other nodes with the "tailmox" tag
 TAILMOX_PEERS=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}');
 
+# Process each peer and update /etc/hosts
+echo "Processing peers with 'tailmox' tag for /etc/hosts..."
+echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
+    PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
+    PEER_IP=$(echo "$peer" | jq -r '.ip')
+    PEER_ONLINE=$(echo "$peer" | jq -r '.online')
+    PEER_DNSNAME=$(echo "$peer" | jq -r '.dnsName')
+    
+    # Add all peers with valid hostname and IP, regardless of online status
+    if [ -n "$PEER_HOSTNAME" ] && [ -n "$PEER_IP" ]; then
+        # Create the entry for this peer
+        PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_HOSTNAME.$MAGICDNS_DOMAIN_NAME"
+        
+        echo "Processing peer: $PEER_HOSTNAME ($PEER_IP) - Online: $PEER_ONLINE"
+        
+        # Check if entry already exists in /etc/hosts
+        if ! grep -q "$PEER_ENTRY" /etc/hosts; then
+            echo "Adding host entry to /etc/hosts: $PEER_ENTRY"
+            echo "$PEER_ENTRY" >> /etc/hosts
+        else
+            echo "Host entry already exists for $PEER_HOSTNAME"
+        fi
+    else
+        echo "Skipping peer with missing hostname or IP: $PEER_HOSTNAME"
+    fi
+done
 
 ### Need to add the "tailmox" tag to the Tailscale ACL some way
 # "tag:tailmox" [
 #			"autogroup:owner",
-#		]
-
-
+#		 ]
 
 # # Cluster configuration - initialize or join based on role.
 # if [ "$ROLE" == "master" ]; then
