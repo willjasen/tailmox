@@ -57,10 +57,10 @@ HOSTS_FILE_ENTRY="$TAILSCALE_IP ${HOSTNAME} ${HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
 echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
 
 if ! grep -q "$HOSTS_FILE_ENTRY" /etc/hosts; then
-      echo "Adding local host entry to /etc/hosts: $HOSTS_ENTRY"
-      echo "$HOSTS_ENTRY" >> /etc/hosts
+      echo "Adding local host entry to /etc/hosts: $HOSTS_FILE_ENTRY"
+      echo "$HOSTS_FILE_ENTRY" >> /etc/hosts
 else
-      echo "Local host entry already exists in /etc/hosts: $HOSTS_ENTRY"
+      echo "Local host entry already exists in /etc/hosts: $HOSTS_FILE_ENTRY"
 fi
 
 # # Cluster configuration - initialize or join based on role.
