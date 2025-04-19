@@ -23,21 +23,20 @@ fi
 
 # Bring up Tailscale. Adjust flags as necessary.
 echo "Starting Tailscale..."
-tailscale up --advertise-tags proxmox
+tailscale up
 if [ $? -ne 0 ]; then
     echo "Failed to start Tailscale."
     exit 1
 fi
 
-# Allow time for Tailscale to assign an IP
-sleep 5
+# Retrieve the assigned Tailscale IPv4 address in a loop
+TS_IP=""
+while [ -z "$TS_IP" ]; do
+    echo "Waiting for Tailscale to assign an IP..."
+    sleep 1
+    TS_IP=$(tailscale ip -4)
+done
 
-# Retrieve the assigned Tailscale IPv4 address
-TS_IP=$(tailscale ip -4)
-if [ -z "$TS_IP" ]; then
-    echo "Could not obtain Tailscale IP."
-    exit 1
-fi
 echo "Your Tailscale IPv4: $TS_IP"
 
 # # Update /etc/hosts for local resolution (example: use hostname.tailscale)
