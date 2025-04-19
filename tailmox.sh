@@ -9,8 +9,13 @@ YELLOW="\e[33m"
 RESET="\e[0m"
 
 # Install dependencies
-apt update;
-apt install jq -y;
+if ! command -v jq &>/dev/null; then
+    echo -e "${YELLOW}jq not found. Installing...${RESET}"
+    apt update
+    apt install jq -y
+else
+    echo "jq is already installed."
+fi
 
 # Install Tailscale if it is not already installed
 if ! command -v tailscale &>/dev/null; then
