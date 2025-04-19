@@ -2,20 +2,19 @@
 # filepath: ./tailmox.sh
 
 # Install development dependencies
-apt update;
 # apt install -y gh;
 
 # Install Tailscale if it is not already installed
 if ! command -v tailscale &>/dev/null; then
     echo "Tailscale not found. Installing..."
-    apt install -y tailscale
+    apt update && apt install -y tailscale
 else
     echo "Tailscale is already installed."
 fi
 
 # Bring up Tailscale. Adjust flags as necessary.
 echo "Starting Tailscale..."
-tailscale up --accept-routes --advertise-tags proxmox
+tailscale up --advertise-tags proxmox
 if [ $? -ne 0 ]; then
     echo "Failed to start Tailscale."
     exit 1
