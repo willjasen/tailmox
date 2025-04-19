@@ -4,10 +4,19 @@
 # Install development dependencies
 # apt install -y gh;
 
+# Define color variables
+YELLOW="\e[33m"
+RESET="\e[0m"
+
 # Install Tailscale if it is not already installed
 if ! command -v tailscale &>/dev/null; then
-    echo "Tailscale not found. Installing..."
-    apt update && apt install -y tailscale
+    echo -e "${YELLOW}Tailscale not found. Installing...${RESET}";
+    apt update;
+    apt install curl -y;
+    curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null;
+    curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list;
+    apt update;
+    apt install tailscale -y;
 else
     echo "Tailscale is already installed."
 fi
