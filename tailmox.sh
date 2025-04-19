@@ -45,12 +45,11 @@ echo "This host's Tailscale IPv4 address: $TS_IP"
 ### Now that Tailscale is running...
 
 # Update /etc/hosts for local resolution of Tailscale hostnames for the clustered Proxmox nodes
-THIS_HOSTNAME=$(HOSTNAME);
-echo "This host's hostname: $THIS_HOSTNAME"
+echo "This host's hostname: $HOSTNAME"
 MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//');
 # HOST=$(echo "$FULL_MAGICDNS_NAME" | cut -d'.' -f1)
 echo "MagicDNS domain name for this tailnet: $MAGICDNS_DOMAIN_NAME"
-HOSTS_FILE_ENTRY="$TS_IP ${THIS_HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
+HOSTS_FILE_ENTRY="$TS_IP ${HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
 echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
 
 
