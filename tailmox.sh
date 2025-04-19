@@ -33,14 +33,14 @@ if [ $? -ne 0 ]; then
 fi
 
 # Retrieve the assigned Tailscale IPv4 address
-TS_IP=""
-while [ -z "$TS_IP" ]; do
+TAILSCALE_IP=""
+while [ -z "$TAILSCALE_IP" ]; do
     echo "Waiting for Tailscale to come online..."
     sleep 1
-    TS_IP=$(tailscale ip -4)
+    TAILSCALE_IP=$(tailscale ip -4)
 done
 
-echo "This host's Tailscale IPv4 address: $TS_IP"
+echo "This host's Tailscale IPv4 address: $TAILSCALE_IP"
 
 ### Now that Tailscale is running...
 
@@ -49,7 +49,7 @@ echo "This host's hostname: $HOSTNAME"
 MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//');
 # HOST=$(echo "$FULL_MAGICDNS_NAME" | cut -d'.' -f1)
 echo "MagicDNS domain name for this tailnet: $MAGICDNS_DOMAIN_NAME"
-HOSTS_FILE_ENTRY="$TS_IP ${HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
+HOSTS_FILE_ENTRY="$TAILSCALE_IP ${HOSTNAME} ${HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
 echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
 
 
@@ -72,7 +72,7 @@ echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
 #     echo "Joining Proxmox cluster as slave..."
 #     echo "Using master DNS: $MASTER_DNS"
 #     # Join the existing cluster using the provided master DNS name and advertise the Tailscale IP as the local link.
-#     pvecm add "$MASTER_DNS" --link0 "$TS_IP"
+#     pvecm add "$MASTER_DNS" --link0 "$TAILSCALE_IP"
 #     if [ $? -ne 0 ]; then
 #         echo "Failed to join the cluster."
 #         exit 1
