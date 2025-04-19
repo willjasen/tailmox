@@ -143,7 +143,7 @@ done
 
 # Exit the script if all peers are not online
 if ! check_all_peers_online; then
-    echo "Not all tailmox peers are online. Exiting..."
+    echo "No peers exist or not all tailmox peers are online. Exiting..."
     exit 1
 fi
 
