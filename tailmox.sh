@@ -17,6 +17,12 @@ else
     echo "jq is already installed."
 fi
 
+# Function to get all nodes with the "proxmox" tag
+get_proxmox_nodes() {
+    echo "Retrieving Tailscale nodes with 'proxmox' tag..."
+    tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], online: .Online}'
+}
+
 # Install Tailscale if it is not already installed
 if ! command -v tailscale &>/dev/null; then
     echo -e "${YELLOW}Tailscale not found. Installing...${RESET}";
@@ -62,6 +68,9 @@ if ! grep -q "$HOSTS_FILE_ENTRY" /etc/hosts; then
 else
       echo "Local host entry already exists in /etc/hosts: $HOSTS_FILE_ENTRY"
 fi
+### Probably need to ensure that two "HOSTNAME"s being in the hosts file aren't a thing
+
+
 
 # # Cluster configuration - initialize or join based on role.
 # if [ "$ROLE" == "master" ]; then
