@@ -3,7 +3,7 @@
 
 # Install development dependencies
 apt update;
-apt install -y git;
+# apt install -y gh;
 
 # Install Tailscale if it is not already installed
 if ! command -v tailscale &>/dev/null; then
