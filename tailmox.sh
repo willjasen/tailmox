@@ -8,10 +8,13 @@
 YELLOW="\e[33m"
 RESET="\e[0m"
 
+# Install dependencies
+apt update;
+apt install jq -y;
+
 # Install Tailscale if it is not already installed
 if ! command -v tailscale &>/dev/null; then
     echo -e "${YELLOW}Tailscale not found. Installing...${RESET}";
-    apt update;
     apt install curl -y;
     curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null;
     curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list;
@@ -21,7 +24,7 @@ else
     echo "Tailscale is already installed."
 fi
 
-# Bring up Tailscale. Adjust flags as necessary.
+# Bring up Tailscale
 echo "Starting Tailscale..."
 tailscale up
 if [ $? -ne 0 ]; then
@@ -29,19 +32,26 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Retrieve the assigned Tailscale IPv4 address in a loop
+# Retrieve the assigned Tailscale IPv4 address
 TS_IP=""
 while [ -z "$TS_IP" ]; do
-    echo "Waiting for Tailscale to assign an IP..."
+    echo "Waiting for Tailscale to come online..."
     sleep 1
     TS_IP=$(tailscale ip -4)
 done
 
-echo "Your Tailscale IPv4: $TS_IP"
+echo "This host's Tailscale IPv4 address: $TS_IP"
 
-# # Update /etc/hosts for local resolution (example: use hostname.tailscale)
-# HOSTNAME=$(hostname)
-# HOSTS_ENTRY="$TS_IP ${HOSTNAME}.tailscale"
+### Now that Tailscale is running...
+
+# Update /etc/hosts for local resolution of Tailscale hostnames for the clustered Proxmox nodes
+THIS_HOSTNAME=$(HOSTNAME);
+echo "This host's hostname: $THIS_HOSTNAME"
+MAGICDNS=$(tailscale status --json | jq -r '.Self.MagicDNSName');
+echo "MagicDNS domain name for this tailnet: $MAGICDNS"
+HOSTS_FILE_ENTRY="$TS_IP ${HOSTNAME}.${MAGICDNS}"
+echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
+
 
 # if ! grep -q "$HOSTNAME.tailscale" /etc/hosts; then
 #     echo "Adding local host entry to /etc/hosts: $HOSTS_ENTRY"
