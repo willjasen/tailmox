@@ -23,6 +23,36 @@ get_proxmox_nodes() {
     tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], online: .Online}'
 }
 
+# Function to check if all peers with the "tailmox" tag are online
+check_all_peers_online() {
+    echo "Checking if all tailmox peers are online..."
+    local all_peers_online=true
+    local offline_peers=""
+    
+    # Get the peers data
+    local peers_data=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox")))')
+    
+    # Check each peer's status
+    echo "$peers_data" | jq -c '.HostName + ":" + (.Online|tostring)' | while read -r peer_status; do
+        local hostname=$(echo "$peer_status" | cut -d: -f1)
+        local is_online=$(echo "$peer_status" | cut -d: -f2)
+        
+        if [ "$is_online" != "true" ]; then
+            all_peers_online=false
+            offline_peers="${offline_peers}${hostname}, "
+        fi
+    done
+    
+    if [ "$all_peers_online" = true ]; then
+        echo "All tailmox peers are online."
+        return 0
+    else
+        offline_peers=${offline_peers%, }
+        echo "Not all tailmox peers are online. Offline peers: $offline_peers"
+        return 1
+    fi
+}
+
 # Install Tailscale if it is not already installed
 if ! command -v tailscale &>/dev/null; then
     echo -e "${YELLOW}Tailscale not found. Installing...${RESET}";
@@ -70,10 +100,15 @@ else
 fi
 ### Probably need to ensure that two "HOSTNAME"s being in the hosts file aren't a thing
 
+### Need to add the "tailmox" tag to the Tailscale ACL some way
+# "tag:tailmox" [
+#			"autogroup:owner",
+#		 ]
+
 # Get all other nodes with the "tailmox" tag
 TAILMOX_PEERS=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}');
 
-# Process each peer and update /etc/hosts
+# Update the local /etc/hosts with peer information
 echo "Processing peers with 'tailmox' tag for /etc/hosts..."
 echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
     PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
@@ -100,10 +135,40 @@ echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
     fi
 done
 
-### Need to add the "tailmox" tag to the Tailscale ACL some way
-# "tag:tailmox" [
-#			"autogroup:owner",
-#		 ]
+# Exit the script if all peers are not online
+if ! check_all_peers_online; then
+    echo "Not all tailmox peers are online. Exiting..."
+    exit 1
+fi
+
+# Ensure each peer's /etc/hosts file contains all other peers' entries
+echo "Updating /etc/hosts on all peers...";
+ITERATE_PEERS=$TAILMOX_PEERS;
+
+echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
+    PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
+    PEER_IP=$(echo "$peer" | jq -r '.ip')
+    PEER_ONLINE=$(echo "$peer" | jq -r '.online')
+    PEER_DNSNAME=$(echo "$peer" | jq -r '.dnsName')
+    
+    # Check if the peer is online before attempting to SSH
+    if [ "$PEER_ONLINE" == "true" ]; then
+        ITERATE_PEERS=$TAILMOX_PEERS;
+        echo "Updating /etc/hosts on $PEER_HOSTNAME ($PEER_IP)..."
+        echo "$ITERATE_PEER" | jq -c '.[]' | while read -r iterate_peer; do
+            PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
+            PEER_IP=$(echo "$peer" | jq -r '.ip')
+            PEER_ONLINE=$(echo "$peer" | jq -r '.online')
+            PEER_DNSNAME=$(echo "$peer" | jq -r '.dnsName')
+            PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_HOSTNAME.$MAGICDNS_DOMAIN_NAME"
+            
+            ssh "$PEER_HOSTNAME" "grep -q '$HOSTS_FILE_ENTRY' /etc/hosts || echo '$HOSTS_FILE_ENTRY' >> /etc/hosts";
+        done
+    else
+        echo "Skipping offline peer: $PEER_HOSTNAME"
+    fi
+done
+
 
 # # Cluster configuration - initialize or join based on role.
 # if [ "$ROLE" == "master" ]; then
