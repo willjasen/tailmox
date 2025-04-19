@@ -57,18 +57,47 @@ echo "This host's Tailscale IPv4 address: $TAILSCALE_IP"
 
 # Update /etc/hosts for local resolution of Tailscale hostnames for the clustered Proxmox nodes
 echo "This host's hostname: $HOSTNAME"
-MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//');
+MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//')
 echo "MagicDNS domain name for this tailnet: $MAGICDNS_DOMAIN_NAME"
+
+# Add this host's entry to /etc/hosts
 HOSTS_FILE_ENTRY="$TAILSCALE_IP ${HOSTNAME} ${HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
 echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
 
 if ! grep -q "$HOSTS_FILE_ENTRY" /etc/hosts; then
-      echo "Adding local host entry to /etc/hosts: $HOSTS_FILE_ENTRY"
-      echo "$HOSTS_FILE_ENTRY" >> /etc/hosts
+    echo "Adding local host entry to /etc/hosts: $HOSTS_FILE_ENTRY"
+    echo "$HOSTS_FILE_ENTRY" >> /etc/hosts
 else
-      echo "Local host entry already exists in /etc/hosts: $HOSTS_FILE_ENTRY"
+    echo "Local host entry already exists in /etc/hosts: $HOSTS_FILE_ENTRY"
 fi
-### Probably need to ensure that two "HOSTNAME"s being in the hosts file aren't a thing
+
+# Add entries for all Proxmox nodes with the "tailmox" tag
+PROXMOX_NODES=$(get_proxmox_nodes)
+echo "$PROXMOX_NODES" | jq -c '.[]' | while read -r NODE; do
+    NODE_HOSTNAME=$(echo "$NODE" | jq -r '.hostname')
+    NODE_IP=$(echo "$NODE" | jq -r '.ip')
+    NODE_ONLINE=$(echo "$NODE" | jq -r '.online')
+
+    if [ "$NODE_ONLINE" == "true" ]; then
+        NODE_ENTRY="$NODE_IP $NODE_HOSTNAME $NODE_HOSTNAME.${MAGICDNS_DOMAIN_NAME}"
+        echo "Entry to add into /etc/hosts for Proxmox node: $NODE_ENTRY"
+
+        if ! grep -q "$NODE_ENTRY" /etc/hosts; then
+            echo "Adding Proxmox node entry to /etc/hosts: $NODE_ENTRY"
+            echo "$NODE_ENTRY" >> /etc/hosts
+        else
+            echo "Proxmox node entry already exists in /etc/hosts: $NODE_ENTRY"
+        fi
+    else
+        echo "Skipping offline Proxmox node: $NODE_HOSTNAME"
+    fi
+done
+
+
+### Need to add the "tailmox" tag to the Tailscale ACL some way
+# "tag:tailmox" [
+#			"autogroup:owner",
+#		]
 
 
 
