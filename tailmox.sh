@@ -98,7 +98,7 @@ check_all_peers_online() {
     fi
 }
 
-# Ensure that each Proxmox host in the cluster has the hostnames of all other hosts in the cluster
+# Ensure that each Proxmox host in the cluster has the Tailscale MagicDNS hostnames of all other hosts in the cluster
 require_hostnames_in_cluster() {
     # Update /etc/hosts for local resolution of Tailscale hostnames for the clustered Proxmox nodes
     echo "This host's hostname: $HOSTNAME"
