@@ -164,14 +164,14 @@ echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
     if [ "$PEER_ONLINE" == "true" ]; then
         echo "$ITERATE_PEERS_TO_ADD" | jq -c '.[]' | while read -r iterate_peer; do
             echo "Updating /etc/hosts on $PEER_HOSTNAME ($PEER_IP)..."
-            ITERATE_PEER_HOSTNAME=$(echo "$iterate_peer" | jq -r '.hostname')
-            ITERATE_PEER_IP=$(echo "$iterate_peer" | jq -r '.ip')
-            ITERATE_PEER_ONLINE=$(echo "$iterate_peer" | jq -r '.online')
-            ITERATE_PEER_DNSNAME=$(echo "$iterate_peer" | jq -r '.dnsName')
-            ITERATE_PEER_ENTRY="$ITERATE_PEER_IP $ITERATE_PEER_HOSTNAME $ITERATE_PEER_HOSTNAME.$ITERATE_PEER_DNSNAME"
+            #ITERATE_PEER_HOSTNAME=$(echo "$iterate_peer" | jq -r '.hostname')
+            #ITERATE_PEER_IP=$(echo "$iterate_peer" | jq -r '.ip')
+            #ITERATE_PEER_ONLINE=$(echo "$iterate_peer" | jq -r '.online')
+            #ITERATE_PEER_DNSNAME=$(echo "$iterate_peer" | jq -r '.dnsName')
+            #ITERATE_PEER_ENTRY="$ITERATE_PEER_IP $ITERATE_PEER_HOSTNAME $ITERATE_PEER_HOSTNAME.$ITERATE_PEER_DNSNAME"
             
             # Remote into the peer and add the entry to its /etc/hosts if needed
-            ssh "$PEER_HOSTNAME" "grep -q '$ITERATE_PEER_ENTRY' /etc/hosts || echo '$ITERATE_PEER_ENTRY' >> /etc/hosts";
+            #ssh "$PEER_HOSTNAME" "grep -q '$ITERATE_PEER_ENTRY' /etc/hosts || echo '$ITERATE_PEER_ENTRY' >> /etc/hosts";
         done
     else
         echo "Skipping offline peer: $PEER_HOSTNAME"
