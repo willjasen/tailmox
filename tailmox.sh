@@ -280,6 +280,7 @@ function check_remote_node_cluster_status() {
     fi
     
     # Get cluster status
+    ssh-keyscan -H "$TARGET_HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null
     local cluster_status=$(ssh "$node_ip" "pvecm status" 2>&1)
     
     # Check if the node is part of a cluster
