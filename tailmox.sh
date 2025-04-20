@@ -317,8 +317,25 @@ if check_local_node_cluster_status; then
     echo -e "${PURPLE}This node is already in a cluster. Skipping cluster creation.${RESET}"
 else
     echo -e "${BLUE}This node is not in a cluster. Creating or joining a cluster is required.${RESET}"
-    # Add your cluster creation/joining logic here
-    
+
+    # Find if a cluster amongst peers already exists
+    local existing_cluster=false
+    echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
+        TARGET_HOSTNAME=$(echo "$target_peer" | jq -r '.hostname')
+        TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
+        TARGET_DNSNAME=$(echo "$target_peer" | jq -r '.dnsName' | sed 's/\.$//')
+        
+        echo -e "${BLUE}Checking cluster status on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
+        if check_remote_node_cluster_status "$TARGET_HOSTNAME"; then
+            existing_cluster=true
+            echo -e "${GREEN}Found an existing cluster on $TARGET_HOSTNAME. Joining the cluster...${RESET}"
+            local LOCAL_TAILSCALE_IP=$(tailscale ip -4)
+            pvecm add "$TARGET_HOSTNAME" --link0 address="$LOCAL_TAILSCALE_IP"
+        else
+            echo -e "${YELLOW}No cluster found on $TARGET_HOSTNAME.${RESET}"
+        fi
+        
+    done
 fi
 
 echo -e "${GREEN}The script has exited successfully!${RESET}"
