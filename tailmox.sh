@@ -413,26 +413,26 @@ function add_local_node_to_cluster() {
                 echo -e "${YELLOW}No cluster found on $TARGET_HOSTNAME.${RESET}"
             fi
         done
-
-        echo -e "${YELLOW}Existing cluster variable 2 is: $EXISTING_CLUSTER ${RESET}"
-        if $EXISTING_CLUSTER; then
-            exit 0
-        else
-            echo -e "${BLUE}No existing cluster found amongst any peers.${RESET}"
-            echo -e "${YELLOW}Do you want to create a cluster on this node?${RESET}"
-            read -p "Enter 'y' to create a new cluster or 'n' to exit: " choice
-            if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-                create_cluster
-                echo -e "${GREEN}Cluster created successfully.${RESET}"
-            else
-                echo -e "${RED}Exiting without creating a cluster.${RESET}"
-                exit 1
-            fi
-        fi
         
     fi
 }
 add_local_node_to_cluster
+
+echo -e "${YELLOW}Existing cluster variable 2 is: $EXISTING_CLUSTER ${RESET}"
+if $EXISTING_CLUSTER; then
+    exit 0
+else
+    echo -e "${BLUE}No existing cluster found amongst any peers.${RESET}"
+    echo -e "${YELLOW}Do you want to create a cluster on this node?${RESET}"
+    read -p "Enter 'y' to create a new cluster or 'n' to exit: " choice
+    if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
+        create_cluster
+        echo -e "${GREEN}Cluster created successfully.${RESET}"
+    else
+        echo -e "${RED}Exiting without creating a cluster.${RESET}"
+        exit 1
+    fi
+fi
 
 echo -e "${GREEN}The script has exited successfully!${RESET}"
 
