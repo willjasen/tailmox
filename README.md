@@ -34,7 +34,7 @@ This script uses the tag of "tailmox" to determine which Tailscale machines are 
 "tagOwners": {
 	"tag:tailmox": [
 		"autogroup:owner",
-	]
+	],
 }
 ```
 
