@@ -55,7 +55,7 @@ echo "This host's Tailscale IPv4 address: $TAILSCALE_IP"
 
 ### Now that Tailscale is running...
 
-# Function to check if all peers with the "tailmox" tag are online
+# Check if all peers with the "tailmox" tag are online
 check_all_peers_online() {
     echo -e "${YELLOW}Checking if all tailmox peers are online...${RESET}"
     local all_peers_online=true
@@ -90,8 +90,8 @@ check_all_peers_online() {
         return 1
     fi
 }
-check_all_peers_online
 
+# Ensure that each Proxmox host in the cluster has the hostnames of all other hosts in the cluster
 require_hostnames_in_cluster() {
     # Update /etc/hosts for local resolution of Tailscale hostnames for the clustered Proxmox nodes
     echo "This host's hostname: $HOSTNAME"
