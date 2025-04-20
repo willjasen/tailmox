@@ -416,7 +416,7 @@ add_local_node_to_cluster
 
 # If local node is now in the cluster...
 if check_local_node_cluster_status; then
-    exit 0
+    continue
 else
     echo -e "${BLUE}No existing cluster found amongst any peers.${RESET}"
     echo -e "${YELLOW}Do you want to create a cluster on this node?${RESET}"
