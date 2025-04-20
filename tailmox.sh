@@ -215,15 +215,10 @@ function are_hosts_tcp_port_8006_reachable() {
         fi
     done
 
-    # Use a subshell to evaluate the value of peer_unavailable after the loop
-    # if [[ "$peer_unavailable" == "true" ]]; then
-    #     echo -e "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
-    #     return 1
-    # else
-    #     echo -e "${GREEN}All peers have TCP port 8006 available.${RESET}"
-    # fi
+    exit 0
 }
 if ! are_hosts_tcp_port_8006_reachable; then
+    echo -e "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
     exit 1
 fi
 
