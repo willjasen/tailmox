@@ -115,13 +115,19 @@ echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
 #			"autogroup:owner",
 #		 ]
 
+# Exit the script if all peers are not online
+if ! check_all_peers_online; then
+    echo -e "${RED}No peers exist or not all tailmox peers are online. Exiting...${RESET}"
+    exit 1
+fi
+
 # Get all nodes with the "tailmox" tag as a JSON array
 LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dnsName "$HOSTNAME.$MAGICDNS_DOMAIN_NAME" --arg online "true" '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: ($online == "true")}');
 OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
 ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
 
-# Update the local /etc/hosts with peer information
-echo "Updating the local /etc/hosts with peer information..."
+# Update the /etc/hosts file on each peer (including this local peer)
+echo "Updating /etc/hosts within the cluster with peer hostname information..."
 for peer in $(echo "$ALL_PEERS" | jq -c '.[]'); do
     PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
     PEER_IP=$(echo "$peer" | jq -r '.ip')
@@ -146,12 +152,6 @@ for peer in $(echo "$ALL_PEERS" | jq -c '.[]'); do
         echo "Skipping peer with missing hostname or IP: $PEER_HOSTNAME"
     fi
 done
-
-# Exit the script if all peers are not online
-if ! check_all_peers_online; then
-    echo -e "${RED}No peers exist or not all tailmox peers are online. Exiting...${RESET}"
-    exit 1
-fi
 
 # Ensure each peer's /etc/hosts file contains all other peers' entries
 # For each peer, remote into it and add each other peer's entry to its /etc/hosts
