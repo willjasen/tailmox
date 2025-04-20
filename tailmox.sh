@@ -374,13 +374,13 @@ function add_local_node_to_cluster() {
                 
                 # Use expect to handle the password prompt
                 expect -c "
-                    set timeout 30
-                    spawn pvecm add \"$TARGET_HOSTNAME\" --link0 address=$LOCAL_TAILSCALE_IP --fingerprint $target_fingerprint
-                    expect \"*?assword:*\"
-                    send \"$ROOT_PASSWORD\r\"
-                    expect eof
-                    catch wait result
-                    exit [lindex \$result 3]
+                set timeout 30
+                spawn pvecm add \"$TARGET_HOSTNAME\" --link0 address=$LOCAL_TAILSCALE_IP --fingerprint $target_fingerprint
+                expect \"*?assword:*\"
+                send \"$ROOT_PASSWORD\r\"
+                expect eof
+                catch wait result
+                exit [lindex \$result 3]
                 "
                 
                 # Check if successful
