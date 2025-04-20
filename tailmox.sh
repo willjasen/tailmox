@@ -102,14 +102,6 @@ echo "MagicDNS domain name for this tailnet: $MAGICDNS_DOMAIN_NAME"
 HOSTS_FILE_ENTRY="$TAILSCALE_IP ${HOSTNAME} ${HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
 echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
 
-# if ! grep -q "$HOSTS_FILE_ENTRY" /etc/hosts; then
-#       echo "Adding local host entry to /etc/hosts: $HOSTS_FILE_ENTRY"
-#       echo "$HOSTS_FILE_ENTRY" >> /etc/hosts
-# else
-#       echo "Local host entry already exists in /etc/hosts: $HOSTS_FILE_ENTRY"
-# fi
-### Probably need to ensure that two "HOSTNAME"s being in the hosts file aren't a thing
-
 ### Need to add the "tailmox" tag to the Tailscale ACL some way
 # "tag:tailmox" [
 #			"autogroup:owner",
@@ -125,29 +117,6 @@ fi
 LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dnsName "$HOSTNAME.$MAGICDNS_DOMAIN_NAME" --arg online "true" '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: ($online == "true")}');
 OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
 ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
-
-# Update the /etc/hosts file on each peer (including this local peer)
-# echo "Updating /etc/hosts within the cluster with peer hostname information..."
-# for peer in $(echo "$ALL_PEERS" | jq -c '.[]'); do
-#     PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
-#     PEER_IP=$(echo "$peer" | jq -r '.ip')
-#     PEER_ONLINE=$(echo "$peer" | jq -r '.online')
-#     PEER_DNSNAME=$(echo "$peer" | jq -r '.dnsName')
-    
-#     # Create the entry for this peer
-#     PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_HOSTNAME.$MAGICDNS_DOMAIN_NAME"
-    
-#     echo "Processing peer: $PEER_HOSTNAME ($PEER_IP) - Online: $PEER_ONLINE"
-    
-#     # Check if entry already exists in /etc/hosts
-#     if ! grep -q "$PEER_ENTRY" /etc/hosts; then
-#         echo "Adding host entry to /etc/hosts: $PEER_ENTRY"
-#         echo "$PEER_ENTRY" >> /etc/hosts
-#     else
-#         echo "Host entry already exists for $PEER_HOSTNAME"
-#     fi
-
-# done
 
 # Ensure each peer's /etc/hosts file contains all other peers' entries
 # For each peer, remote into it and add each other peer's entry to its /etc/hosts
@@ -165,7 +134,7 @@ echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
         PEER_IP=$(echo "$peer_to_add" | jq -r '.ip')
         PEER_DNSNAME=$(echo "$peer_to_add" | jq -r '.dnsName' | sed 's/\.$//')        
         PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_DNSNAME"
-        
+
         echo "Adding $PEER_HOSTNAME to $TARGET_HOSTNAME's /etc/hosts"
         ssh-keyscan -H "$TARGET_HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null
         ssh -o StrictHostKeyChecking=no "$TARGET_HOSTNAME" "grep -q '$PEER_ENTRY' /etc/hosts || echo '$PEER_ENTRY' >> /etc/hosts"
