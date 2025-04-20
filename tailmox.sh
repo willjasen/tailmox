@@ -38,7 +38,7 @@ check_all_peers_online() {
     
     # If no peers are found, return 1
     if [ -z "$peers_data" ]; then
-        echo "${YELLOW}No tailmox peers found.${RESET}"
+        echo -e "${YELLOW}No tailmox peers were found.${RESET}"
         return 1
     fi
     
