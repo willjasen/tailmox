@@ -17,16 +17,16 @@ function install_dependencies() {
     echo -e "${YELLOW}Checking for required dependencies...${RESET}"
     if ! command -v jq &>/dev/null; then
         echo -e "${YELLOW}jq not found. Installing...${RESET}"
-        apt update
-        apt install jq -y
+        apt update -qq;
+        DEBIAN_FRONTEND=noninteractive apt install jq -y
     else
         echo -e "${GREEN}jq is already installed.${RESET}"
     fi
 
     if ! command -v expect &>/dev/null; then
         echo -e "${YELLOW}expect not found. Installing...${RESET}"
-        apt update
-        apt install expect -y
+        apt update -qq;
+        DEBIAN_FRONTEND=noninteractive apt install expect -y
     else
         echo -e "${GREEN}expect is already installed.${RESET}"
     fi
