@@ -209,14 +209,14 @@ function check_tcp_port_8006() {
         echo -e "${BLUE}Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
         if ! nc -z -w 2 "$peer_ip" 8006 &>/dev/null; then
             echo -e "${RED}TCP port 8006 is not available on $peer_hostname ($peer_ip).${RESET}"
-            peer_unavailable=true;
+            peer_unavailable=true
         else
             echo -e "${GREEN}TCP port 8006 is available on $peer_hostname ($peer_ip).${RESET}"
         fi
     done
 
-    echo -e "${YELLOW}Peer unavailable value is: ${peer_unavailable} ${RESET}"
-    if $peer_unavailable; then
+    # Use a subshell to evaluate the value of peer_unavailable after the loop
+    if [ "$peer_unavailable" = true ]; then
         echo -e "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
         exit 1
     else
