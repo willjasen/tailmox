@@ -164,4 +164,4 @@ function revert_vms_to_snapshot() {
 # Run the functions
 stop_vms 10000 10001
 revert_vms_to_snapshot 10000 10001
-# start_vms 10000 10001  # Uncomment to start VMs after reverting
+start_vms 10000 10001
