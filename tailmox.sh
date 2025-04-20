@@ -429,6 +429,7 @@ function add_local_node_to_cluster() {
 install_dependencies
 install_tailscale
 
+# Start Tailscale; use auth key if supplied
 AUTH_KEY=""
 while [[ "$#" -gt 0 ]]; do
     case $1 in
