@@ -46,7 +46,7 @@ function stop_single_vm() {
     fi
 }
 
-# Function to stop specified VMs on the local Proxmox host in parallel
+# Function to stop specified VMs in parallel
 function stop_vms() {
     local vm_ids=("$@")
     
@@ -67,6 +67,66 @@ function stop_vms() {
     done
     
     echo -e "${GREEN}All VM stop operations completed.${RESET}"
+}
+
+# Function to start a single VM
+function start_single_vm() {
+    local vm_id=$1
+    
+    # Check if VM exists
+    if qm status "$vm_id" &>/dev/null; then
+        # Get current VM status
+        local status=$(qm status "$vm_id" | awk '{print $2}')
+        
+        if [ "$status" != "running" ]; then
+            echo -e "${BLUE}Starting VM $vm_id...${RESET}"
+            qm start "$vm_id"
+            
+            # Wait for VM to start
+            local timeout=60
+            local count=0
+            while [ "$count" -lt "$timeout" ]; do
+                status=$(qm status "$vm_id" | awk '{print $2}')
+                if [ "$status" == "running" ]; then
+                    echo -e "${GREEN}VM $vm_id successfully started.${RESET}"
+                    break
+                fi
+                count=$((count + 1))
+                sleep 1
+            done
+            
+            if [ "$count" -ge "$timeout" ]; then
+                echo -e "${RED}Failed to start VM $vm_id within timeout period.${RESET}"
+            fi
+        else
+            echo -e "${PURPLE}VM $vm_id is already running.${RESET}"
+        fi
+    else
+        echo -e "${RED}VM with ID $vm_id does not exist.${RESET}"
+    fi
+}
+
+# Function to start specified VMs in parallel
+function start_vms() {
+    local vm_ids=("$@")
+    
+    echo -e "${YELLOW}Attempting to start VMs with IDs: ${vm_ids[*]}${RESET}"
+    
+    # Array to keep track of background processes
+    pids=()
+    
+    for vm_id in "${vm_ids[@]}"; do
+        # Start each VM start operation in the background
+        start_single_vm "$vm_id" &
+        pids+=($!)
+    done
+    
+    # Wait for all background processes to complete
+    for pid in "${pids[@]}"; do
+        wait $pid
+    done
+    
+    echo -e "${GREEN}All VM start operations completed.${RESET}"
 }
 
 # Function to revert VMs to specified snapshots
@@ -104,3 +164,4 @@ function revert_vms_to_snapshot() {
 # Run the functions
 stop_vms 10000 10001
 revert_vms_to_snapshot 10000 10001
+# start_vms 10000 10001  # Uncomment to start VMs after reverting
