@@ -278,7 +278,7 @@ function check_local_node_cluster_status() {
         echo -e "${BLUE}This node is not part of any cluster.${RESET}"
         return 1
     elif echo "$cluster_status" | grep -q "Cluster information"; then
-        local cluster_name=$(echo "$cluster_status" | grep "Cluster name:" | awk '{print $3}')
+        local cluster_name=$(echo "$cluster_status" | grep "Name:" | awk '{print $3}')
         echo -e "${GREEN}This node is already part of cluster: $cluster_name${RESET}"
         return 0
     else
