@@ -170,7 +170,7 @@ function ensure_ping_reachability() {
     # If no peers are found, exit with an error
     if [ -z "$peers" ]; then
         echo -e "${RED}No peers found with the 'tailmox' tag. Exiting...${RESET}"
-        exit 1
+        return 1
     fi
 
     # Check ping reachability for each peer
