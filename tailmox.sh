@@ -156,7 +156,7 @@ echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
     TARGET_HOSTNAME=$(echo "$target_peer" | jq -r '.hostname')
     TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
     TARGET_ONLINE=$(echo "$target_peer" | jq -r '.online')
-    TARGET_DNSNAME=$(echo "$target_peer" | jq -r '.dnsName')
+    TARGET_DNSNAME=$(echo "$target_peer" | jq -r '.dnsName' | sed 's/\.$//')
     
     echo -e "${BLUE}Updating /etc/hosts on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
     
