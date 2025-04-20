@@ -197,7 +197,6 @@ function require_hostnames_in_cluster() {
         echo -e "${GREEN}Finished updating hosts file on $TARGET_HOSTNAME${RESET}"
     done
 }
-# require_hostnames_in_cluster
 
 # Ensure the local node can ping all nodes via Tailscale
 function ensure_ping_reachability() {
@@ -491,6 +490,15 @@ MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'
 LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dnsName "$HOSTNAME.$MAGICDNS_DOMAIN_NAME" --arg online "true" '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: ($online == "true")}');
 OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
 ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
+
+# Check that all Tailmox peers are online
+if ! check_all_peers_online; then
+    echo -e "${RED}Not all tailmox peers are online. Exiting...${RESET}"
+    exit 1
+fi
+
+# Ensure that all peers have the Tailscale MagicDNS hostnames of all other hosts in the cluster
+require_hostnames_in_cluster
 
 # Ensure that all peers are pingable
 if ! ensure_ping_reachability; then
