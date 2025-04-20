@@ -140,7 +140,7 @@ require_hostnames_in_cluster() {
 
             echo "Adding $PEER_HOSTNAME to $TARGET_HOSTNAME's /etc/hosts"
             ssh-keyscan -H "$TARGET_HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null
-            ssh -o StrictHostKeyChecking=no "$TARGET_HOSTNAME" "grep -q '$PEER_ENTRY' /etc/hosts || echo '$PEER_ENTRY' >> /etc/hosts"
+            ssh "$TARGET_HOSTNAME" "grep -q '$PEER_ENTRY' /etc/hosts || echo '$PEER_ENTRY' >> /etc/hosts"
         done
         
         echo -e "${GREEN}Finished updating hosts file on $TARGET_HOSTNAME${RESET}"
