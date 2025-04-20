@@ -236,7 +236,7 @@ function check_local_node_cluster_status() {
     # Check if the pvecm command exists (should be installed with Proxmox)
     if ! command -v pvecm &>/dev/null; then
         echo -e "${RED}pvecm command not found. Is this a Proxmox VE node?${RESET}"
-        exit 1
+        return 1
     fi
     
     # Get cluster status
@@ -252,7 +252,7 @@ function check_local_node_cluster_status() {
         return 0
     else
         echo -e "${RED}Unable to determine cluster status. Output: $cluster_status${RESET}"
-        exit 1
+        return 1
     fi
 }
 
@@ -415,7 +415,12 @@ else
     echo -e "${GREEN}All peers have TCP port 8006 available.${RESET}"
 fi
 
-### Now that the local host can connect via TCP 8006 to other hosts...
+if ! check_local_node_cluster_status; then
+    echo -e "${YELLOW}This node is not part of a cluster. Attempting to create or join a cluster...${RESET}"
+else
+    echo -e "${GREEN}This node is already part of a cluster.${RESET}"
+    exit 1
+fi
 
 add_local_node_to_cluster
 
