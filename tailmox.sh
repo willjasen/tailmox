@@ -333,7 +333,7 @@ function add_local_node_to_cluster() {
                 existing_cluster=true
                 echo -e "${GREEN}Found an existing cluster on $TARGET_HOSTNAME. Joining the cluster...${RESET}"
                 local LOCAL_TAILSCALE_IP=$(tailscale ip -4)
-                pvecm add "$TARGET_HOSTNAME" --link0 address="$LOCAL_TAILSCALE_IP"
+                pvecm add "$TARGET_HOSTNAME" --link0 address=$LOCAL_TAILSCALE_IP
             else
                 echo -e "${YELLOW}No cluster found on $TARGET_HOSTNAME.${RESET}"
             fi
