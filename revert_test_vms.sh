@@ -62,7 +62,7 @@ function revert_vms_to_snapshot() {
         # Check if VM exists
         if qm status "$vm_id" &>/dev/null; then
             # Check if the snapshot exists
-            if qm snapshot "$vm_id" list | grep -q "$snapname"; then
+            # if qm snapshot "$vm_id" list | grep -q "$snapname"; then
                 echo -e "${BLUE}Reverting VM $vm_id to snapshot '$snapname'...${RESET}"
                 
                 # Roll back to the snapshot
@@ -73,9 +73,9 @@ function revert_vms_to_snapshot() {
                 else
                     echo -e "${RED}Failed to revert VM $vm_id to snapshot '$snapname'.${RESET}"
                 fi
-            else
-                echo -e "${RED}Snapshot '$snapname' not found for VM $vm_id.${RESET}"
-            fi
+            # else
+            #    echo -e "${RED}Snapshot '$snapname' not found for VM $vm_id.${RESET}"
+            #fi
         else
             echo -e "${RED}VM with ID $vm_id does not exist.${RESET}"
         fi
