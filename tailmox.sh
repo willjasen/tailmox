@@ -245,10 +245,9 @@ function check_udp_ports_5405_to_5412() {
         echo -e "${GREEN}All peers have UDP ports 5405 through 5412 available.${RESET}"
     fi
 }
-# check_udp_ports_5405_to_5412
 
 # Check if this node is already part of a Proxmox cluster
-# Returns true/false
+# Returns true/false ?
 function check_local_node_cluster_status() {
     echo -e "${YELLOW}Checking if this node is already part of a Proxmox cluster...${RESET}"
     
@@ -276,7 +275,7 @@ function check_local_node_cluster_status() {
 }
 
 # Check if a remote node is already part of a Proxmox cluster
-# Returns true/false
+# Returns true/false ?
 function check_remote_node_cluster_status() {
     local node_ip=$1
     echo -e "${YELLOW}Checking if remote node $node_ip is part of a Proxmox cluster...${RESET}"
