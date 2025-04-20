@@ -214,6 +214,8 @@ function are_hosts_tcp_port_8006_reachable() {
             echo -e "${GREEN}TCP port 8006 is available on $peer_hostname ($peer_ip).${RESET}"
         fi
     done
+
+    return 0
 }
 if ! are_hosts_tcp_port_8006_reachable; then
     echo -e "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
