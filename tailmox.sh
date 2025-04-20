@@ -211,3 +211,5 @@ function check_tcp_port_8006() {
     fi
 }
 check_tcp_port_8006
+
+### Now that the local host can connect via SSH and TCP 8006 to other hosts...
