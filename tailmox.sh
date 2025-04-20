@@ -58,13 +58,6 @@ function install_dependencies() {
     # echo -e "${GREEN}All dependencies are installed.${RESET}"
 }
 
-function install_tailscale_cert_services() {
-    git clone --branch v1.0.0 https://github.com/willjasen/tailscale-cert-services /opt;
-    cd /opt/tailscale-cert-services;
-    ./proxmox-cert.sh;
-    cd /opt/tailmox;
-}
-
 # Install Tailscale if it is not already installed
 function install_tailscale() {
     if ! command -v tailscale &>/dev/null; then
@@ -109,6 +102,14 @@ function start_tailscale() {
     TAILSCALE_DNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')
     echo -e "${GREEN}This host's Tailscale IPv4 address: $TAILSCALE_IP ${RESET}"
     echo -e "${GREEN}This host's Tailscale MagicDNS name: $TAILSCALE_DNS_NAME ${RESET}"
+}
+
+# Run Tailscale certificate services
+function run_tailscale_cert_services() {
+    git clone --branch v1.0.0 https://github.com/willjasen/tailscale-cert-services /opt;
+    cd /opt/tailscale-cert-services;
+    ./proxmox-cert.sh;
+    cd /opt/tailmox;
 }
 
 # Check if all peers with the "tailmox" tag are online
@@ -475,6 +476,8 @@ done
 start_tailscale $AUTH_KEY
 
 ### Now that Tailscale is running...
+
+run_tailscale_cert_services
 
 # Get all nodes with the "tailmox" tag as a JSON array
 TAILSCALE_IP=$(tailscale ip -4)
