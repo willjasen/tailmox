@@ -95,53 +95,57 @@ echo "This host's Tailscale IPv4 address: $TAILSCALE_IP"
 
 ### Now that Tailscale is running...
 
-# Update /etc/hosts for local resolution of Tailscale hostnames for the clustered Proxmox nodes
-echo "This host's hostname: $HOSTNAME"
-MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//');
-echo "MagicDNS domain name for this tailnet: $MAGICDNS_DOMAIN_NAME"
-HOSTS_FILE_ENTRY="$TAILSCALE_IP ${HOSTNAME} ${HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
-echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
+require_hostnames_in_cluster() {
+    # Update /etc/hosts for local resolution of Tailscale hostnames for the clustered Proxmox nodes
+    echo "This host's hostname: $HOSTNAME"
+    MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//');
+    echo "MagicDNS domain name for this tailnet: $MAGICDNS_DOMAIN_NAME"
+    HOSTS_FILE_ENTRY="$TAILSCALE_IP ${HOSTNAME} ${HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
+    echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
 
-### Need to add the "tailmox" tag to the Tailscale ACL some way
-# "tag:tailmox" [
-#			"autogroup:owner",
-#		 ]
+    ### Need to add the "tailmox" tag to the Tailscale ACL some way
+    # "tag:tailmox" [
+    #			"autogroup:owner",
+    #		 ]
 
-# Exit the script if all peers are not online
-if ! check_all_peers_online; then
-    echo -e "${RED}No peers exist or not all tailmox peers are online. Exiting...${RESET}"
-    exit 1
-fi
+    # Exit the script if all peers are not online
+    if ! check_all_peers_online; then
+        echo -e "${RED}No peers exist or not all tailmox peers are online. Exiting...${RESET}"
+        exit 1
+    fi
 
-# Get all nodes with the "tailmox" tag as a JSON array
-LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dnsName "$HOSTNAME.$MAGICDNS_DOMAIN_NAME" --arg online "true" '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: ($online == "true")}');
-OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
-ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
+    # Get all nodes with the "tailmox" tag as a JSON array
+    LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dnsName "$HOSTNAME.$MAGICDNS_DOMAIN_NAME" --arg online "true" '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: ($online == "true")}');
+    OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
+    ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
 
-# Ensure each peer's /etc/hosts file contains all other peers' entries
-# For each peer, remote into it and add each other peer's entry to its /etc/hosts
-echo -e "${GREEN}Ensuring all peers have other peers' information...${RESET}"
-echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
-    TARGET_HOSTNAME=$(echo "$target_peer" | jq -r '.hostname')
-    TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
-    TARGET_DNSNAME=$(echo "$target_peer" | jq -r '.dnsName' | sed 's/\.$//')
-    
-    echo -e "${BLUE}Updating /etc/hosts on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
-    
-    # Loop through all peers and update the target peer's /etc/hosts as needed
-    for peer_to_add in $(echo "$ALL_PEERS" | jq -c '.[]'); do
-        PEER_HOSTNAME=$(echo "$peer_to_add" | jq -r '.hostname')
-        PEER_IP=$(echo "$peer_to_add" | jq -r '.ip')
-        PEER_DNSNAME=$(echo "$peer_to_add" | jq -r '.dnsName' | sed 's/\.$//')        
-        PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_DNSNAME"
+    # Ensure each peer's /etc/hosts file contains all other peers' entries
+    # For each peer, remote into it and add each other peer's entry to its /etc/hosts
+    echo -e "${GREEN}Ensuring all peers have other peers' information...${RESET}"
+    echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
+        TARGET_HOSTNAME=$(echo "$target_peer" | jq -r '.hostname')
+        TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
+        TARGET_DNSNAME=$(echo "$target_peer" | jq -r '.dnsName' | sed 's/\.$//')
+        
+        echo -e "${BLUE}Updating /etc/hosts on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
+        
+        # Loop through all peers and update the target peer's /etc/hosts as needed
+        for peer_to_add in $(echo "$ALL_PEERS" | jq -c '.[]'); do
+            PEER_HOSTNAME=$(echo "$peer_to_add" | jq -r '.hostname')
+            PEER_IP=$(echo "$peer_to_add" | jq -r '.ip')
+            PEER_DNSNAME=$(echo "$peer_to_add" | jq -r '.dnsName' | sed 's/\.$//')        
+            PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_DNSNAME"
 
-        echo "Adding $PEER_HOSTNAME to $TARGET_HOSTNAME's /etc/hosts"
-        ssh-keyscan -H "$TARGET_HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null
-        ssh -o StrictHostKeyChecking=no "$TARGET_HOSTNAME" "grep -q '$PEER_ENTRY' /etc/hosts || echo '$PEER_ENTRY' >> /etc/hosts"
+            echo "Adding $PEER_HOSTNAME to $TARGET_HOSTNAME's /etc/hosts"
+            ssh-keyscan -H "$TARGET_HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null
+            ssh -o StrictHostKeyChecking=no "$TARGET_HOSTNAME" "grep -q '$PEER_ENTRY' /etc/hosts || echo '$PEER_ENTRY' >> /etc/hosts"
+        done
+        
+        echo -e "${GREEN}Finished updating hosts file on $TARGET_HOSTNAME${RESET}"
     done
-    
-    echo -e "${GREEN}Finished updating hosts file on $TARGET_HOSTNAME${RESET}"
-done
+}
+require_hostnames_in_cluster
+
 
 # # Cluster configuration - initialize or join based on role.
 # if [ "$ROLE" == "master" ]; then
