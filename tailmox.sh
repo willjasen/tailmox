@@ -203,7 +203,7 @@ function check_tcp_port_8006() {
         fi
     done
 
-    if [ "$peer_unavailable" = true ]; then
+    if $peer_unavailable; then
         echo -e "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
         exit 1
     else
