@@ -35,6 +35,28 @@ function check_proxmox_8_installed() {
     fi
 }
 
+# Check if tailmox tag is available
+function check_tailmox_tag_available() {
+    
+    echo -e "${YELLOW}Checking if 'tailmox' tag is available...${RESET}"
+    
+    # Extract the key part from the auth key (tskey-auth-XXX format)
+    local key_part=$(echo "$auth_key" | cut -d'-' -f3)
+    
+    # Use tailscale's API to check tag information
+    # First, try using the tailscale CLI if available
+    if command -v tailscale &>/dev/null; then
+        if tailscale status --json 2>/dev/null | jq -e '.TagOwners["tag:tailmox"]' >/dev/null; then
+            echo -e "${GREEN}The 'tailmox' tag is already available in this tailnet.${RESET}"
+            return 0
+        fi
+    fi
+    
+    echo -e "${YELLOW}Could not verify 'tailmox' tag availability. This tag must be defined in your Tailscale ACLs.${RESET}"
+    echo -e "${YELLOW}Continuing with authentication; it will fail if the tag is not allowed.${RESET}"
+    return 0
+}
+
 # Install dependencies
 function install_dependencies() {
     echo -e "${YELLOW}Checking for required dependencies...${RESET}"
@@ -76,6 +98,10 @@ function install_tailscale() {
 # Bring up Tailscale
 function start_tailscale() {
     local auth_key="$1"
+    
+    # Check if tailmox tag is available
+    check_tailmox_tag_available "$auth_key"
+    
     echo -e "${GREEN}Starting Tailscale with --advertise-tags 'tag:tailmox'...${RESET}"
     
     if [ -n "$auth_key" ]; then
@@ -87,7 +113,7 @@ function start_tailscale() {
     fi
     
     if [ $? -ne 0 ]; then
-        echo -e "${RED}Failed to start Tailscale.${RESET}"
+        echo -e "${RED}Failed to start Tailscale. Check if the 'tailmox' tag is allowed in your ACLs.${RESET}"
         exit 1
     fi
 
