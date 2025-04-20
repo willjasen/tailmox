@@ -163,9 +163,9 @@ echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
     for peer_to_add in $(echo "$ALL_PEERS" | jq -c '.[]'); do
         PEER_HOSTNAME=$(echo "$peer_to_add" | jq -r '.hostname')
         PEER_IP=$(echo "$peer_to_add" | jq -r '.ip')
-        PEER_DNSNAME=$(echo "$peer_to_add" | jq -r '.dnsName')
-        
+        PEER_DNSNAME=$(echo "$peer_to_add" | jq -r '.dnsName' | sed 's/\.$//')        
         PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_DNSNAME"
+        
         echo "Adding $PEER_HOSTNAME to $TARGET_HOSTNAME's /etc/hosts"
         ssh-keyscan -H "$TARGET_HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null
         ssh -o StrictHostKeyChecking=no "$TARGET_HOSTNAME" "grep -q '$PEER_ENTRY' /etc/hosts || echo '$PEER_ENTRY' >> /etc/hosts"
