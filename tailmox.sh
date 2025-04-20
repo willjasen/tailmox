@@ -369,35 +369,35 @@ function add_local_node_to_cluster() {
                 echo -e "${GREEN}Found an existing cluster on $TARGET_HOSTNAME. Joining the cluster...${RESET}"
 
                 # Prompt for root password of the remote node
-                echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:"
+                echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:${RESET}"
                 read -s ROOT_PASSWORD
                 
-                 # Use expect to handle the password prompt with proper authentication
-                expect -c "
+                # Use expect to handle the password prompt with proper authentication
+                expect <<EOF
                 set timeout 20
-                spawn pvecm add \"$TARGET_HOSTNAME\" --link0 address=$LOCAL_TAILSCALE_IP --fingerprint $target_fingerprint
+                spawn pvecm add "$TARGET_HOSTNAME" --link0 address=$LOCAL_TAILSCALE_IP --fingerprint $target_fingerprint
                 expect {
-                    \"*?assword:*\" {
-                        send \"$ROOT_PASSWORD\r\"
+                    "*?assword:*" {
+                        send "$ROOT_PASSWORD\r"
                         exp_continue
                     }
-                    \"*?assword for*\" {
-                        send \"$ROOT_PASSWORD\r\"
+                    "*?assword for*" {
+                        send "$ROOT_PASSWORD\r"
                         exp_continue
                     }
-                    \"*authentication failure*\" {
-                        puts \"Authentication failed. Please check your password.\"
+                    "*authentication failure*" {
+                        puts "Authentication failed. Please check your password."
                         exit 1
                     }
                     timeout {
-                        puts \"Command timed out.\"
+                        puts "Command timed out."
                         exit 1
                     }
                     eof
                 }
                 catch wait result
                 exit [lindex \$result 3]
-                "
+                EOF
                 
                 # Check if successful
                 if [ $? -eq 0 ]; then
