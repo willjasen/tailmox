@@ -148,9 +148,7 @@ if ! check_all_peers_online; then
 fi
 
 # Ensure each peer's /etc/hosts file contains all other peers' entries
-echo "Updating /etc/hosts on all peers...";
-ITERATE_PEERS=$TAILMOX_PEERS;
-
+# For each peer, remote into it and add each other peer's entry to its /etc/hosts
 echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
     PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
     PEER_IP=$(echo "$peer" | jq -r '.ip')
@@ -159,16 +157,17 @@ echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
     
     # Check if the peer is online before attempting to SSH
     if [ "$PEER_ONLINE" == "true" ]; then
-        ITERATE_PEERS=$TAILMOX_PEERS;
-        echo "Updating /etc/hosts on $PEER_HOSTNAME ($PEER_IP)..."
-        echo "$ITERATE_PEER" | jq -c '.[]' | while read -r iterate_peer; do
-            PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
-            PEER_IP=$(echo "$peer" | jq -r '.ip')
-            PEER_ONLINE=$(echo "$peer" | jq -r '.online')
-            PEER_DNSNAME=$(echo "$peer" | jq -r '.dnsName')
-            PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_HOSTNAME.$MAGICDNS_DOMAIN_NAME"
+        ITERATE_PEERS_TO_ADD=$TAILMOX_PEERS;
+        echo "$ITERATE_PEERS_TO_ADD" | jq -c '.[]' | while read -r iterate_peer; do
+            echo "Updating /etc/hosts on $PEER_HOSTNAME ($PEER_IP)..."
+            ITERATE_PEER_HOSTNAME=$(echo "$iterate_peer" | jq -r '.hostname')
+            ITERATE_PEER_IP=$(echo "$iterate_peer" | jq -r '.ip')
+            ITERATE_PEER_ONLINE=$(echo "$iterate_peer" | jq -r '.online')
+            ITERATE_PEER_DNSNAME=$(echo "$iterate_peer" | jq -r '.dnsName')
+            ITERATE_PEER_ENTRY="$ITERATE_PEER_IP $ITERATE_PEER_HOSTNAME $ITERATE_PEER_HOSTNAME.$ITERATE_PEER_DNSNAME"
             
-            ssh "$PEER_HOSTNAME" "grep -q '$HOSTS_FILE_ENTRY' /etc/hosts || echo '$HOSTS_FILE_ENTRY' >> /etc/hosts";
+            # Remote into the peer and add the entry to its /etc/hosts if needed
+            ssh "$PEER_HOSTNAME" "grep -q '$ITERATE_PEER_ENTRY' /etc/hosts || echo '$ITERATE_PEER_ENTRY' >> /etc/hosts";
         done
     else
         echo "Skipping offline peer: $PEER_HOSTNAME"
