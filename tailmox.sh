@@ -189,12 +189,15 @@ function ensure_ping_reachability() {
     if [ -n "$unreachable_peers" ]; then
         unreachable_peers=${unreachable_peers%, }
         echo -e "${RED}The following peers are unreachable: $unreachable_peers${RESET}"
-        exit 1
+        return 1
     else
         echo -e "${GREEN}All peers are reachable via ping.${RESET}"
     fi
 }
-ensure_ping_reachability
+if ! ensure_ping_reachability; then
+    echo -e "${RED}Some peers are unreachable via ping. Please check the network configuration.${RESET}"
+    exit 1
+fi
 
 # Check if TCP port 8006 is available on all nodes
 function are_hosts_tcp_port_8006_reachable() {
