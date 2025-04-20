@@ -118,11 +118,9 @@ fi
 # Get all other nodes with the "tailmox" tag as a JSON array
 TAILMOX_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
 
-
-
 # Update the local /etc/hosts with peer information
 echo "Updating the local /etc/hosts with peer information..."
-echo "$TAILMOX_PEERS" | jq -c '.' | while read -r peer; do
+for peer in $(echo "$TAILMOX_PEERS" | jq -c '.[]'); do
     PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
     PEER_IP=$(echo "$peer" | jq -r '.ip')
     PEER_ONLINE=$(echo "$peer" | jq -r '.online')
