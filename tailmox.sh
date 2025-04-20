@@ -58,6 +58,13 @@ function install_dependencies() {
     # echo -e "${GREEN}All dependencies are installed.${RESET}"
 }
 
+function install_tailscale_cert_services() {
+    git clone --branch v1.0.0 https://github.com/willjasen/tailscale-cert-services /opt;
+    cd /opt/tailscale-cert-services;
+    ./proxmox-cert.sh;
+    cd /opt/tailmox;
+}
+
 # Install Tailscale if it is not already installed
 function install_tailscale() {
     if ! command -v tailscale &>/dev/null; then
