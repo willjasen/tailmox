@@ -18,7 +18,7 @@ function check_proxmox_8_installed() {
     echo -e "${YELLOW}Checking if Proxmox is installed...${RESET}"
     
     # Check for common Proxmox binaries and version file
-    if [[ ! -f /usr/bin/pveversion || ! -f /etc/pve/version ]]; then
+    if [[ ! -f /usr/bin/pveversion ]]; then
         echo -e "${RED}Proxmox VE does not appear to be installed on this system.${RESET}"
         return 1
     fi
