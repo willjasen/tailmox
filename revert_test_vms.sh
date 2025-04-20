@@ -9,45 +9,64 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 RESET='\033[0m'
 
-# Function to stop specified VMs on the local Proxmox host
+# Function to stop a single VM
+function stop_single_vm() {
+    local vm_id=$1
+    
+    # Check if VM exists
+    if qm status "$vm_id" &>/dev/null; then
+        # Get current VM status
+        local status=$(qm status "$vm_id" | awk '{print $2}')
+        
+        if [ "$status" == "running" ]; then
+            echo -e "${BLUE}Stopping VM $vm_id...${RESET}"
+            qm stop "$vm_id"
+            
+            # Wait for VM to stop
+            local timeout=60
+            local count=0
+            while [ "$count" -lt "$timeout" ]; do
+                status=$(qm status "$vm_id" | awk '{print $2}')
+                if [ "$status" == "stopped" ]; then
+                    echo -e "${GREEN}VM $vm_id successfully stopped.${RESET}"
+                    break
+                fi
+                count=$((count + 1))
+                sleep 1
+            done
+            
+            if [ "$count" -ge "$timeout" ]; then
+                echo -e "${RED}Failed to stop VM $vm_id within timeout period.${RESET}"
+            fi
+        else
+            echo -e "${PURPLE}VM $vm_id is already stopped or in state: $status${RESET}"
+        fi
+    else
+        echo -e "${RED}VM with ID $vm_id does not exist.${RESET}"
+    fi
+}
+
+# Function to stop specified VMs on the local Proxmox host in parallel
 function stop_vms() {
     local vm_ids=("$@")
     
     echo -e "${YELLOW}Attempting to stop VMs with IDs: ${vm_ids[*]}${RESET}"
     
+    # Array to keep track of background processes
+    pids=()
+    
     for vm_id in "${vm_ids[@]}"; do
-        # Check if VM exists
-        if qm status "$vm_id" &>/dev/null; then
-            # Get current VM status
-            local status=$(qm status "$vm_id" | awk '{print $2}')
-            
-            if [ "$status" == "running" ]; then
-                echo -e "${BLUE}Stopping VM $vm_id...${RESET}"
-                qm stop "$vm_id"
-                
-                # Wait for VM to stop
-                local timeout=60
-                local count=0
-                while [ "$count" -lt "$timeout" ]; do
-                    status=$(qm status "$vm_id" | awk '{print $2}')
-                    if [ "$status" == "stopped" ]; then
-                        echo -e "${GREEN}VM $vm_id successfully stopped.${RESET}"
-                        break
-                    fi
-                    count=$((count + 1))
-                    sleep 1
-                done
-                
-                if [ "$count" -ge "$timeout" ]; then
-                    echo -e "${RED}Failed to stop VM $vm_id within timeout period.${RESET}"
-                fi
-            else
-                echo -e "${PURPLE}VM $vm_id is already stopped or in state: $status${RESET}"
-            fi
-        else
-            echo -e "${RED}VM with ID $vm_id does not exist.${RESET}"
-        fi
+        # Start each VM stop operation in the background
+        stop_single_vm "$vm_id" &
+        pids+=($!)
     done
+    
+    # Wait for all background processes to complete
+    for pid in "${pids[@]}"; do
+        wait $pid
+    done
+    
+    echo -e "${GREEN}All VM stop operations completed.${RESET}"
 }
 
 # Function to revert VMs to specified snapshots
