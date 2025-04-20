@@ -49,7 +49,7 @@ install_tailscale
 
 # Bring up Tailscale
 function start_tailscale() {
-    echo "Starting Tailscale with --advertise-tags 'tag:tailmox'..."
+    echo -e "${GREEN}Starting Tailscale with --advertise-tags 'tag:tailmox'...${RESET}"
     tailscale up --advertise-tags "tag:tailmox"
     if [ $? -ne 0 ]; then
         echo -e "${RED}Failed to start Tailscale.${RESET}"
@@ -64,7 +64,7 @@ function start_tailscale() {
         TAILSCALE_IP=$(tailscale ip -4)
     done
 
-    echo "This host's Tailscale IPv4 address: $TAILSCALE_IP"
+    echo -e "${GREEN}This host's Tailscale IPv4 address: $TAILSCALE_IP ${RESET}"
 }
 start_tailscale
 
