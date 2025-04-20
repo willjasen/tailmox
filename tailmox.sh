@@ -155,26 +155,17 @@ echo -e "${GREEN}Ensuring all peers have other peers' information...${RESET}"
 echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
     TARGET_HOSTNAME=$(echo "$target_peer" | jq -r '.hostname')
     TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
-    TARGET_ONLINE=$(echo "$target_peer" | jq -r '.online')
     TARGET_DNSNAME=$(echo "$target_peer" | jq -r '.dnsName' | sed 's/\.$//')
     
     echo -e "${BLUE}Updating /etc/hosts on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
     
-    # First, ensure the target host has its own entry
-    LOCAL_ENTRY="$TARGET_IP $TARGET_HOSTNAME $TARGET_DNSNAME"
-    if ! ssh -o ConnectTimeout=3 "$TARGET_HOSTNAME" "grep -q '$LOCAL_ENTRY' /etc/hosts || echo '$LOCAL_ENTRY' >> /etc/hosts"; then
-        echo -e "${RED}Failed to update /etc/hosts on $TARGET_HOSTNAME. Exiting...${RESET}"
-        exit 1
-    else
-        echo -e "${GREEN}$TARGET_HOSTNAME's /etc/hosts has its own entry.${RESET}"
-    fi
-    
-    # Then add entries for all other peers
-    echo "$OTHER_PEERS" | jq -c '.[]' | while read -r peer_to_add; do
+    # Loop through all peers and update the target peer's /etc/hosts as needed
+    for peer_to_add in $(echo "$ALL_PEERS" | jq -c '.[]'); do
         PEER_HOSTNAME=$(echo "$peer_to_add" | jq -r '.hostname')
         PEER_IP=$(echo "$peer_to_add" | jq -r '.ip')
+        PEER_DNSNAME=$(echo "$peer_to_add" | jq -r '.dnsName')
         
-        PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $TARGET_DNSNAME"
+        PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_DNSNAME"
         echo "Adding $PEER_HOSTNAME to $TARGET_HOSTNAME's /etc/hosts"
         ssh-keyscan -H "$TARGET_HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null
         ssh -o StrictHostKeyChecking=no "$TARGET_HOSTNAME" "grep -q '$PEER_ENTRY' /etc/hosts || echo '$PEER_ENTRY' >> /etc/hosts"
