@@ -210,6 +210,48 @@ function test_guest_agent() {
     fi
 }
 
+# Function to test guest agents for multiple VMs in parallel
+function test_guest_agents() {
+    local vm_ids=("$@")
+    local max_attempts=${max_attempts:-30}
+    local wait_seconds=${wait_seconds:-10}
+    
+    echo -e "${YELLOW}Testing guest agents for VMs with IDs: ${vm_ids[*]}${RESET}"
+    
+    # Array to keep track of background processes
+    pids=()
+    results=()
+    
+    for vm_id in "${vm_ids[@]}"; do
+        # Start each guest agent test in the background
+        test_guest_agent "$vm_id" "$max_attempts" "$wait_seconds" &
+        pids+=($!)
+    done
+    
+    # Wait for all background processes to complete
+    for pid in "${pids[@]}"; do
+        wait $pid
+        results+=($?)
+    done
+    
+    # Check if all tests were successful
+    all_success=true
+    for i in "${!vm_ids[@]}"; do
+        if [ ${results[$i]} -ne 0 ]; then
+            all_success=false
+            echo -e "${RED}Guest agent test failed for VM ${vm_ids[$i]}${RESET}"
+        fi
+    done
+    
+    if $all_success; then
+        echo -e "${GREEN}All guest agent tests completed successfully.${RESET}"
+        return 0
+    else
+        echo -e "${RED}Some guest agent tests failed.${RESET}"
+        return 1
+    fi
+}
+
 # Run the functions
 stop_vms 10000 10001
 revert_vms_to_snapshot 10000 10001
@@ -217,5 +259,6 @@ start_vms 10000 10001
 
 test_guest_agent 10000 10 1   # Test VM 10000 with 20 attempts, 5s interval
 test_guest_agent 10001 10 1   # Test VM 10001 with default settings
+test_guest_agents 10000 10001 # Test guest agents for multiple VMs in parallel
 
 echo -e "${GREEN}The script has completed successfully!${RESET}"
