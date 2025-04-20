@@ -348,13 +348,13 @@ function create_cluster() {
 
 # Add this local node into a cluster if it exists
 function add_local_node_to_cluster() {
+    local existing_cluster=false;
     if check_local_node_cluster_status; then
         echo -e "${PURPLE}This node is already in a cluster.${RESET}"
     else
         echo -e "${BLUE}This node is not in a cluster. Creating or joining a cluster is required.${RESET}"
 
         # Find if a cluster amongst peers already exists
-        local existing_cluster=false
         echo "$OTHER_PEERS" | jq -c '.[]' | while read -r target_peer; do
             TARGET_HOSTNAME=$(echo "$target_peer" | jq -r '.hostname')
             TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
