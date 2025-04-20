@@ -370,7 +370,7 @@ function add_local_node_to_cluster() {
 
                 # Prompt for root password of the remote node
                 echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:"
-                read ROOT_PASSWORD
+                ROOT_PASSWORD=proxmox1
                 
                  # Use expect to handle the password prompt with proper authentication
                 expect -c "
