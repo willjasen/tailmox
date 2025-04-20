@@ -414,8 +414,8 @@ function add_local_node_to_cluster() {
 }
 add_local_node_to_cluster
 
-echo -e "${YELLOW}Existing cluster variable 2 is: $EXISTING_CLUSTER ${RESET}"
-if $EXISTING_CLUSTER; then
+# If local node is now in the cluster...
+if check_local_node_cluster_status; then
     exit 0
 else
     echo -e "${BLUE}No existing cluster found amongst any peers.${RESET}"
