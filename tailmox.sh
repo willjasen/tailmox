@@ -400,6 +400,15 @@ function add_local_node_to_cluster() {
 
 install_dependencies
 install_tailscale
+
+AUTH_KEY=""
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --auth-key) AUTH_KEY="$2"; shift ;;
+        *) echo "Unknown parameter: $1"; exit 1 ;;
+    esac
+    shift
+done
 start_tailscale
 
 ### Now that Tailscale is running...
