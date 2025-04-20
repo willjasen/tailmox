@@ -498,6 +498,7 @@ if ! check_all_peers_online; then
 fi
 
 # Ensure that all peers have the Tailscale MagicDNS hostnames of all other hosts in the cluster
+# Doesn't seem to be required at the moment...
 # require_hostnames_in_cluster
 
 # Ensure that all peers are pingable
