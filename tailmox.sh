@@ -402,7 +402,7 @@ function add_local_node_to_cluster() {
                 # Check if successful
                 if [ $? -eq 0 ]; then
                     echo -e "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
-                    return 0
+                    exit 0
                 else
                     echo -e "${RED}Failed to join cluster with $TARGET_HOSTNAME. Check the password and try again.${RESET}"
                     exit 1
