@@ -1,9 +1,6 @@
 #!/bin/bash
 # filepath: ./tailmox.sh
 
-# Install development dependencies
-# apt install -y gh;
-
 # Define color variables
 YELLOW="\e[33m"
 RED="\e[31m"
