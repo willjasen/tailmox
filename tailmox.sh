@@ -372,13 +372,29 @@ function add_local_node_to_cluster() {
                 echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:"
                 read -s ROOT_PASSWORD
                 
-                # Use expect to handle the password prompt
+                 # Use expect to handle the password prompt with proper authentication
                 expect -c "
-                set timeout 10
+                set timeout 20
                 spawn pvecm add \"$TARGET_HOSTNAME\" --link0 address=$LOCAL_TAILSCALE_IP --fingerprint $target_fingerprint
-                expect \"*?assword:*\"
-                send \"$ROOT_PASSWORD\r\"
-                expect eof
+                expect {
+                    \"*?assword:*\" {
+                        send \"$ROOT_PASSWORD\r\"
+                        exp_continue
+                    }
+                    \"*?assword for*\" {
+                        send \"$ROOT_PASSWORD\r\"
+                        exp_continue
+                    }
+                    \"*authentication failure*\" {
+                        puts \"Authentication failed. Please check your password.\"
+                        exit 1
+                    }
+                    timeout {
+                        puts \"Command timed out.\"
+                        exit 1
+                    }
+                    eof
+                }
                 catch wait result
                 exit [lindex \$result 3]
                 "
