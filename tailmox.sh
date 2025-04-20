@@ -155,6 +155,8 @@ fi
 # For each peer, remote into it and add each other peer's entry to its /etc/hosts
 ITERATE_PEERS_TO_ADD=$TAILMOX_PEERS;
 echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
+    echo "Processing peer for /etc/hosts update..."
+    echo "$peer"
     PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
     PEER_IP=$(echo "$peer" | jq -r '.ip')
     PEER_ONLINE=$(echo "$peer" | jq -r '.online')
