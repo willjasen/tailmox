@@ -183,3 +183,33 @@ function ensure_ping_reachability() {
     fi
 }
 ensure_ping_reachability
+
+# Check if TCP port 8006 is available on all nodes
+function check_tcp_port_8006() {
+    echo -e "${YELLOW}Checking if TCP port 8006 is available on all nodes...${RESET}"
+
+    # Iterate through all peers
+    local unavailable_peers=""
+    echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
+        local peer_ip=$(echo "$peer" | jq -r '.ip')
+        local peer_hostname=$(echo "$peer" | jq -r '.hostname')
+
+        echo -e "${BLUE}Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
+        if ! nc -z -w 2 "$peer_ip" 8006 &>/dev/null; then
+            echo -e "${RED}TCP port 8006 is not available on $peer_hostname ($peer_ip).${RESET}"
+            unavailable_peers="${unavailable_peers}${peer_hostname}, "
+        else
+            echo -e "${GREEN}TCP port 8006 is available on $peer_hostname ($peer_ip).${RESET}"
+        fi
+    done
+
+    # Report unavailable peers, if any
+    if [ -n "$unavailable_peers" ]; then
+        unavailable_peers=${unavailable_peers%, }
+        echo -e "${RED}The following nodes do not have TCP port 8006 available: $unavailable_peers${RESET}"
+        exit 1
+    else
+        echo -e "${GREEN}TCP port 8006 is available on all nodes.${RESET}"
+    fi
+}
+check_tcp_port_8006
