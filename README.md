@@ -3,14 +3,57 @@ cluster proxmox over tailscale
 
 ### ‼️ DANGER ‼️ 
 
-In the interest of complete transparency, if you follow this guide, there’s a very minuscule but non-zero chance that you may violate the Bekenstein bound, at which the resulting black hole may swallow the earth whole. You have been warned!
+In the interest of complete transparency, if you follow this guide or use this project, there’s a very minuscule but non-zero chance that you may violate the Bekenstein bound, at which the resulting black hole may swallow the earth whole. You have been warned!
 
 ---
 
 ### ⚠️ WARNING ⚠️
-- This guide is for development, testing, and research purposes only. This guide comes with no guarantee or warranty that these steps will work within your environment. Should you attempt within a production environment, any negative outcomes are not the fault of this guide or its author.
-- This guide was tested on Proxmox 8 / Debian 12.
+- This project is for development, testing, and research purposes only. This guide comes with no guarantee or warranty that these steps will work within your environment. Should you attempt within a production environment, any negative outcomes are not the fault of this guide or its author.
+- This project was tested on Proxmox 8 (Debian 12).
 
+---
+
+### 📖 Overview
+
+This project was originally started as a [gist](https://gist.github.com/willjasen/df71ca4ec635211d83cdc18fe7f658ca) guide on how to cluster Proxmox servers together using Tailscale so that hosts not physically located together could participate in a cluster. While a how-to is great, being able to replicate the steps in code and sharing that with others was always the goal.
+
+---
+
+### 😮 Controversy 😮
+
+Many, many people will expend a lot of effort and noise to proclaim either that this architecture is impossible and will never work. It is often cited that corosync requires a super extra-low amount of latency in order to work properly. While corosync is latency sensitive, there is some freedom within that constraint. My experience with issues clustering in this way has been very minimal, but I am only me, with a handful of Proxmox hosts in a case study of one.
+
+---
+
+### 🖥️ Usage 🖥️
+
+`tailmox.sh` can be run without any parameters, but if the host is not logged into Tailscale, then when the script performs `tailscale up`, Tailscale will provide a link to use to login with.
+
+In order to make the Tailscale functions easier to handle, `tailmox.sh` accepts the "--auth-key" parameter, followed by a Tailscale auth key, which can be generated via their [Keys](https://login.tailscale.com/admin/settings/keys) page. It is recommended that key generated is reusable.
+
+---
+
+### 🤓 The Scripts 🤓
+
+`tailmox.sh` -  this is the main script of the project
+- checks that the host is Proxmox v8, installs dependencies and Tailscale, then starts Tailscale
+- once Tailscale is running, the host will generate a certificate from Tailscale (to be used with the web interface/API)
+- it will then retrieve other Tailscale machines with tag of "tailmox", then check if it can reach them via ping (ICMP) and TCP 8006 (HTTPS for Proxmox); if these checks do not pass, the script will exit as these are required for Proxmox clustering
+- after the checks pass, the host will check if it is in a cluster; if it is not, it will check the other Tailscale machines with the tag of "tailmox" to see if they are part of a cluster; when it finds a matching host in a cluster, it will then attempt to join to the cluster using it; if another host isn't found, then a new cluster will be prompted to be created
+
+`revert_test_vms.sh` - this is a testing script used to revert VMs being tested with
+- I currently have three Proxmox VMs with Proxmox installed inside of each
+- this script reverts each VM to a snapshot named "ready-for-testing" that was taken after dependencies are installed and the "tailmox" project was cloned into the VM, but right before the script has been run for the first time
+- this allows testing `tailmox.sh` easily by reverting the VMs before the clustering processes and data have been created
+
+---
+---
+
+### 🗺️ The Guide 🗺️
+
+The [gist](https://gist.github.com/willjasen/df71ca4ec635211d83cdc18fe7f658ca) guide is now being procured below. The gist at its originally location will no longer be updated.
+
+---
 ---
 
 ### 📝 Prologue 📝
