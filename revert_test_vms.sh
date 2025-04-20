@@ -163,7 +163,7 @@ function revert_single_vm() {
 
 # Function to revert VMs to specified snapshots in parallel
 function revert_vms_to_snapshot() {
-    local snapname="v1-2"
+    local snapname="ready-for-testing"
     local vm_ids=("$@")
     
     echo -e "${YELLOW}Attempting to revert VMs ${vm_ids[*]} to snapshot '$snapname' in parallel${RESET}"
