@@ -404,7 +404,7 @@ install_tailscale
 AUTH_KEY=""
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --auth-key) AUTH_KEY="$2"; shift ;;
+        --auth-key) AUTH_KEY="$2"; echo "Using auth key..."; shift; ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
     shift
