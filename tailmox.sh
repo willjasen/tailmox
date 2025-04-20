@@ -156,11 +156,12 @@ echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
     TARGET_HOSTNAME=$(echo "$target_peer" | jq -r '.hostname')
     TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
     TARGET_ONLINE=$(echo "$target_peer" | jq -r '.online')
+    TARGET_DNSNAME=$(echo "$target_peer" | jq -r '.dnsName')
     
     echo -e "${BLUE}Updating /etc/hosts on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
     
     # First, ensure the target host has its own entry
-    LOCAL_ENTRY="$TARGET_IP $TARGET_HOSTNAME $TARGET_HOSTNAME.$MAGICDNS_DOMAIN_NAME"
+    LOCAL_ENTRY="$TARGET_IP $TARGET_HOSTNAME $TARGET_DNSNAME"
     if ! ssh -o ConnectTimeout=3 "$TARGET_HOSTNAME" "grep -q '$LOCAL_ENTRY' /etc/hosts || echo '$LOCAL_ENTRY' >> /etc/hosts"; then
         echo -e "${RED}Failed to update /etc/hosts on $TARGET_HOSTNAME. Exiting...${RESET}"
         exit 1
@@ -173,7 +174,7 @@ echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
         PEER_HOSTNAME=$(echo "$peer_to_add" | jq -r '.hostname')
         PEER_IP=$(echo "$peer_to_add" | jq -r '.ip')
         
-        PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_HOSTNAME.$MAGICDNS_DOMAIN_NAME"
+        PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $TARGET_DNSNAME"
         echo "Adding $PEER_HOSTNAME to $TARGET_HOSTNAME's /etc/hosts"
         ssh-keyscan -H "$TARGET_HOSTNAME" >> ~/.ssh/known_hosts 2>/dev/null
         ssh -o StrictHostKeyChecking=no "$TARGET_HOSTNAME" "grep -q '$PEER_ENTRY' /etc/hosts || echo '$PEER_ENTRY' >> /etc/hosts"
