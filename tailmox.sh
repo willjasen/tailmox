@@ -104,8 +104,6 @@ require_hostnames_in_cluster() {
     echo "This host's hostname: $HOSTNAME"
     MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//');
     echo "MagicDNS domain name for this tailnet: $MAGICDNS_DOMAIN_NAME"
-    HOSTS_FILE_ENTRY="$TAILSCALE_IP ${HOSTNAME} ${HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
-    echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
 
     ### Need to add the "tailmox" tag to the Tailscale ACL some way
     # "tag:tailmox" [
