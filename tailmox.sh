@@ -415,6 +415,7 @@ else
     echo -e "${GREEN}All peers have TCP port 8006 available.${RESET}"
 fi
 
+# Check if the local node is already in a cluster
 if ! check_local_node_cluster_status; then
     echo -e "${YELLOW}This node is not part of a cluster. Attempting to create or join a cluster...${RESET}"
 else
@@ -422,6 +423,7 @@ else
     exit 1
 fi
 
+# Add this local node to a cluster if it exists
 add_local_node_to_cluster
 
 # If local node is now in the cluster...
