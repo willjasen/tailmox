@@ -1,7 +1,10 @@
 #!/bin/bash
 # filepath: ./revert-test-vms.sh
 
+###
 ### This script is used for testing purposes only.
+### When testing, this script can stop, revert to a snapshot, then start the Proxmox VMs being tested with.
+###
 
 # Define color codes for better output
 RED='\033[0;31m'
