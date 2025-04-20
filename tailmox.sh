@@ -323,7 +323,7 @@ function get_pve_certificate_fingerprint() {
     local hostname=$1
     local port=8006
     
-    echo -e "${YELLOW}Getting certificate fingerprint for $hostname:$port...${RESET}"
+    # echo -e "${YELLOW}Getting certificate fingerprint for $hostname:$port...${RESET}"
     
     # Use OpenSSL to connect to the server and get the certificate info
     local fingerprint=$(echo | openssl s_client -connect $hostname:$port 2>/dev/null | 
@@ -331,7 +331,7 @@ function get_pve_certificate_fingerprint() {
         cut -d'=' -f2)
     
     if [ -n "$fingerprint" ]; then
-        echo -e "${GREEN}Certificate fingerprint for $hostname:$port: $fingerprint${RESET}"
+        # echo -e "${GREEN}Certificate fingerprint for $hostname:$port: $fingerprint${RESET}"
         echo "$fingerprint"
     else
         echo -e "${RED}Failed to get certificate fingerprint for $hostname:$port${RESET}"
