@@ -279,7 +279,7 @@ function check_local_node_cluster_status() {
         return 1
     elif echo "$cluster_status" | grep -q "Cluster information"; then
         local cluster_name=$(pvecm status | grep "Name:" | awk '{print $2}')
-        echo -e "${GREEN}This node is already part of cluster: $cluster_name${RESET}"
+        echo -e "${GREEN}This node is already part of cluster named: $cluster_name${RESET}"
         return 0
     else
         echo -e "${RED}Unable to determine cluster status. Output: $cluster_status${RESET}"
@@ -308,7 +308,7 @@ function check_remote_node_cluster_status() {
         return 1
     elif echo "$cluster_status" | grep -q "Cluster information"; then
         local cluster_name=$(ssh "$TARGET_HOSTNAME" "pvecm status" | grep "Name:" | awk '{print $2}')
-        echo -e "${GREEN}Remote node $node_ip is already part of cluster: $cluster_name${RESET}"
+        echo -e "${GREEN}Remote node $node_ip is already part of cluster named: $cluster_name${RESET}"
         return 0
     else
         echo -e "${RED}Unable to determine cluster status for remote node $node_ip. Output: $cluster_status${RESET}"
