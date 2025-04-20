@@ -307,6 +307,28 @@ function check_remote_node_cluster_status() {
 
 }
 
+# Get the certificate fingerprint for a Proxmox node
+# - parameter $1: Hostname or IP address
+function get_pve_certificate_fingerprint() {
+    local hostname=$1
+    local port=8006
+    
+    echo -e "${YELLOW}Getting certificate fingerprint for $hostname:$port...${RESET}"
+    
+    # Use OpenSSL to connect to the server and get the certificate info
+    local fingerprint=$(echo | openssl s_client -connect $hostname:$port 2>/dev/null | 
+        openssl x509 -fingerprint -sha256 -noout | 
+        cut -d'=' -f2)
+    
+    if [ -n "$fingerprint" ]; then
+        echo -e "${GREEN}Certificate fingerprint for $hostname:$port: $fingerprint${RESET}"
+        echo "$fingerprint"
+    else
+        echo -e "${RED}Failed to get certificate fingerprint for $hostname:$port${RESET}"
+        return 1
+    fi
+}
+
 # Create a new Proxmox cluster named "tailmox"
 function create_cluster() {
     local TAILSCALE_IP=$(tailscale ip -4)
@@ -340,19 +362,21 @@ function add_local_node_to_cluster() {
                     apt update && apt install -y expect
                 fi
 
+                local target_fingerprint=$(get_pve_certificate_fingerprint "$TARGET_HOSTNAME")
+
                 # Prompt for root password of the remote node
                 echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:${RESET}"
                 read -s ROOT_PASSWORD
                 
                 # Use expect to handle the password prompt
                 expect -c "
-                set timeout 30
-                spawn pvecm add \"$TARGET_HOSTNAME\" --link0 address=$LOCAL_TAILSCALE_IP
-                expect \"*?assword:*\"
-                send \"$ROOT_PASSWORD\r\"
-                expect eof
-                catch wait result
-                exit [lindex \$result 3]
+                    set timeout 30
+                    spawn pvecm add \"$TARGET_HOSTNAME\" --link0 address=$LOCAL_TAILSCALE_IP --fingerprint $target_fingerprint;
+                    expect \"*?assword:*\"
+                    send \"$ROOT_PASSWORD\r\"
+                    expect eof
+                    catch wait result
+                    exit [lindex \$result 3]
                 "
                 
                 # Check if successful
