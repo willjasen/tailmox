@@ -63,6 +63,8 @@ start_tailscale
 ### Now that Tailscale is running...
 
 # Get all nodes with the "tailmox" tag as a JSON array
+TAILSCALE_IP=$(tailscale ip -4)
+MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//');
 LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dnsName "$HOSTNAME.$MAGICDNS_DOMAIN_NAME" --arg online "true" '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: ($online == "true")}');
 OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
 ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
@@ -192,7 +194,7 @@ function check_tcp_port_8006() {
     local peer_unavailable=false
     echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
         local peer_ip=$(echo "$peer" | jq -r '.ip')
-        local peer_hostname=$(echo "$peer" | jq -r '.hostname' | sed 's/\.$//')
+        local peer_hostname=$(echo "$peer" | jq -r '.hostname')
 
         echo -e "${BLUE}Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
         if ! nc -z -w 2 "$peer_ip" 8006 &>/dev/null; then
