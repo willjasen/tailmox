@@ -197,7 +197,7 @@ function ensure_ping_reachability() {
 ensure_ping_reachability
 
 # Check if TCP port 8006 is available on all nodes
-function check_tcp_port_8006() {
+function are_hosts_tcp_port_8006_reachable() {
     echo -e "${YELLOW}Checking if TCP port 8006 is available on all nodes...${RESET}"
 
     # Iterate through all peers
@@ -209,7 +209,7 @@ function check_tcp_port_8006() {
         echo -e "${BLUE}Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
         if ! nc -z -w 2 "$peer_ip" 8006 &>/dev/null; then
             echo -e "${RED}TCP port 8006 is not available on $peer_hostname ($peer_ip).${RESET}"
-            exit 0
+            return 1
         else
             echo -e "${GREEN}TCP port 8006 is available on $peer_hostname ($peer_ip).${RESET}"
         fi
@@ -218,12 +218,14 @@ function check_tcp_port_8006() {
     # Use a subshell to evaluate the value of peer_unavailable after the loop
     if [[ "$peer_unavailable" == "true" ]]; then
         echo -e "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
-        exit 1
+        return 1
     else
         echo -e "${GREEN}All peers have TCP port 8006 available.${RESET}"
     fi
 }
-check_tcp_port_8006
+if ! are_hosts_tcp_port_8006_reachable; then
+    exit 1
+fi
 
 ### Now that the local host can connect via SSH and TCP 8006 to other hosts...
 
