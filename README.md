@@ -9,7 +9,7 @@ In the interest of complete transparency, if you follow this guide or use this p
 
 ### ⚠️ WARNING ⚠️
 - This project is for development, testing, and research purposes only. This guide comes with no guarantee or warranty that these steps will work within your environment. Should you attempt within a production environment, any negative outcomes are not the fault of this guide or its author.
-- This project was tested on Proxmox 8 (Debian 12).
+- It is recommended to use this script within a testing or development environment on freshly installed Proxmox v8 hosts. Testing has not been performed on hosts with further configuration and running this project on said hosts may break them.
 
 ---
 
@@ -69,6 +69,14 @@ Proxmox clustering requires TCP 22, TCP 8006, and UDP 5405 through 5412. Using t
 `tailmox.sh` can be run without any parameters, but if the host is not logged into Tailscale, then when the script performs `tailscale up`, Tailscale will provide a link to use to login with.
 
 In order to make the Tailscale functions easier to handle, `tailmox.sh` accepts the "--auth-key" parameter, followed by a Tailscale auth key, which can be generated via their [Keys](https://login.tailscale.com/admin/settings/keys) page. It is recommended that key generated is reusable.
+
+---
+
+### 🧪 Testing 🧪
+
+This project has been tested to successfully join a cluster of three Proxmox v8 hosts together into a cluster via Tailscale. It has been tested up to the point of achieving this goal and not further. It is possible that further testing with other features related to clustering (like ZFS replication) may not work, though bugs can be patched appropriately when known.
+
+`revert_test_vms.sh` is used to revert VMs installed with Proxmox to a state before the `tailmox.sh` script has been first run and erase any clustering processes and data within those VMs, to quickly restore to a state in which the `tailmox.sh` script can be tried again.
 
 ---
 
