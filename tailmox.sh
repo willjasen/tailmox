@@ -220,7 +220,7 @@ if ! are_hosts_tcp_port_8006_reachable; then
     exit 1
 fi
 
-### Now that the local host can connect via SSH and TCP 8006 to other hosts...
+### Now that the local host can connect via TCP 8006 to other hosts...
 
 # Check if UDP port 5405 is open on all nodes (corosync)
 function check_udp_ports_5405_to_5412() {
