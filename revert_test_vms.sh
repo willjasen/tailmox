@@ -53,7 +53,7 @@ function stop_vms() {
 # Function to revert VMs to specified snapshots
 function revert_vms_to_snapshot() {
     local snapname="v1-2"
-    shift
+    # shift
     local vm_ids=("$@")
     
     echo -e "${YELLOW}Attempting to revert VMs ${vm_ids[*]} to snapshot '$snapname'${RESET}"
