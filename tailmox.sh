@@ -62,6 +62,11 @@ start_tailscale
 
 ### Now that Tailscale is running...
 
+# Get all nodes with the "tailmox" tag as a JSON array
+LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dnsName "$HOSTNAME.$MAGICDNS_DOMAIN_NAME" --arg online "true" '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: ($online == "true")}');
+OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
+ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
+
 # Check if all peers with the "tailmox" tag are online
 check_all_peers_online() {
     echo -e "${YELLOW}Checking if all tailmox peers are online...${RESET}"
@@ -116,11 +121,6 @@ require_hostnames_in_cluster() {
         exit 1
     fi
 
-    # Get all nodes with the "tailmox" tag as a JSON array
-    LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dnsName "$HOSTNAME.$MAGICDNS_DOMAIN_NAME" --arg online "true" '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: ($online == "true")}');
-    OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
-    ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
-
     # Ensure each peer's /etc/hosts file contains all other peers' entries
     # For each peer, remote into it and add each other peer's entry to its /etc/hosts
     echo -e "${GREEN}Ensuring all peers have other peers' information...${RESET}"
@@ -146,7 +146,7 @@ require_hostnames_in_cluster() {
         echo -e "${GREEN}Finished updating hosts file on $TARGET_HOSTNAME${RESET}"
     done
 }
-# require_hostnames_in_cluster
+require_hostnames_in_cluster
 
 # Ensure the local node can ping all nodes via Tailscale
 function ensure_ping_reachability() {
