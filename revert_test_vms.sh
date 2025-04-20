@@ -134,35 +134,55 @@ function start_vms() {
     echo -e "${GREEN}All VM start operations completed.${RESET}"
 }
 
-# Function to revert VMs to specified snapshots
+# Function to revert a single VM to a snapshot
+function revert_single_vm() {
+    local vm_id=$1
+    local snapname=$2
+    
+    # Check if VM exists
+    if qm status "$vm_id" &>/dev/null; then
+        # Check if the snapshot exists
+        # if qm snapshot "$vm_id" list | grep -q "$snapname"; then
+            echo -e "${BLUE}Reverting VM $vm_id to snapshot '$snapname'...${RESET}"
+            
+            # Roll back to the snapshot
+            qm rollback $vm_id $snapname
+            
+            if [ $? -eq 0 ]; then
+                echo -e "${GREEN}Successfully reverted VM $vm_id to snapshot '$snapname'.${RESET}"
+            else
+                echo -e "${RED}Failed to revert VM $vm_id to snapshot '$snapname'.${RESET}"
+            fi
+        # else
+        #    echo -e "${RED}Snapshot '$snapname' not found for VM $vm_id.${RESET}"
+        #fi
+    else
+        echo -e "${RED}VM with ID $vm_id does not exist.${RESET}"
+    fi
+}
+
+# Function to revert VMs to specified snapshots in parallel
 function revert_vms_to_snapshot() {
     local snapname="v1-3"
     local vm_ids=("$@")
     
-    echo -e "${YELLOW}Attempting to revert VMs ${vm_ids[*]} to snapshot '$snapname'${RESET}"
+    echo -e "${YELLOW}Attempting to revert VMs ${vm_ids[*]} to snapshot '$snapname' in parallel${RESET}"
+    
+    # Array to keep track of background processes
+    pids=()
     
     for vm_id in "${vm_ids[@]}"; do
-        # Check if VM exists
-        if qm status "$vm_id" &>/dev/null; then
-            # Check if the snapshot exists
-            # if qm snapshot "$vm_id" list | grep -q "$snapname"; then
-                echo -e "${BLUE}Reverting VM $vm_id to snapshot '$snapname'...${RESET}"
-                
-                # Roll back to the snapshot
-                qm rollback $vm_id $snapname
-                
-                if [ $? -eq 0 ]; then
-                    echo -e "${GREEN}Successfully reverted VM $vm_id to snapshot '$snapname'.${RESET}"
-                else
-                    echo -e "${RED}Failed to revert VM $vm_id to snapshot '$snapname'.${RESET}"
-                fi
-            # else
-            #    echo -e "${RED}Snapshot '$snapname' not found for VM $vm_id.${RESET}"
-            #fi
-        else
-            echo -e "${RED}VM with ID $vm_id does not exist.${RESET}"
-        fi
+        # Start each VM revert operation in the background
+        revert_single_vm "$vm_id" "$snapname" &
+        pids+=($!)
     done
+    
+    # Wait for all background processes to complete
+    for pid in "${pids[@]}"; do
+        wait $pid
+    done
+    
+    echo -e "${GREEN}All VM revert operations completed.${RESET}"
 }
 
 # Function to test if a VM's guest agent is working
