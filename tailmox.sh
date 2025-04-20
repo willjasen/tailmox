@@ -21,6 +21,40 @@ else
     echo "jq is already installed."
 fi
 
+
+
+# Install Tailscale if it is not already installed
+if ! command -v tailscale &>/dev/null; then
+    echo -e "${YELLOW}Tailscale not found. Installing...${RESET}";
+    apt install curl -y;
+    curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null;
+    curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list;
+    apt update;
+    apt install tailscale -y;
+else
+     echo -e "${GREEN}Tailscale is already installed.${RESET}"
+fi
+
+# Bring up Tailscale
+echo "Starting Tailscale with --advertise-tags 'tag:tailmox'..."
+tailscale up --advertise-tags "tag:tailmox"
+if [ $? -ne 0 ]; then
+    echo -e "${RED}Failed to start Tailscale.${RESET}"
+    exit 1
+fi
+
+# Retrieve the assigned Tailscale IPv4 address
+TAILSCALE_IP=""
+while [ -z "$TAILSCALE_IP" ]; do
+    echo -e "${YELLOW}Waiting for Tailscale to come online...${RESET}"
+    sleep 1
+    TAILSCALE_IP=$(tailscale ip -4)
+done
+
+echo "This host's Tailscale IPv4 address: $TAILSCALE_IP"
+
+### Now that Tailscale is running...
+
 # Function to check if all peers with the "tailmox" tag are online
 check_all_peers_online() {
     echo -e "${YELLOW}Checking if all tailmox peers are online...${RESET}"
@@ -56,38 +90,7 @@ check_all_peers_online() {
         return 1
     fi
 }
-
-# Install Tailscale if it is not already installed
-if ! command -v tailscale &>/dev/null; then
-    echo -e "${YELLOW}Tailscale not found. Installing...${RESET}";
-    apt install curl -y;
-    curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null;
-    curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list;
-    apt update;
-    apt install tailscale -y;
-else
-     echo -e "${GREEN}Tailscale is already installed.${RESET}"
-fi
-
-# Bring up Tailscale
-echo "Starting Tailscale with --advertise-tags 'tag:tailmox'..."
-tailscale up --advertise-tags "tag:tailmox"
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Failed to start Tailscale.${RESET}"
-    exit 1
-fi
-
-# Retrieve the assigned Tailscale IPv4 address
-TAILSCALE_IP=""
-while [ -z "$TAILSCALE_IP" ]; do
-    echo -e "${YELLOW}Waiting for Tailscale to come online...${RESET}"
-    sleep 1
-    TAILSCALE_IP=$(tailscale ip -4)
-done
-
-echo "This host's Tailscale IPv4 address: $TAILSCALE_IP"
-
-### Now that Tailscale is running...
+check_all_peers_online
 
 require_hostnames_in_cluster() {
     # Update /etc/hosts for local resolution of Tailscale hostnames for the clustered Proxmox nodes
