@@ -21,7 +21,8 @@ function install_dependencies() {
         apt update -qq;
         DEBIAN_FRONTEND=noninteractive apt install jq -y
     else
-        echo -e "${GREEN}jq is already installed.${RESET}"
+        # echo -e "${GREEN}jq is already installed.${RESET}"
+        :
     fi
 
     if ! command -v expect &>/dev/null; then
@@ -29,7 +30,8 @@ function install_dependencies() {
         apt update -qq;
         DEBIAN_FRONTEND=noninteractive apt install expect -y
     else
-        echo -e "${GREEN}expect is already installed.${RESET}"
+        # echo -e "${GREEN}expect is already installed.${RESET}"
+        :
     fi
     echo -e "${GREEN}All dependencies are installed.${RESET}"
 }
