@@ -13,45 +13,52 @@ PURPLE="\e[35m"
 RESET="\e[0m"
 
 # Install dependencies
-if ! command -v jq &>/dev/null; then
-    echo -e "${YELLOW}jq not found. Installing...${RESET}"
-    apt update
-    apt install jq -y
-else
-    echo "jq is already installed."
-fi
-
-
+function install_dependencies() {
+    if ! command -v jq &>/dev/null; then
+        echo -e "${YELLOW}jq not found. Installing...${RESET}"
+        apt update
+        apt install jq -y
+    else
+        echo "jq is already installed."
+    fi
+}
+install_dependencies
 
 # Install Tailscale if it is not already installed
-if ! command -v tailscale &>/dev/null; then
-    echo -e "${YELLOW}Tailscale not found. Installing...${RESET}";
-    apt install curl -y;
-    curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null;
-    curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list;
-    apt update;
-    apt install tailscale -y;
-else
-     echo -e "${GREEN}Tailscale is already installed.${RESET}"
-fi
+function install_tailscale() {
+    if ! command -v tailscale &>/dev/null; then
+        echo -e "${YELLOW}Tailscale not found. Installing...${RESET}"
+        apt install curl -y
+        curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+        curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list
+        apt update
+        apt install tailscale -y
+    else
+        echo -e "${GREEN}Tailscale is already installed.${RESET}"
+    fi
+}
+install_tailscale
 
 # Bring up Tailscale
-echo "Starting Tailscale with --advertise-tags 'tag:tailmox'..."
-tailscale up --advertise-tags "tag:tailmox"
-if [ $? -ne 0 ]; then
-    echo -e "${RED}Failed to start Tailscale.${RESET}"
-    exit 1
-fi
+function start_tailscale() {
+    echo "Starting Tailscale with --advertise-tags 'tag:tailmox'..."
+    tailscale up --advertise-tags "tag:tailmox"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to start Tailscale.${RESET}"
+        exit 1
+    fi
 
-# Retrieve the assigned Tailscale IPv4 address
-TAILSCALE_IP=""
-while [ -z "$TAILSCALE_IP" ]; do
-    echo -e "${YELLOW}Waiting for Tailscale to come online...${RESET}"
-    sleep 1
-    TAILSCALE_IP=$(tailscale ip -4)
-done
+    # Retrieve the assigned Tailscale IPv4 address
+    TAILSCALE_IP=""
+    while [ -z "$TAILSCALE_IP" ]; do
+        echo -e "${YELLOW}Waiting for Tailscale to come online...${RESET}"
+        sleep 1
+        TAILSCALE_IP=$(tailscale ip -4)
+    done
 
-echo "This host's Tailscale IPv4 address: $TAILSCALE_IP"
+    echo "This host's Tailscale IPv4 address: $TAILSCALE_IP"
+}
+start_tailscale
 
 ### Now that Tailscale is running...
 
@@ -142,3 +149,4 @@ require_hostnames_in_cluster() {
     done
 }
 require_hostnames_in_cluster
+
