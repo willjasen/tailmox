@@ -204,7 +204,9 @@ function report_peer_latency() {
     # Calculate average latency for each peer
     echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
         echo -e "${BLUE}Calculating average latency for $peer_ip...${RESET}"
-        avg_latency=$(ping -i 0.1 -c 10 "$peer_ip" | awk -F'/' 'END {print $5}')
+        local ping_count=10
+        local ping_interval=0.1
+        avg_latency=$(ping -c $ping_count -i $ping_interval "$peer_ip" | awk -F'/' 'END {print $5}')
         if [ -n "$avg_latency" ]; then
             echo -e "${GREEN}Average latency to $peer_ip: ${avg_latency} ms${RESET}"
         else
