@@ -51,7 +51,7 @@ In order to make the Tailscale functions easier to handle, `tailmox.sh` accepts 
 
 ### 🗺️ The Guide 🗺️
 
-The [gist](https://gist.github.com/willjasen/df71ca4ec635211d83cdc18fe7f658ca) guide is now being procured below. The gist at its originally location will no longer be updated.
+The [gist](https://gist.github.com/willjasen/df71ca4ec635211d83cdc18fe7f658ca) guide is now being procured below. The gist at its original location will no longer be updated.
 
 ---
 ---
