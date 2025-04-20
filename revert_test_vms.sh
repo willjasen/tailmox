@@ -214,7 +214,7 @@ function test_guest_agent() {
 function test_guest_agents() {
     local vm_ids=("$@")
     local max_attempts=${max_attempts:-30}
-    local wait_seconds=${wait_seconds:-10}
+    local wait_seconds=${wait_seconds:-1}
     
     echo -e "${YELLOW}Testing guest agents for VMs with IDs: ${vm_ids[*]}${RESET}"
     
@@ -257,8 +257,6 @@ stop_vms 10000 10001
 revert_vms_to_snapshot 10000 10001
 start_vms 10000 10001
 
-test_guest_agent 10000 10 1   # Test VM 10000 with 20 attempts, 5s interval
-test_guest_agent 10001 10 1   # Test VM 10001 with default settings
 test_guest_agents 10000 10001 # Test guest agents for multiple VMs in parallel
 
 echo -e "${GREEN}The script has completed successfully!${RESET}"
