@@ -362,7 +362,7 @@ function add_local_node_to_cluster() {
             
             echo -e "${BLUE}Checking cluster status on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
             if check_remote_node_cluster_status "$TARGET_HOSTNAME"; then
-                $existing_cluster=true
+                $existing_cluster=true;
                 local LOCAL_TAILSCALE_IP=$(tailscale ip -4)
                 local target_fingerprint=$(get_pve_certificate_fingerprint "$TARGET_HOSTNAME")
 
@@ -412,6 +412,7 @@ function add_local_node_to_cluster() {
             fi
         done
 
+        echo -e "${YELLOW}Existing cluster variable is: $existing_cluster ${RESET}"
         if $existing_cluster; then
             exit 0
         else
