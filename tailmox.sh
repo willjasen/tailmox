@@ -192,7 +192,7 @@ function check_tcp_port_8006() {
     local peer_unavailable=false
     echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
         local peer_ip=$(echo "$peer" | jq -r '.ip')
-        local peer_hostname=$(echo "$peer" | jq -r '.hostname')
+        local peer_hostname=$(echo "$peer" | jq -r '.hostname' | sed 's/\.$//')
 
         echo -e "${BLUE}Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
         if ! nc -z -w 2 "$peer_ip" 8006 &>/dev/null; then
