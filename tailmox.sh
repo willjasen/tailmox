@@ -19,7 +19,7 @@ function install_dependencies() {
         apt update
         apt install jq -y
     else
-        echo "jq is already installed."
+        echo -e "${GREEN}jq is already installed.${RESET}"
     fi
 
     if ! command -v expect &>/dev/null; then
@@ -27,7 +27,7 @@ function install_dependencies() {
         apt update
         apt install expect -y
     else
-        echo "expect is already installed."
+        echo -e "${GREEN}expect is already installed.${RESET}"
     fi
 }
 install_dependencies
