@@ -6,6 +6,10 @@
 
 # Define color variables
 YELLOW="\e[33m"
+RED="\e[31m"
+GREEN="\e[32m"
+BLUE="\e[34m"
+PURPLE="\e[35m"
 RESET="\e[0m"
 
 # Install dependencies
@@ -54,7 +58,7 @@ check_all_peers_online() {
         return 0
     else
         offline_peers=${offline_peers%, }
-        echo "Not all tailmox peers are online. Offline peers: $offline_peers"
+        echo -e "${RED}Not all tailmox peers are online. Offline peers: $offline_peers"
         return 1
     fi
 }
@@ -68,21 +72,21 @@ if ! command -v tailscale &>/dev/null; then
     apt update;
     apt install tailscale -y;
 else
-    echo "Tailscale is already installed."
+     echo -e "${GREEN}Tailscale is already installed.${RESET}"
 fi
 
 # Bring up Tailscale
 echo "Starting Tailscale with --advertise-tags 'tag:tailmox'..."
 tailscale up --advertise-tags "tag:tailmox"
 if [ $? -ne 0 ]; then
-    echo "Failed to start Tailscale."
+    echo -e "${RED}Failed to start Tailscale.${RESET}"
     exit 1
 fi
 
 # Retrieve the assigned Tailscale IPv4 address
 TAILSCALE_IP=""
 while [ -z "$TAILSCALE_IP" ]; do
-    echo "Waiting for Tailscale to come online..."
+    echo -e "${YELLOW}Waiting for Tailscale to come online...${RESET}"
     sleep 1
     TAILSCALE_IP=$(tailscale ip -4)
 done
@@ -143,7 +147,7 @@ done
 
 # Exit the script if all peers are not online
 if ! check_all_peers_online; then
-    echo "No peers exist or not all tailmox peers are online. Exiting..."
+    echo -e "${RED}No peers exist or not all tailmox peers are online. Exiting...${RESET}"
     exit 1
 fi
 
