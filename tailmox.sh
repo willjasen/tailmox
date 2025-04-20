@@ -146,7 +146,7 @@ require_hostnames_in_cluster() {
         echo -e "${GREEN}Finished updating hosts file on $TARGET_HOSTNAME${RESET}"
     done
 }
-require_hostnames_in_cluster
+# require_hostnames_in_cluster
 
 # Ensure the local node can ping all nodes via Tailscale
 function ensure_ping_reachability() {
