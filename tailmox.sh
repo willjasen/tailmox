@@ -201,7 +201,7 @@ function check_tcp_port_8006() {
     echo -e "${YELLOW}Checking if TCP port 8006 is available on all nodes...${RESET}"
 
     # Iterate through all peers
-    local peer_unavailable="false"
+    peer_unavailable="false"
     echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
         local peer_ip=$(echo "$peer" | jq -r '.ip')
         local peer_hostname=$(echo "$peer" | jq -r '.hostname')
