@@ -53,8 +53,17 @@ function install_tailscale() {
 
 # Bring up Tailscale
 function start_tailscale() {
+    local auth_key="$1"
     echo -e "${GREEN}Starting Tailscale with --advertise-tags 'tag:tailmox'...${RESET}"
-    tailscale up --advertise-tags "tag:tailmox"
+    
+    if [ -n "$auth_key" ]; then
+        # Use the provided auth key
+        tailscale up --auth-key="$auth_key" --advertise-tags "tag:tailmox"
+    else
+        # Fall back to interactive authentication
+        tailscale up --advertise-tags "tag:tailmox"
+    fi
+    
     if [ $? -ne 0 ]; then
         echo -e "${RED}Failed to start Tailscale.${RESET}"
         exit 1
@@ -71,7 +80,6 @@ function start_tailscale() {
     TAILSCALE_DNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')
     echo -e "${GREEN}This host's Tailscale IPv4 address: $TAILSCALE_IP ${RESET}"
     echo -e "${GREEN}This host's Tailscale MagicDNS name: $TAILSCALE_DNS_NAME ${RESET}"
-    
 }
 
 # Check if all peers with the "tailmox" tag are online
