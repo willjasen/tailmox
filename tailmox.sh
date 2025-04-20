@@ -337,8 +337,9 @@ function add_local_node_to_cluster() {
 
                 # Prompt for root password of the remote node
                 # echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:${RESET}"
-                read -s -p "Please enter the root password for ${TARGET_HOSTNAME} " ROOT_PASSWORD < /dev/tty
-                
+                read -s -p "Please enter the root password for ${TARGET_HOSTNAME}: " ROOT_PASSWORD < /dev/tty
+                echo
+
                  # Use expect to handle the password prompt with proper authentication
                 expect -c "
                 set timeout 20
