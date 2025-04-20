@@ -184,6 +184,7 @@ echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r target_peer; do
         
         # Skip if the peer is the same as target
         if [ "$PEER_HOSTNAME" == "$TARGET_HOSTNAME" ] || [ -z "$PEER_HOSTNAME" ] || [ -z "$PEER_IP" ]; then
+            echo -e "Skipping self or invalid peer: $PEER_HOSTNAME"
             continue
         fi
         
