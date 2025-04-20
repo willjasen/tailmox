@@ -333,12 +333,40 @@ function add_local_node_to_cluster() {
                 existing_cluster=true
                 echo -e "${GREEN}Found an existing cluster on $TARGET_HOSTNAME. Joining the cluster...${RESET}"
                 local LOCAL_TAILSCALE_IP=$(tailscale ip -4)
-                pvecm add "$TARGET_HOSTNAME" --link0 address=$LOCAL_TAILSCALE_IP
+                
+                # Install expect if not available
+                if ! command -v expect &>/dev/null; then
+                    echo -e "${YELLOW}Installing expect package for automated password entry...${RESET}"
+                    apt update && apt install -y expect
+                fi
+
+                # Prompt for root password of the remote node
+                echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:${RESET}"
+                read -s ROOT_PASSWORD
+                
+                # Use expect to handle the password prompt
+                expect -c "
+                set timeout 30
+                spawn pvecm add \"$TARGET_HOSTNAME\" --link0 address=$LOCAL_TAILSCALE_IP
+                expect \"*?assword:*\"
+                send \"$ROOT_PASSWORD\r\"
+                expect eof
+                catch wait result
+                exit [lindex \$result 3]
+                "
+                
+                # Check if successful
+                if [ $? -eq 0 ]; then
+                    echo -e "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
+                    return 0
+                else
+                    echo -e "${RED}Failed to join cluster with $TARGET_HOSTNAME. Check the password and try again.${RESET}"
+                fi
             else
                 echo -e "${YELLOW}No cluster found on $TARGET_HOSTNAME.${RESET}"
             fi
-            
         done
+        
     fi
 }
 add_local_node_to_cluster
