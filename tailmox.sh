@@ -47,6 +47,7 @@ function install_tailscale() {
         apt install tailscale -y
     else
         # echo -e "${GREEN}Tailscale is already installed.${RESET}"
+        :
     fi
 }
 
