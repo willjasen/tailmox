@@ -179,10 +179,6 @@ function ensure_ping_reachability() {
         fi
     done
 }
-if ! ensure_ping_reachability; then
-    echo -e "${RED}Some peers are unreachable via ping. Please check the network configuration.${RESET}"
-    exit 1
-fi
 
 # Check if TCP port 8006 is available on all nodes
 function are_hosts_tcp_port_8006_reachable() {
@@ -202,10 +198,6 @@ function are_hosts_tcp_port_8006_reachable() {
         fi
     done
 }
-if ! are_hosts_tcp_port_8006_reachable; then
-    echo -e "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
-    exit 1
-fi
 
 ### Now that the local host can connect via TCP 8006 to other hosts...
 
@@ -394,7 +386,7 @@ function add_local_node_to_cluster() {
         
     fi
 }
-add_local_node_to_cluster
+# add_local_node_to_cluster
 
 # If local node is now in the cluster...
 if check_local_node_cluster_status; then
@@ -412,7 +404,6 @@ else
     fi
 fi
 
-echo -e "${GREEN}The script has exited successfully!${RESET}"
 
 ####
 #### MAIN SCRIPT
@@ -421,5 +412,17 @@ echo -e "${GREEN}The script has exited successfully!${RESET}"
 install_dependencies
 install_tailscale
 start_tailscale
+
 ### Now that Tailscale is running...
 
+if ! ensure_ping_reachability; then
+    echo -e "${RED}Some peers are unreachable via ping. Please check the network configuration.${RESET}"
+    exit 1
+fi
+
+if ! are_hosts_tcp_port_8006_reachable; then
+    echo -e "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
+    exit 1
+fi
+
+echo -e "${GREEN}The script has exited successfully!${RESET}"
