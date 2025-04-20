@@ -107,7 +107,10 @@ function start_tailscale() {
 # Run Tailscale certificate services
 function run_tailscale_cert_services() {
     if [ ! -d "/opt/tailscale-cert-services" ]; then
+        echo -e "${YELLOW}Tailscale certificate services not found. Cloning repository...${RESET}"
         git clone --quiet https://github.com/willjasen/tailscale-cert-services /opt/tailscale-cert-services;
+    else
+        echo -e "${GREEN}Tailscale certificate services already cloned.${RESET}"
     fi
     cd /opt/tailscale-cert-services;
     git -c advice.detachedHead=false checkout tags/v1.0.0
