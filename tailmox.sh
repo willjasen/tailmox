@@ -148,3 +148,38 @@ require_hostnames_in_cluster() {
 }
 require_hostnames_in_cluster
 
+# Ensure the local node can ping all nodes via Tailscale
+function ensure_ping_reachability() {
+    echo -e "${YELLOW}Ensuring the local node can ping all other nodes...${RESET}"
+
+    # Get all peers with the "tailmox" tag
+    local peers=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | .TailscaleIPs[0]]')
+
+    # If no peers are found, exit with an error
+    if [ -z "$peers" ]; then
+        echo -e "${RED}No peers found with the 'tailmox' tag. Exiting...${RESET}"
+        exit 1
+    fi
+
+    # Check ping reachability for each peer
+    local unreachable_peers=""
+    echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
+        echo -e "${BLUE}Pinging $peer_ip...${RESET}"
+        if ! ping -c 1 -W 2 "$peer_ip" &>/dev/null; then
+            echo -e "${RED}Failed to ping $peer_ip.${RESET}"
+            unreachable_peers="${unreachable_peers}${peer_ip}, "
+        else
+            echo -e "${GREEN}Successfully pinged $peer_ip.${RESET}"
+        fi
+    done
+
+    # Report unreachable peers, if any
+    if [ -n "$unreachable_peers" ]; then
+        unreachable_peers=${unreachable_peers%, }
+        echo -e "${RED}The following peers are unreachable: $unreachable_peers${RESET}"
+        exit 1
+    else
+        echo -e "${GREEN}All peers are reachable via ping.${RESET}"
+    fi
+}
+ensure_ping_reachability
