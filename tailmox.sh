@@ -383,7 +383,6 @@ function add_local_node_to_cluster() {
         
     fi
 }
-# add_local_node_to_cluster
 
 # If local node is now in the cluster...
 # if check_local_node_cluster_status; then
@@ -421,5 +420,7 @@ if ! are_hosts_tcp_port_8006_reachable; then
     echo -e "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
     exit 1
 fi
+
+add_local_node_to_cluster
 
 echo -e "${GREEN}The script has exited successfully!${RESET}"
