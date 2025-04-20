@@ -214,7 +214,7 @@ check_tcp_port_8006
 
 ### Now that the local host can connect via SSH and TCP 8006 to other hosts...
 
-# Check if UDP port 5405 is open on all nodes (Corosync)
+# Check if UDP port 5405 is open on all nodes (corosync)
 function check_udp_ports_5405_to_5412() {
     echo -e "${YELLOW}Checking if UDP ports 5405 through 5412 (Corosync) are available on all nodes...${RESET}"
 
@@ -246,3 +246,4 @@ function check_udp_ports_5405_to_5412() {
     fi
 }
 # check_udp_ports_5405_to_5412
+
