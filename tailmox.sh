@@ -369,7 +369,7 @@ function add_local_node_to_cluster() {
                 echo -e "${GREEN}Found an existing cluster on $TARGET_HOSTNAME. Joining the cluster...${RESET}"
 
                 # Prompt for root password of the remote node
-                echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:${RESET}"
+                echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:"
                 read -s ROOT_PASSWORD
                 
                 # Use expect to handle the password prompt
