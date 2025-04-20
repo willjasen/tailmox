@@ -13,7 +13,7 @@ In the interest of complete transparency, if you follow this guide or use this p
 
 ---
 
-### 📖 Overview
+### 📖 Overview 📖
 
 This project was originally started as a [gist](https://gist.github.com/willjasen/df71ca4ec635211d83cdc18fe7f658ca) guide on how to cluster Proxmox servers together using Tailscale so that hosts not physically located together could participate in a cluster. While a how-to is great, being able to replicate the steps in code and sharing that with others was always the goal.
 
