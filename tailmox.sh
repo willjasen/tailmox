@@ -403,6 +403,7 @@ function add_local_node_to_cluster() {
                 if [ $? -eq 0 ]; then
                     echo -e "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
                     EXISTING_CLUSTER=true;
+                    echo -e "${YELLOW}Existing cluster variable 1 is: $EXISTING_CLUSTER ${RESET}" 
                     exit 0
                 else
                     echo -e "${RED}Failed to join cluster with $TARGET_HOSTNAME. Check the password and try again.${RESET}"
@@ -413,7 +414,7 @@ function add_local_node_to_cluster() {
             fi
         done
 
-        echo -e "${YELLOW}Existing cluster variable is: $EXISTING_CLUSTER ${RESET}"
+        echo -e "${YELLOW}Existing cluster variable 2 is: $EXISTING_CLUSTER ${RESET}"
         if $EXISTING_CLUSTER; then
             exit 0
         else
