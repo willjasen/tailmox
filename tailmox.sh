@@ -318,7 +318,7 @@ function check_remote_node_cluster_status() {
 }
 
 # Get the certificate fingerprint for a Proxmox node
-# - parameter $1: Hostname or IP address
+# - parameter $1: hostname or IP address
 function get_pve_certificate_fingerprint() {
     local hostname=$1
     local port=8006
@@ -355,7 +355,7 @@ function add_local_node_to_cluster() {
 
         # Find if a cluster amongst peers already exists
         local existing_cluster=false
-        echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
+        echo "$OTHER_PEERS" | jq -c '.[]' | while read -r target_peer; do
             TARGET_HOSTNAME=$(echo "$target_peer" | jq -r '.hostname')
             TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
             TARGET_DNSNAME=$(echo "$target_peer" | jq -r '.dnsName' | sed 's/\.$//')
