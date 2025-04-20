@@ -228,6 +228,7 @@ function check_udp_ports_5405_to_5412() {
             echo -e "${BLUE}Checking UDP port $port on $peer_hostname ($peer_ip)...${RESET}"
             
             # For UDP, we'll use nc with -u flag and a short timeout
+            # nc -v -u -z -w 3 prox2.risk-mermaid.ts.net 5405
             if ! timeout 2 bash -c "echo -n > /dev/udp/$peer_hostname/$port" 2>/dev/null; then
                 echo -e "${RED}UDP port $port is not available on $peer_hostname ($peer_ip).${RESET}"
                 peer_unavailable=true
