@@ -9,6 +9,10 @@ BLUE="\e[34m"
 PURPLE="\e[35m"
 RESET="\e[0m"
 
+###
+### ---FUNCTIONS---
+### 
+
 # Install dependencies
 function install_dependencies() {
     echo -e "${YELLOW}Checking for required dependencies...${RESET}"
@@ -385,7 +389,7 @@ function add_local_node_to_cluster() {
 }
 
 ####
-#### MAIN SCRIPT
+#### ---MAIN SCRIPT---
 ####
 
 install_dependencies
