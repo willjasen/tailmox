@@ -115,8 +115,10 @@ fi
 #			"autogroup:owner",
 #		 ]
 
-# Get all other nodes with the "tailmox" tag
+# Get all other nodes with the "tailmox" tag as a JSON array
 TAILMOX_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
+
+
 
 # Update the local /etc/hosts with peer information
 echo "Updating the local /etc/hosts with peer information..."
@@ -153,33 +155,42 @@ fi
 
 # Ensure each peer's /etc/hosts file contains all other peers' entries
 # For each peer, remote into it and add each other peer's entry to its /etc/hosts
-ITERATE_PEERS_TO_ADD=$TAILMOX_PEERS;
-echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
-    echo "Processing peer for /etc/hosts update..."
-    echo "$peer"
-    PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
-    PEER_IP=$(echo "$peer" | jq -r '.ip')
-    PEER_ONLINE=$(echo "$peer" | jq -r '.online')
-    PEER_DNSNAME=$(echo "$peer" | jq -r '.dnsName')
+echo "Ensuring all peers have complete host information..."
+echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r target_peer; do
+    TARGET_HOSTNAME=$(echo "$target_peer" | jq -r '.hostname')
+    TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
+    TARGET_ONLINE=$(echo "$target_peer" | jq -r '.online')
     
-    # Check if the peer is online before attempting to SSH
-    if [ "$PEER_ONLINE" == "true" ]; then
-        echo "$ITERATE_PEERS_TO_ADD" | jq -c '.[]' | while read -r iterate_peer; do
-            echo "Updating /etc/hosts on $PEER_HOSTNAME ($PEER_IP)..."
-            #ITERATE_PEER_HOSTNAME=$(echo "$iterate_peer" | jq -r '.hostname')
-            #ITERATE_PEER_IP=$(echo "$iterate_peer" | jq -r '.ip')
-            #ITERATE_PEER_ONLINE=$(echo "$iterate_peer" | jq -r '.online')
-            #ITERATE_PEER_DNSNAME=$(echo "$iterate_peer" | jq -r '.dnsName')
-            #ITERATE_PEER_ENTRY="$ITERATE_PEER_IP $ITERATE_PEER_HOSTNAME $ITERATE_PEER_HOSTNAME.$ITERATE_PEER_DNSNAME"
-            
-            # Remote into the peer and add the entry to its /etc/hosts if needed
-            #ssh "$PEER_HOSTNAME" "grep -q '$ITERATE_PEER_ENTRY' /etc/hosts || echo '$ITERATE_PEER_ENTRY' >> /etc/hosts";
-        done
-    else
-        echo "Skipping offline peer: $PEER_HOSTNAME"
+    # Skip if the target is the current host or offline
+    if [ "$TARGET_HOSTNAME" == "$HOSTNAME" ] || [ "$TARGET_ONLINE" != "true" ]; then
+        [ "$TARGET_HOSTNAME" == "$HOSTNAME" ] && echo "Skipping current host: $TARGET_HOSTNAME"
+        [ "$TARGET_ONLINE" != "true" ] && echo "Skipping offline peer: $TARGET_HOSTNAME"
+        continue
     fi
+    
+    echo -e "${BLUE}Updating /etc/hosts on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
+    
+    # First, ensure the target host has its own entry
+    LOCAL_ENTRY="$TARGET_IP $TARGET_HOSTNAME $TARGET_HOSTNAME.$MAGICDNS_DOMAIN_NAME"
+    ssh "$TARGET_HOSTNAME" "grep -q '$LOCAL_ENTRY' /etc/hosts || echo '$LOCAL_ENTRY' >> /etc/hosts"
+    
+    # Then add entries for all other peers
+    echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer_to_add; do
+        PEER_HOSTNAME=$(echo "$peer_to_add" | jq -r '.hostname')
+        PEER_IP=$(echo "$peer_to_add" | jq -r '.ip')
+        
+        # Skip if the peer is the same as target
+        if [ "$PEER_HOSTNAME" == "$TARGET_HOSTNAME" ] || [ -z "$PEER_HOSTNAME" ] || [ -z "$PEER_IP" ]; then
+            continue
+        fi
+        
+        PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_HOSTNAME.$MAGICDNS_DOMAIN_NAME"
+        echo "Adding $PEER_HOSTNAME to $TARGET_HOSTNAME's /etc/hosts"
+        ssh -o StrictHostKeyChecking=no "$TARGET_HOSTNAME" "grep -q '$PEER_ENTRY' /etc/hosts || echo '$PEER_ENTRY' >> /etc/hosts"
+    done
+    
+    echo -e "${GREEN}Finished updating hosts file on $TARGET_HOSTNAME${RESET}"
 done
-
 
 # # Cluster configuration - initialize or join based on role.
 # if [ "$ROLE" == "master" ]; then
