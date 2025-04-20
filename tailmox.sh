@@ -157,13 +157,6 @@ echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
     TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
     TARGET_ONLINE=$(echo "$target_peer" | jq -r '.online')
     
-    # Skip if the target is the current host or offline
-    if [ "$TARGET_HOSTNAME" == "$HOSTNAME" ] || [ "$TARGET_ONLINE" != "true" ]; then
-        [ "$TARGET_HOSTNAME" == "$HOSTNAME" ] && echo "Skipping current host: $TARGET_HOSTNAME"
-        [ "$TARGET_ONLINE" != "true" ] && echo "Skipping offline peer: $TARGET_HOSTNAME"
-        continue
-    fi
-    
     echo -e "${BLUE}Updating /etc/hosts on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
     
     # First, ensure the target host has its own entry
@@ -171,18 +164,14 @@ echo "$ALL_PEERS" | jq -c '.[]' | while read -r target_peer; do
     if ! ssh -o ConnectTimeout=3 "$TARGET_HOSTNAME" "grep -q '$LOCAL_ENTRY' /etc/hosts || echo '$LOCAL_ENTRY' >> /etc/hosts"; then
         echo -e "${RED}Failed to update /etc/hosts on $TARGET_HOSTNAME. Exiting...${RESET}"
         exit 1
+    else
+        echo -e "${GREEN}$TARGET_HOSTNAME's /etc/hosts has its own entry.${RESET}"
     fi
     
     # Then add entries for all other peers
     echo "$OTHER_PEERS" | jq -c '.[]' | while read -r peer_to_add; do
         PEER_HOSTNAME=$(echo "$peer_to_add" | jq -r '.hostname')
         PEER_IP=$(echo "$peer_to_add" | jq -r '.ip')
-        
-        # Skip if the peer is the same as target
-        if [ "$PEER_HOSTNAME" == "$TARGET_HOSTNAME" ] || [ -z "$PEER_HOSTNAME" ] || [ -z "$PEER_IP" ]; then
-            echo -e "Skipping self or invalid peer: $PEER_HOSTNAME"
-            continue
-        fi
         
         PEER_ENTRY="$PEER_IP $PEER_HOSTNAME $PEER_HOSTNAME.$MAGICDNS_DOMAIN_NAME"
         echo "Adding $PEER_HOSTNAME to $TARGET_HOSTNAME's /etc/hosts"
