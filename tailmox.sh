@@ -33,7 +33,6 @@ function install_dependencies() {
     echo -e "${GREEN}All dependencies are installed.${RESET}"
 }
 
-
 # Install Tailscale if it is not already installed
 function install_tailscale() {
     if ! command -v tailscale &>/dev/null; then
@@ -47,7 +46,6 @@ function install_tailscale() {
         echo -e "${GREEN}Tailscale is already installed.${RESET}"
     fi
 }
-install_tailscale
 
 # Bring up Tailscale
 function start_tailscale() {
@@ -68,9 +66,6 @@ function start_tailscale() {
 
     echo -e "${GREEN}This host's Tailscale IPv4 address: $TAILSCALE_IP ${RESET}"
 }
-start_tailscale
-
-### Now that Tailscale is running...
 
 # Get all nodes with the "tailmox" tag as a JSON array
 TAILSCALE_IP=$(tailscale ip -4)
@@ -419,12 +414,12 @@ fi
 
 echo -e "${GREEN}The script has exited successfully!${RESET}"
 
-###
-### I believe version this is working between two nodes from scratch!!
-###
-
 ####
-#### MAIN
+#### MAIN SCRIPT
 ####
 
 install_dependencies
+install_tailscale
+start_tailscale
+### Now that Tailscale is running...
+
