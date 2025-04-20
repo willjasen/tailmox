@@ -102,12 +102,12 @@ echo "MagicDNS domain name for this tailnet: $MAGICDNS_DOMAIN_NAME"
 HOSTS_FILE_ENTRY="$TAILSCALE_IP ${HOSTNAME} ${HOSTNAME}.${MAGICDNS_DOMAIN_NAME}"
 echo "Entry to add into /etc/hosts: $HOSTS_FILE_ENTRY"
 
-if ! grep -q "$HOSTS_FILE_ENTRY" /etc/hosts; then
-      echo "Adding local host entry to /etc/hosts: $HOSTS_FILE_ENTRY"
-      echo "$HOSTS_FILE_ENTRY" >> /etc/hosts
-else
-      echo "Local host entry already exists in /etc/hosts: $HOSTS_FILE_ENTRY"
-fi
+# if ! grep -q "$HOSTS_FILE_ENTRY" /etc/hosts; then
+#       echo "Adding local host entry to /etc/hosts: $HOSTS_FILE_ENTRY"
+#       echo "$HOSTS_FILE_ENTRY" >> /etc/hosts
+# else
+#       echo "Local host entry already exists in /etc/hosts: $HOSTS_FILE_ENTRY"
+# fi
 ### Probably need to ensure that two "HOSTNAME"s being in the hosts file aren't a thing
 
 ### Need to add the "tailmox" tag to the Tailscale ACL some way
@@ -115,12 +115,14 @@ fi
 #			"autogroup:owner",
 #		 ]
 
-# Get all other nodes with the "tailmox" tag as a JSON array
-TAILMOX_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
+# Get all nodes with the "tailmox" tag as a JSON array
+LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dnsName "$HOSTNAME.$MAGICDNS_DOMAIN_NAME" --arg online "true" '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: ($online == "true")}');
+OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
+ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
 
 # Update the local /etc/hosts with peer information
 echo "Updating the local /etc/hosts with peer information..."
-for peer in $(echo "$TAILMOX_PEERS" | jq -c '.[]'); do
+for peer in $(echo "$ALL_PEERS" | jq -c '.[]'); do
     PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
     PEER_IP=$(echo "$peer" | jq -r '.ip')
     PEER_ONLINE=$(echo "$peer" | jq -r '.online')
@@ -154,7 +156,7 @@ fi
 # Ensure each peer's /etc/hosts file contains all other peers' entries
 # For each peer, remote into it and add each other peer's entry to its /etc/hosts
 echo -e "${GREEN}Ensuring all peers have complete host information...${RESET}"
-echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r target_peer; do
+echo "$OTHER_PEERS" | jq -c '.[]' | while read -r target_peer; do
     TARGET_HOSTNAME=$(echo "$target_peer" | jq -r '.hostname')
     TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
     TARGET_ONLINE=$(echo "$target_peer" | jq -r '.online')
@@ -173,12 +175,10 @@ echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r target_peer; do
     if ! ssh -o ConnectTimeout=3 "$TARGET_HOSTNAME" "grep -q '$LOCAL_ENTRY' /etc/hosts || echo '$LOCAL_ENTRY' >> /etc/hosts"; then
         echo -e "${RED}Failed to update /etc/hosts on $TARGET_HOSTNAME. Exiting...${RESET}"
         exit 1
-    else
-        echo -e "${GREEN}Successfully updated /etc/hosts on $TARGET_HOSTNAME.${RESET}"
     fi
     
     # Then add entries for all other peers
-    echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer_to_add; do
+    echo "$OTHER_PEERS" | jq -c '.[]' | while read -r peer_to_add; do
         PEER_HOSTNAME=$(echo "$peer_to_add" | jq -r '.hostname')
         PEER_IP=$(echo "$peer_to_add" | jq -r '.ip')
         
