@@ -153,6 +153,7 @@ fi
 
 # Ensure each peer's /etc/hosts file contains all other peers' entries
 # For each peer, remote into it and add each other peer's entry to its /etc/hosts
+ITERATE_PEERS_TO_ADD=$TAILMOX_PEERS;
 echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
     PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
     PEER_IP=$(echo "$peer" | jq -r '.ip')
@@ -161,7 +162,6 @@ echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
     
     # Check if the peer is online before attempting to SSH
     if [ "$PEER_ONLINE" == "true" ]; then
-        ITERATE_PEERS_TO_ADD=$TAILMOX_PEERS;
         echo "$ITERATE_PEERS_TO_ADD" | jq -c '.[]' | while read -r iterate_peer; do
             echo "Updating /etc/hosts on $PEER_HOSTNAME ($PEER_IP)..."
             ITERATE_PEER_HOSTNAME=$(echo "$iterate_peer" | jq -r '.hostname')
