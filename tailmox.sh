@@ -431,3 +431,5 @@ else
 fi
 
 echo -e "${GREEN}The script has exited successfully!${RESET}"
+
+## This version seems to be working!
