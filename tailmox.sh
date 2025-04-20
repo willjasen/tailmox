@@ -409,7 +409,7 @@ while [[ "$#" -gt 0 ]]; do
     esac
     shift
 done
-start_tailscale
+start_tailscale $AUTH_KEY
 
 ### Now that Tailscale is running...
 
