@@ -21,12 +21,6 @@ else
     echo "jq is already installed."
 fi
 
-# Function to get all nodes with the "proxmox" tag
-get_proxmox_nodes() {
-    echo "Retrieving Tailscale nodes with 'proxmox' tag..."
-    tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], online: .Online}'
-}
-
 # Function to check if all peers with the "tailmox" tag are online
 check_all_peers_online() {
     echo -e "${YELLOW}Checking if all tailmox peers are online...${RESET}"
