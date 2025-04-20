@@ -188,6 +188,31 @@ function ensure_ping_reachability() {
     done
 }
 
+# Report on the latency of each peer
+function report_peer_latency() {
+    echo -e "${YELLOW}Reporting peer latency...${RESET}"
+
+    # Get all peers with the "tailmox" tag
+    local peers=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | .TailscaleIPs[0]]')
+
+    # If no peers are found, exit with an error
+    if [ -z "$peers" ]; then
+        echo -e "${RED}No peers found with the 'tailmox' tag. Exiting...${RESET}"
+        return 1
+    fi
+
+    # Check ping reachability for each peer
+    echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
+        echo -e "${BLUE}Calculating average latency for $peer_ip...${RESET}"
+        avg_latency=$(ping -c 5 "$peer_ip" | awk -F'/' 'END {print $5}')
+        if [ -n "$avg_latency" ]; then
+            echo -e "${GREEN}Average latency to $peer_ip: ${avg_latency} ms${RESET}"
+        else
+            echo -e "${RED}Failed to calculate latency for $peer_ip.${RESET}"
+        fi
+    done
+}
+
 # Check if TCP port 8006 is available on all nodes
 function are_hosts_tcp_port_8006_reachable() {
     echo -e "${YELLOW}Checking if TCP port 8006 is available on all nodes...${RESET}"
@@ -428,6 +453,9 @@ if ! ensure_ping_reachability; then
 else 
     echo -e "${GREEN}All Tailmox peers are reachable via ping.${RESET}"
 fi
+
+# Report on the latency of each peer
+report_peer_latency
 
 # Ensure that all peers are reachable via TCP port 8006
 if ! are_hosts_tcp_port_8006_reachable; then
