@@ -172,7 +172,12 @@ echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r target_peer; do
     
     # First, ensure the target host has its own entry
     LOCAL_ENTRY="$TARGET_IP $TARGET_HOSTNAME $TARGET_HOSTNAME.$MAGICDNS_DOMAIN_NAME"
-    ssh "$TARGET_HOSTNAME" "grep -q '$LOCAL_ENTRY' /etc/hosts || echo '$LOCAL_ENTRY' >> /etc/hosts"
+    if ! ssh -o ConnectTimeout=3 "$TARGET_HOSTNAME" "grep -q '$LOCAL_ENTRY' /etc/hosts || echo '$LOCAL_ENTRY' >> /etc/hosts"; then
+        echo -e "${RED}Failed to update /etc/hosts on $TARGET_HOSTNAME. Exiting...${RESET}"
+        exit 1
+    else
+        echo -e "${GREEN}Successfully updated /etc/hosts on $TARGET_HOSTNAME.${RESET}"
+    fi
     
     # Then add entries for all other peers
     echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer_to_add; do
