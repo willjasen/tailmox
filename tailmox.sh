@@ -24,7 +24,7 @@ fi
 # Function to get all nodes with the "proxmox" tag
 get_proxmox_nodes() {
     echo "Retrieving Tailscale nodes with 'proxmox' tag..."
-    tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], online: .Online}'
+    tailscale status --json | jq -r '.Peer | to_entries[] | select(.value.Tags != null and (.value.Tags[] | contains("tailmox"))) | {hostname: .value.HostName, ip: .value.TailscaleIPs[0], online: .value.Online}'
 }
 
 # Function to check if all peers with the "tailmox" tag are online
@@ -34,7 +34,7 @@ check_all_peers_online() {
     local offline_peers=""
     
     # Get the peers data
-    local peers_data=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox")))')
+    local peers_data=$(tailscale status --json | jq -c '.Peer | to_entries[] | select(.value.Tags != null and (.value.Tags[] | contains("tailmox")))')
     
     # If no peers are found, return 1
     if [ -z "$peers_data" ]; then
@@ -42,23 +42,23 @@ check_all_peers_online() {
         return 1
     fi
     
-    # Check each peer's status
-    echo "$peers_data" | jq -c '.HostName + ":" + (.Online|tostring)' | while read -r peer_status; do
-        local hostname=$(echo "$peer_status" | cut -d: -f1)
-        local is_online=$(echo "$peer_status" | cut -d: -f2)
+    # Process each peer in a way that preserves variable values
+    while read -r peer; do
+        local hostname=$(echo "$peer" | jq -r '.value.HostName')
+        local is_online=$(echo "$peer" | jq -r '.value.Online')
         
         if [ "$is_online" != "true" ]; then
             all_peers_online=false
             offline_peers="${offline_peers}${hostname}, "
         fi
-    done
+    done < <(echo "$peers_data")
     
     if [ "$all_peers_online" = true ]; then
-        echo "${GREEN}All tailmox peers are online.${RESET}"
+        echo -e "${GREEN}All tailmox peers are online.${RESET}"
         return 0
     else
         offline_peers=${offline_peers%, }
-        echo -e "${RED}Not all tailmox peers are online. Offline peers: $offline_peers"
+        echo -e "${RED}Not all tailmox peers are online. Offline peers: $offline_peers${RESET}"
         return 1
     fi
 }
@@ -116,11 +116,11 @@ fi
 #		 ]
 
 # Get all other nodes with the "tailmox" tag
-TAILMOX_PEERS=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}');
+TAILMOX_PEERS=$(tailscale status --json | jq '.Peer | to_entries[] | select(.value.Tags != null and (.value.Tags[] | contains("tailmox"))) | {hostname: .value.HostName, ip: .value.TailscaleIPs[0], dnsName: .value.DNSName, online: .value.Online}')
 
 # Update the local /etc/hosts with peer information
 echo "Processing peers with 'tailmox' tag for /etc/hosts..."
-echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
+echo "$TAILMOX_PEERS" | jq -c | while read -r peer; do
     PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
     PEER_IP=$(echo "$peer" | jq -r '.ip')
     PEER_ONLINE=$(echo "$peer" | jq -r '.online')
