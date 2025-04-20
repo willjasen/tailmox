@@ -119,12 +119,12 @@ fi
 TAILMOX_PEERS=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}');
 
 # Update the local /etc/hosts with peer information
-echo "Processing peers with 'tailmox' tag for /etc/hosts..."
+echo "Updating the local /etc/hosts with peer information..."
 echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
-    PEER_HOSTNAME=$(echo "$peer" | jq -r '.hostname')
-    PEER_IP=$(echo "$peer" | jq -r '.ip')
-    PEER_ONLINE=$(echo "$peer" | jq -r '.online')
-    PEER_DNSNAME=$(echo "$peer" | jq -r '.dnsName')
+    PEER_HOSTNAME=$(echo "$peer" | jq -r '.HostName')
+    PEER_IP=$(echo "$peer" | jq -r '.TailscaleIPs[0]')
+    PEER_ONLINE=$(echo "$peer" | jq -r '.Online')
+    PEER_DNSNAME=$(echo "$peer" | jq -r '.DNSName')
     
     # Add all peers with valid hostname and IP, regardless of online status
     if [ -n "$PEER_HOSTNAME" ] && [ -n "$PEER_IP" ]; then
