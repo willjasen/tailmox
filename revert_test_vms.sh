@@ -273,10 +273,9 @@ function test_guest_agents() {
 }
 
 # Run the functions
-stop_vms 10000 10001
-revert_vms_to_snapshot 10000 10001
-start_vms 10000 10001
-
-test_guest_agents 10000 10001 # Test guest agents for multiple VMs in parallel
+stop_vms 10000 10001 10002
+revert_vms_to_snapshot 10000 10001 10002
+start_vms 10000 10001 10002
+test_guest_agents 10000 10001 10002
 
 echo -e "${GREEN}The script has completed successfully!${RESET}"
