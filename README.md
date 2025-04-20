@@ -17,6 +17,8 @@ In the interest of complete transparency, if you follow this guide or use this p
 
 This project was originally started as a [gist](https://gist.github.com/willjasen/df71ca4ec635211d83cdc18fe7f658ca) guide on how to cluster Proxmox servers together using Tailscale so that hosts not physically located together could participate in a cluster. While a how-to is great, being able to replicate the steps in code and sharing that with others was always the goal.
 
+Tailmox also uses the project [tailscale-cert-services](https://github.com/willjasen/tailscale-cert-services) in order to generate and maintain each host's Tailscale certificate as it applies to Proxmox.
+
 ---
 
 ### 😮 Controversy 😮
@@ -173,6 +175,5 @@ Then try again.
 
 You may find in a large cluster (5 or more members) that features like the web interface won't work properly between cluster members. This is likely because quorum via corosync hasn't been properly achieved. The file at `/etc/pve/.members` may show a node or nodes as `"online": 1` indicating that it is online and communicable to in some form, but the `ip` value never shows. In circumstances where one of the members has an underperforming network connection in relation to the other cluster members (particularly in reference to a high latency measured in 200-300 ms), then corosync should be stopped and disabled on that member temporarily. To do that, run `systemctl stop corosync; systemctl disable corosync;`. To enable and start it again, run `systemctl enable corosync; systemctl start corosync;`.
 
-## 💭 After Thoughts 💭
-
-In order to use a Tailscale certificate with your host's web services, please see [tailscale-cert-services/proxmox-cert.sh](https://github.com/willjasen/tailscale-cert-services/blob/main/proxmox-cert.sh)
+---
+*END OF GUIDE*
