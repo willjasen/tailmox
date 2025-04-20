@@ -1,6 +1,8 @@
 #!/bin/bash
 # filepath: ./revert-test-vms.sh
 
+### This script is used for testing purposes only.
+
 # Define color codes for better output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
