@@ -341,6 +341,7 @@ function add_local_node_to_cluster() {
         done
     fi
 }
+add_local_node_to_cluster
 
 
 echo -e "${GREEN}The script has exited successfully!${RESET}"
