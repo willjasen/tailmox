@@ -32,7 +32,7 @@ function install_dependencies() {
     fi
     echo -e "${GREEN}All dependencies are installed.${RESET}"
 }
-install_dependencies
+
 
 # Install Tailscale if it is not already installed
 function install_tailscale() {
@@ -422,3 +422,9 @@ echo -e "${GREEN}The script has exited successfully!${RESET}"
 ###
 ### I believe version this is working between two nodes from scratch!!
 ###
+
+####
+#### MAIN
+####
+
+install_dependencies
