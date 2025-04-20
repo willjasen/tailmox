@@ -429,5 +429,6 @@ function add_local_node_to_cluster() {
 }
 add_local_node_to_cluster
 
-
 echo -e "${GREEN}The script has exited successfully!${RESET}"
+
+### I believe version this is working between two nodes from scratch!!
