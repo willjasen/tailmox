@@ -27,7 +27,7 @@ Many, many people will expend a lot of effort and noise to proclaim either that 
 
 ### ✏️ Preparation ✏️
 
-Because Tailscale allows for an access control list, if you use an ACL, then it should be prepared for cluster communications.
+Because Tailscale allows for an access control list, if you use an ACL, then it should be prepared for cluster communications. The script will check that TCP 22 and TCP 8006 are available on all other hosts and will exit if not.
 
 This script uses the tag of "tailmox" to determine which Tailscale machines are using this project to establish a cluster together. The "tailmox" tag should be specified under "tagOwners":
 ```
