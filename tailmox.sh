@@ -494,3 +494,5 @@ if ! check_local_node_cluster_status; then
 fi
 
 echo -e "${GREEN}The script has exited successfully!${RESET}"
+
+### This version is working when tested with 3 nodes!
