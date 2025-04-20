@@ -13,6 +13,28 @@ RESET="\e[0m"
 ### ---FUNCTIONS---
 ### 
 
+# Check if Proxmox is installed
+function check_proxmox_8_installed() {
+    echo -e "${YELLOW}Checking if Proxmox is installed...${RESET}"
+    
+    # Check for common Proxmox binaries and version file
+    if [[ ! -f /usr/bin/pveversion || ! -f /etc/pve/version ]]; then
+        echo -e "${RED}Proxmox VE does not appear to be installed on this system.${RESET}"
+        return 1
+    fi
+    
+    # Check if it's version 8.x
+    local pve_version=$(pveversion | grep -oP 'pve-manager/\K[0-9]+' | head -1)
+    
+    if [[ "$pve_version" == "8" ]]; then
+        echo -e "${GREEN}Proxmox VE 8.x detected.${RESET}"
+        return 0
+    else
+        echo -e "${RED}Proxmox VE 8.x is required. Found version: $pve_version${RESET}"
+        return 1
+    fi
+}
+
 # Install dependencies
 function install_dependencies() {
     echo -e "${YELLOW}Checking for required dependencies...${RESET}"
@@ -425,6 +447,11 @@ function add_local_node_to_cluster() {
 ####
 #### ---MAIN SCRIPT---
 ####
+
+if ! check_proxmox_8_installed; then
+    echo -e "${RED}Proxmox VE 8.x is required. Exiting...${RESET}"
+    exit 1
+fi
 
 install_dependencies
 install_tailscale
