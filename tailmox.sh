@@ -347,8 +347,8 @@ function create_cluster() {
 }
 
 # Add this local node into a cluster if it exists
+EXISTING_CLUSTER=false;
 function add_local_node_to_cluster() {
-    local existing_cluster=false;
     if check_local_node_cluster_status; then
         echo -e "${PURPLE}This node is already in a cluster.${RESET}"
     else
@@ -362,7 +362,7 @@ function add_local_node_to_cluster() {
             
             echo -e "${BLUE}Checking cluster status on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
             if check_remote_node_cluster_status "$TARGET_HOSTNAME"; then
-                existing_cluster=true;
+                EXISTING_CLUSTER=true;
                 local LOCAL_TAILSCALE_IP=$(tailscale ip -4)
                 local target_fingerprint=$(get_pve_certificate_fingerprint "$TARGET_HOSTNAME")
 
@@ -402,7 +402,7 @@ function add_local_node_to_cluster() {
                 # Check if successful
                 if [ $? -eq 0 ]; then
                     echo -e "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
-                    existing_cluster=true;
+                    EXISTING_CLUSTER=true;
                     exit 0
                 else
                     echo -e "${RED}Failed to join cluster with $TARGET_HOSTNAME. Check the password and try again.${RESET}"
@@ -413,8 +413,8 @@ function add_local_node_to_cluster() {
             fi
         done
 
-        echo -e "${YELLOW}Existing cluster variable is: $existing_cluster ${RESET}"
-        if $existing_cluster; then
+        echo -e "${YELLOW}Existing cluster variable is: $EXISTING_CLUSTER ${RESET}"
+        if $EXISTING_CLUSTER; then
             exit 0
         else
             echo -e "${BLUE}No existing cluster found amongst any peers.${RESET}"
