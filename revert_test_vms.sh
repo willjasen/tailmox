@@ -216,6 +216,5 @@ stop_vms 10000 10001
 revert_vms_to_snapshot 10000 10001
 start_vms 10000 10001
 
-# Example of using the guest agent test function (uncomment to use)
-test_guest_agent 10000 20 5   # Test VM 10000 with 20 attempts, 5s interval
+test_guest_agent 10000 30 1   # Test VM 10000 with 20 attempts, 5s interval
 test_guest_agent 10001        # Test VM 10001 with default settings
