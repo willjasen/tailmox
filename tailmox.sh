@@ -396,6 +396,7 @@ LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dns
 OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
 ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
 
+# Ensure that all peers are pingable
 if ! ensure_ping_reachability; then
     echo -e "${RED}Some peers are unreachable via ping. Please check the network configuration.${RESET}"
     exit 1
@@ -403,6 +404,7 @@ else
     echo -e "${GREEN}All peers are reachable via ping.${RESET}"
 fi
 
+# Ensure that all peers are reachable via TCP port 8006
 if ! are_hosts_tcp_port_8006_reachable; then
     echo -e "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
     exit 1
