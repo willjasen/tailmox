@@ -54,7 +54,7 @@ check_all_peers_online() {
     done
     
     if [ "$all_peers_online" = true ]; then
-        echo "${GREEN}All tailmox peers are online.${RESET}"
+        echo -e "${GREEN}All tailmox peers are online.${RESET}"
         return 0
     else
         offline_peers=${offline_peers%, }
@@ -155,7 +155,7 @@ fi
 
 # Ensure each peer's /etc/hosts file contains all other peers' entries
 # For each peer, remote into it and add each other peer's entry to its /etc/hosts
-echo "Ensuring all peers have complete host information..."
+echo -e "${GREEN}Ensuring all peers have complete host information...${RESET}"
 echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r target_peer; do
     TARGET_HOSTNAME=$(echo "$target_peer" | jq -r '.hostname')
     TARGET_IP=$(echo "$target_peer" | jq -r '.ip')
