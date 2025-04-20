@@ -412,7 +412,7 @@ function add_local_node_to_cluster() {
             fi
         done
 
-        if ! $existing_cluster; then
+        if [ "$existing_cluster" = false ]; then
             echo -e "${BLUE}No existing cluster found amongst any peers.${RESET}"
             echo -e "${YELLOW}Do you want to create a cluster on this node?${RESET}"
             read -p "Enter 'y' to create a new cluster or 'n' to exit: " choice
