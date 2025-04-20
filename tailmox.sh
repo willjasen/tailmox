@@ -120,7 +120,7 @@ TAILMOX_PEERS=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null 
 
 # Update the local /etc/hosts with peer information
 echo "Updating the local /etc/hosts with peer information..."
-echo "$TAILMOX_PEERS" | jq -c '.[]' | while read -r peer; do
+echo "$TAILMOX_PEERS" | while read -r peer; do
     PEER_HOSTNAME=$(echo "$peer" | jq -r '.HostName')
     PEER_IP=$(echo "$peer" | jq -r '.TailscaleIPs[0]')
     PEER_ONLINE=$(echo "$peer" | jq -r '.Online')
