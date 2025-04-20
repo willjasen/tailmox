@@ -247,3 +247,4 @@ function check_udp_ports_5405_to_5412() {
 }
 # check_udp_ports_5405_to_5412
 
+echo -e "${GREEN}The script has exited successfully!${RESET}"
