@@ -245,4 +245,4 @@ function check_udp_ports_5405_to_5412() {
         echo -e "${GREEN}All peers have UDP ports 5405 through 5412 available.${RESET}"
     fi
 }
-check_udp_ports_5405_to_5412
+# check_udp_ports_5405_to_5412
