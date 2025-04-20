@@ -247,4 +247,40 @@ function check_udp_ports_5405_to_5412() {
 }
 # check_udp_ports_5405_to_5412
 
+# Check if this node is already part of a Proxmox cluster
+function check_cluster_status() {
+    echo -e "${YELLOW}Checking if this node is already part of a Proxmox cluster...${RESET}"
+    
+    # Check if the pvecm command exists (should be installed with Proxmox)
+    if ! command -v pvecm &>/dev/null; then
+        echo -e "${RED}pvecm command not found. Is this a Proxmox VE node?${RESET}"
+        exit 1
+    fi
+    
+    # Get cluster status
+    local cluster_status=$(pvecm status 2>&1)
+    
+    # Check if the node is part of a cluster
+    if echo "$cluster_status" | grep -q "is this node part of a cluster"; then
+        echo -e "${BLUE}This node is not part of any cluster.${RESET}"
+        return 1
+    elif echo "$cluster_status" | grep -q "Cluster information"; then
+        local cluster_name=$(echo "$cluster_status" | grep "Cluster name:" | awk '{print $3}')
+        echo -e "${GREEN}This node is already part of cluster: $cluster_name${RESET}"
+        return 0
+    else
+        echo -e "${RED}Unable to determine cluster status. Output: $cluster_status${RESET}"
+        exit 1
+    fi
+}
+
+# Usage:
+if check_cluster_status; then
+    echo -e "${PURPLE}This node is already in a cluster. Skipping cluster creation.${RESET}"
+else
+    echo -e "${BLUE}This node is not in a cluster. Creating or joining a cluster is required.${RESET}"
+    # Add your cluster creation/joining logic here
+fi
+
+
 echo -e "${GREEN}The script has exited successfully!${RESET}"
