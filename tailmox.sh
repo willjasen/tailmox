@@ -29,7 +29,7 @@ get_proxmox_nodes() {
 
 # Function to check if all peers with the "tailmox" tag are online
 check_all_peers_online() {
-    echo "Checking if all tailmox peers are online..."
+    echo -e "${YELLOW}Checking if all tailmox peers are online...${RESET}"
     local all_peers_online=true
     local offline_peers=""
     
