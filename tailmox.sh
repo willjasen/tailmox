@@ -193,8 +193,6 @@ function are_hosts_tcp_port_8006_reachable() {
     done
 }
 
-### Now that the local host can connect via TCP 8006 to other hosts...
-
 # Check if UDP port 5405 is open on all nodes (corosync)
 function check_udp_ports_5405_to_5412() {
     echo -e "${YELLOW}Checking if UDP ports 5405 through 5412 (Corosync) are available on all nodes...${RESET}"
@@ -412,12 +410,12 @@ else
     echo -e "${GREEN}All peers have TCP port 8006 available.${RESET}"
 fi
 
+### Now that the local host can connect via TCP 8006 to other hosts...
+
 add_local_node_to_cluster
 
 # If local node is now in the cluster...
-if check_local_node_cluster_status; then
-    : # Do nothing, already in a cluster
-else
+if ! check_local_node_cluster_status; then
     echo -e "${BLUE}No existing cluster found amongst any peers.${RESET}"
     echo -e "${YELLOW}Do you want to create a cluster on this node?${RESET}"
     read -p "Enter 'y' to create a new cluster or 'n' to exit: " choice
@@ -431,5 +429,3 @@ else
 fi
 
 echo -e "${GREEN}The script has exited successfully!${RESET}"
-
-## This version seems to be working!
