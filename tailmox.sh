@@ -418,7 +418,7 @@ fi
 if ! check_local_node_cluster_status; then
     echo -e "${YELLOW}This node is not part of a cluster. Attempting to create or join a cluster...${RESET}"
 else
-    echo -e "${GREEN}This node is already part of a cluster.${RESET}"
+    echo -e "${GREEN}This node is already part of a cluster, nothing further to do.${RESET}"
     exit 1
 fi
 
