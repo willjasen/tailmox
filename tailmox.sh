@@ -405,6 +405,7 @@ function add_local_node_to_cluster() {
                     return 0
                 else
                     echo -e "${RED}Failed to join cluster with $TARGET_HOSTNAME. Check the password and try again.${RESET}"
+                    exit 1
                 fi
             else
                 echo -e "${YELLOW}No cluster found on $TARGET_HOSTNAME.${RESET}"
