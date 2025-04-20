@@ -215,8 +215,8 @@ check_tcp_port_8006
 ### Now that the local host can connect via SSH and TCP 8006 to other hosts...
 
 # Check if UDP port 5405 is open on all nodes (Corosync)
-function check_udp_port_5405() {
-    echo -e "${YELLOW}Checking if UDP port 5405 (Corosync) is available on all nodes...${RESET}"
+function check_udp_ports_5405_to_5412() {
+    echo -e "${YELLOW}Checking if UDP ports 5405 through 5412 (Corosync) are available on all nodes...${RESET}"
 
     # Iterate through all peers
     local peer_unavailable=false
@@ -224,22 +224,24 @@ function check_udp_port_5405() {
         local peer_ip=$(echo "$peer" | jq -r '.ip')
         local peer_hostname=$(echo "$peer" | jq -r '.hostname')
 
-        echo -e "${BLUE}Checking UDP port 5405 on $peer_hostname ($peer_ip)...${RESET}"
-        
-        # For UDP, we'll use nc with -u flag and a short timeout
-        if ! timeout 2 bash -c "echo -n > /dev/udp/$peer_hostname/5405" 2>/dev/null; then
-            echo -e "${RED}UDP port 5405 is not available on $peer_hostname ($peer_ip).${RESET}"
-            peer_unavailable=true
-        else
-            echo -e "${GREEN}UDP port 5405 is available on $peer_hostname ($peer_ip).${RESET}"
-        fi
+        for port in {5405..5412}; do
+            echo -e "${BLUE}Checking UDP port $port on $peer_hostname ($peer_ip)...${RESET}"
+            
+            # For UDP, we'll use nc with -u flag and a short timeout
+            if ! timeout 2 bash -c "echo -n > /dev/udp/$peer_hostname/$port" 2>/dev/null; then
+                echo -e "${RED}UDP port $port is not available on $peer_hostname ($peer_ip).${RESET}"
+                peer_unavailable=true
+            else
+                echo -e "${GREEN}UDP port $port is available on $peer_hostname ($peer_ip).${RESET}"
+            fi
+        done
     done
 
     if $peer_unavailable; then
-        echo -e "${RED}Some peers have UDP port 5405 unavailable. This port is required for Corosync cluster communication.${RESET}"
+        echo -e "${RED}Some peers have UDP ports 5405 through 5412 unavailable. These ports are required for Corosync cluster communication.${RESET}"
         exit 1
     else
-        echo -e "${GREEN}All peers have UDP port 5405 available.${RESET}"
+        echo -e "${GREEN}All peers have UDP ports 5405 through 5412 available.${RESET}"
     fi
 }
-check_udp_port_5405
+check_udp_ports_5405_to_5412
