@@ -174,25 +174,15 @@ function ensure_ping_reachability() {
     fi
 
     # Check ping reachability for each peer
-    local unreachable_peers=""
     echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
         echo -e "${BLUE}Pinging $peer_ip...${RESET}"
         if ! ping -c 1 -W 2 "$peer_ip" &>/dev/null; then
             echo -e "${RED}Failed to ping $peer_ip.${RESET}"
-            unreachable_peers="${unreachable_peers}${peer_ip}, "
+            return 1
         else
             echo -e "${GREEN}Successfully pinged $peer_ip.${RESET}"
         fi
     done
-
-    # Report unreachable peers, if any
-    if [ -n "$unreachable_peers" ]; then
-        unreachable_peers=${unreachable_peers%, }
-        echo -e "${RED}The following peers are unreachable: $unreachable_peers${RESET}"
-        return 1
-    else
-        echo -e "${GREEN}All peers are reachable via ping.${RESET}"
-    fi
 }
 if ! ensure_ping_reachability; then
     echo -e "${RED}Some peers are unreachable via ping. Please check the network configuration.${RESET}"
