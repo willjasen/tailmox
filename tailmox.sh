@@ -14,6 +14,7 @@ RESET="\e[0m"
 
 # Install dependencies
 function install_dependencies() {
+    echo -e "${YELLOW}Checking for required dependencies...${RESET}"
     if ! command -v jq &>/dev/null; then
         echo -e "${YELLOW}jq not found. Installing...${RESET}"
         apt update
@@ -29,6 +30,7 @@ function install_dependencies() {
     else
         echo -e "${GREEN}expect is already installed.${RESET}"
     fi
+    echo -e "${GREEN}All dependencies are installed.${RESET}"
 }
 install_dependencies
 
