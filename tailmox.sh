@@ -75,7 +75,7 @@ OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null a
 ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
 
 # Check if all peers with the "tailmox" tag are online
-check_all_peers_online() {
+function check_all_peers_online() {
     echo -e "${YELLOW}Checking if all tailmox peers are online...${RESET}"
     local all_peers_online=true
     local offline_peers=""
@@ -111,7 +111,7 @@ check_all_peers_online() {
 }
 
 # Ensure that each Proxmox host in the cluster has the Tailscale MagicDNS hostnames of all other hosts in the cluster
-require_hostnames_in_cluster() {
+function require_hostnames_in_cluster() {
     # Update /etc/hosts for local resolution of Tailscale hostnames for the clustered Proxmox nodes
     echo "This host's hostname: $HOSTNAME"
     MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//');
