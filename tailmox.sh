@@ -408,7 +408,7 @@ if ! ensure_ping_reachability; then
     echo -e "${RED}Some peers are unreachable via ping. Please check the network configuration.${RESET}"
     exit 1
 else 
-    echo -e "${GREEN}All peers are reachable via ping.${RESET}"
+    echo -e "${GREEN}All Tailmox peers are reachable via ping.${RESET}"
 fi
 
 # Ensure that all peers are reachable via TCP port 8006
@@ -416,7 +416,7 @@ if ! are_hosts_tcp_port_8006_reachable; then
     echo -e "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
     exit 1
 else
-    echo -e "${GREEN}All peers have TCP port 8006 available.${RESET}"
+    echo -e "${GREEN}All Tailmox peers have TCP port 8006 available.${RESET}"
 fi
 
 # Check if the local node is already in a cluster
