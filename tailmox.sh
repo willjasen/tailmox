@@ -21,6 +21,14 @@ function install_dependencies() {
     else
         echo "jq is already installed."
     fi
+
+    if ! command -v expect &>/dev/null; then
+        echo -e "${YELLOW}expect not found. Installing...${RESET}"
+        apt update
+        apt install expect -y
+    else
+        echo "expect is already installed."
+    fi
 }
 install_dependencies
 
@@ -353,16 +361,10 @@ function add_local_node_to_cluster() {
             echo -e "${BLUE}Checking cluster status on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
             if check_remote_node_cluster_status "$TARGET_HOSTNAME"; then
                 existing_cluster=true
-                echo -e "${GREEN}Found an existing cluster on $TARGET_HOSTNAME. Joining the cluster...${RESET}"
                 local LOCAL_TAILSCALE_IP=$(tailscale ip -4)
-                
-                # Install expect if not available
-                if ! command -v expect &>/dev/null; then
-                    echo -e "${YELLOW}Installing expect package for automated password entry...${RESET}"
-                    apt update && apt install -y expect
-                fi
-
                 local target_fingerprint=$(get_pve_certificate_fingerprint "$TARGET_HOSTNAME")
+
+                echo -e "${GREEN}Found an existing cluster on $TARGET_HOSTNAME. Joining the cluster...${RESET}"
 
                 # Prompt for root password of the remote node
                 echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:${RESET}"
