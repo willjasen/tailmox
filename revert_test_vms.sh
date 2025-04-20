@@ -82,8 +82,6 @@ function revert_vms_to_snapshot() {
     done
 }
 
+# Run the functions
 stop_vms 10000 10001
 revert_vms_to_snapshot 10000 10001
-
-# Example usage of revert_vms_to_snapshot (uncomment and modify as needed)
-# revert_vms_to_snapshot "clean-state" 10000 10001
