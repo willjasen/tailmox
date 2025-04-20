@@ -188,14 +188,14 @@ function test_guest_agent() {
         # Try to ping the guest agent
         local attempt=1
         while [ "$attempt" -le "$max_attempts" ]; do
-            echo -e "${BLUE}Attempt $attempt/$max_attempts: Checking guest agent...${RESET}"
+            echo -e "${BLUE}Attempt $attempt/$max_attempts: Checking guest agent on ${vm_id}...${RESET}"
             
             # Use qm agent command to check if agent is responsive
             if qm agent "$vm_id" ping &>/dev/null; then
                 echo -e "${GREEN}Guest agent on VM $vm_id is responsive!${RESET}"
                 return 0
             else
-                echo -e "${PURPLE}Guest agent not responsive yet. Waiting ${wait_seconds}s...${RESET}"
+                echo -e "${PURPLE}Guest agent on ${vm_id} not responsive yet. Waiting ${wait_seconds}s...${RESET}"
                 sleep "$wait_seconds"
             fi
             
