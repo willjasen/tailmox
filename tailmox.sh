@@ -369,7 +369,7 @@ function add_local_node_to_cluster() {
                 echo -e "${GREEN}Found an existing cluster on $TARGET_HOSTNAME. Joining the cluster...${RESET}"
 
                 # Prompt for root password of the remote node
-                echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:"
+                echo -e "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:${RESET}"
                 ROOT_PASSWORD=proxmox1
                 
                  # Use expect to handle the password prompt with proper authentication
@@ -413,7 +413,7 @@ function add_local_node_to_cluster() {
         done
 
         if ! $existing_cluster; then
-            echo -e "${BLUE}No existing cluster found amongst peers.${RESET}"
+            echo -e "${BLUE}No existing cluster found amongst any peers.${RESET}"
             echo -e "${YELLOW}Do you want to create a cluster on this node?${RESET}"
             read -p "Enter 'y' to create a new cluster or 'n' to exit: " choice
             if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
