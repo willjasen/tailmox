@@ -142,26 +142,3 @@ require_hostnames_in_cluster() {
     done
 }
 require_hostnames_in_cluster
-
-
-# # Cluster configuration - initialize or join based on role.
-# if [ "$ROLE" == "master" ]; then
-#     echo "Initializing Proxmox cluster on master host..."
-#     # Create a new Proxmox cluster. Adjust cluster name as needed.
-#     pvecm create tailmox_cluster
-#     if [ $? -ne 0 ]; then
-#         echo "Failed to create cluster."
-#         exit 1
-#     fi
-#     echo "Cluster created successfully."
-# else
-#     echo "Joining Proxmox cluster as slave..."
-#     echo "Using master DNS: $MASTER_DNS"
-#     # Join the existing cluster using the provided master DNS name and advertise the Tailscale IP as the local link.
-#     pvecm add "$MASTER_DNS" --link0 "$TAILSCALE_IP"
-#     if [ $? -ne 0 ]; then
-#         echo "Failed to join the cluster."
-#         exit 1
-#     fi
-#     echo "Successfully joined the cluster."
-# fi
