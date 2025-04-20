@@ -166,7 +166,56 @@ function revert_vms_to_snapshot() {
     done
 }
 
+# Function to test if a VM's guest agent is working
+function test_guest_agent() {
+    local vm_id=$1
+    local max_attempts=$2
+    local wait_seconds=$3
+    
+    # Default values if not provided
+    max_attempts=${max_attempts:-30}
+    wait_seconds=${wait_seconds:-10}
+    
+    echo -e "${YELLOW}Testing guest agent for VM $vm_id (max $max_attempts attempts, ${wait_seconds}s interval)...${RESET}"
+    
+    # Check if VM exists and is running
+    if qm status "$vm_id" &>/dev/null; then
+        local status=$(qm status "$vm_id" | awk '{print $2}')
+        if [ "$status" != "running" ]; then
+            echo -e "${RED}VM $vm_id is not running (status: $status). Cannot test guest agent.${RESET}"
+            return 1
+        fi
+        
+        # Try to ping the guest agent
+        local attempt=1
+        while [ "$attempt" -le "$max_attempts" ]; do
+            echo -e "${BLUE}Attempt $attempt/$max_attempts: Checking guest agent...${RESET}"
+            
+            # Use qm agent command to check if agent is responsive
+            if qm agent "$vm_id" ping &>/dev/null; then
+                echo -e "${GREEN}Guest agent on VM $vm_id is responsive!${RESET}"
+                return 0
+            else
+                echo -e "${PURPLE}Guest agent not responsive yet. Waiting ${wait_seconds}s...${RESET}"
+                sleep "$wait_seconds"
+            fi
+            
+            attempt=$((attempt + 1))
+        done
+        
+        echo -e "${RED}Guest agent on VM $vm_id failed to respond after $max_attempts attempts.${RESET}"
+        return 1
+    else
+        echo -e "${RED}VM with ID $vm_id does not exist.${RESET}"
+        return 1
+    fi
+}
+
 # Run the functions
 stop_vms 10000 10001
 revert_vms_to_snapshot 10000 10001
 start_vms 10000 10001
+
+# Example of using the guest agent test function (uncomment to use)
+test_guest_agent 10000 20 5   # Test VM 10000 with 20 attempts, 5s interval
+test_guest_agent 10001        # Test VM 10001 with default settings
