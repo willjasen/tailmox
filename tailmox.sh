@@ -227,7 +227,7 @@ function check_udp_port_5405() {
         echo -e "${BLUE}Checking UDP port 5405 on $peer_hostname ($peer_ip)...${RESET}"
         
         # For UDP, we'll use nc with -u flag and a short timeout
-        if ! timeout 2 bash -c "echo -n > /dev/udp/$peer_ip/5405" 2>/dev/null; then
+        if ! timeout 2 bash -c "echo -n > /dev/udp/$peer_hostname/5405" 2>/dev/null; then
             echo -e "${RED}UDP port 5405 is not available on $peer_hostname ($peer_ip).${RESET}"
             peer_unavailable=true
         else
