@@ -33,7 +33,7 @@ function install_dependencies() {
         # echo -e "${GREEN}expect is already installed.${RESET}"
         :
     fi
-    echo -e "${GREEN}All dependencies are installed.${RESET}"
+    # echo -e "${GREEN}All dependencies are installed.${RESET}"
 }
 
 # Install Tailscale if it is not already installed
