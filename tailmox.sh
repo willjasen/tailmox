@@ -68,7 +68,10 @@ function start_tailscale() {
         TAILSCALE_IP=$(tailscale ip -4)
     done
 
+    TAILSCALE_DNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')
     echo -e "${GREEN}This host's Tailscale IPv4 address: $TAILSCALE_IP ${RESET}"
+    echo -e "${GREEN}This host's Tailscale MagicDNS name: $TAILSCALE_DNS_NAME ${RESET}"
+    
 }
 
 # Check if all peers with the "tailmox" tag are online
@@ -442,5 +445,3 @@ if ! check_local_node_cluster_status; then
 fi
 
 echo -e "${GREEN}The script has exited successfully!${RESET}"
-
-### This version works!
