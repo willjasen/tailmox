@@ -106,7 +106,7 @@ function start_tailscale() {
 
 # Run Tailscale certificate services
 function run_tailscale_cert_services() {
-    git clone https://github.com/willjasen/tailscale-cert-services /opt/tailscale-cert-services;
+    git clone --quiet https://github.com/willjasen/tailscale-cert-services /opt/tailscale-cert-services;
     cd /opt/tailscale-cert-services;
     git -c advice.detachedHead=false checkout tags/v1.0.0
     ./proxmox-cert.sh;
