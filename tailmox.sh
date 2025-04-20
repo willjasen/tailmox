@@ -54,7 +54,7 @@ function install_tailscale() {
 # Bring up Tailscale
 function start_tailscale() {
     echo -e "${GREEN}Starting Tailscale with --advertise-tags 'tag:tailmox'...${RESET}"
-    tailscale up --advertise-tags "tag:tailmox" 2>&1
+    tailscale up --advertise-tags "tag:tailmox" > /dev/null 2>&1
     if [ $? -ne 0 ]; then
         echo -e "${RED}Failed to start Tailscale.${RESET}"
         exit 1
