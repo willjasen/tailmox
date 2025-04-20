@@ -66,7 +66,7 @@ function revert_vms_to_snapshot() {
                 echo -e "${BLUE}Reverting VM $vm_id to snapshot '$snapname'...${RESET}"
                 
                 # Roll back to the snapshot
-                qm rollback "$vm_id" "$snapname"
+                qm rollback $vm_id $snapname
                 
                 if [ $? -eq 0 ]; then
                     echo -e "${GREEN}Successfully reverted VM $vm_id to snapshot '$snapname'.${RESET}"
