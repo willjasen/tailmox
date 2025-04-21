@@ -23,7 +23,7 @@ Tailmox also uses the project [tailscale-cert-services](https://github.com/willj
 
 ### 😮 Controversy 😮
 
-Many, many people will expend a lot of effort and noise to proclaim either that this architecture is impossible and will never work. It is often cited that corosync requires a super extra-low amount of latency in order to work properly. While corosync is latency sensitive, there is some freedom within that constraint. My experience with issues clustering in this way has been very minimal, but I am only me, with a handful of Proxmox hosts in a case study of one.
+Many, many people will expend a lot of effort and noise to proclaim that this architecture is impossible and will never work. It is often cited that corosync requires a super extra-low amount of latency in order to work properly. While corosync is latency sensitive, there is some freedom within that constraint. My experience with issues clustering in this way has been very minimal, but I am only me, with a handful of Proxmox hosts in a case study of one.
 
 ---
 
@@ -76,7 +76,7 @@ In order to make the Tailscale functions easier to handle, `tailmox.sh` accepts 
 
 ### 🧪 Testing 🧪
 
-This project has been tested to successfully join a cluster of three Proxmox v8 hosts together into a cluster via Tailscale. It has been tested up to the point of achieving this goal and not further. It is possible that further testing with other features related to clustering (like ZFS replication) may not work, though bugs can be patched appropriately when known.
+This project has been tested to successfully join a cluster of three Proxmox v8 hosts together into a cluster via Tailscale. It has been tested up to the point of achieving this goal and not further. It is possible that further testing with other features related to clustering (like high availability and ZFS replication) may not work, though bugs can be patched appropriately when known.
 
 `revert_test_vms.sh` is used to revert VMs installed with Proxmox to a state before the `tailmox.sh` script has been first run and erase any clustering processes and data within those VMs, to quickly restore to a state in which the `tailmox.sh` script can be tried again.
 
