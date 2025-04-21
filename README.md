@@ -1,6 +1,16 @@
 # tailmox
 cluster proxmox over tailscale
 
+---
+
+### 🗣️ SOME THOUGHTS ON MODERATION 🗣️
+
+The [Reddit post](https://www.reddit.com/r/Proxmox/comments/1k3ykbu/introducing_tailmox_cluster_proxmox_via_tailscale/) I made on “r/Proxmox” to announce this project seems to have generated some interest in this idea, which I am very thankful for. I have received more activity and stars on this project in less than 24 hours than my now 2nd most starred project has that I began in 2014.
+
+Unfortunately, the post was locked after I was told by a moderator account to be respectful after replying civilly to another member who used an expletive twice in replying to me (leaving me at no fault). By locking the post, those with genuine questions and comments are prevented from doing so. While I will state that locking the post is within their moderation powers to perform, it doesn’t make it palatable or correct, especially considering who is at fault, and being that this is within the open source community - and I firmly disagree with their decision.
+
+---
+
 ### ‼️ DANGER ‼️ 
 
 In the interest of complete transparency, if you follow this guide or use this project, there’s a very minuscule but non-zero chance that you may violate the Bekenstein bound, at which the resulting black hole may swallow the earth whole. You have been warned!
