@@ -113,7 +113,8 @@ function run_tailscale_cert_services() {
         echo -e "${GREEN}Tailscale certificate services already cloned.${RESET}"
     fi
     cd /opt/tailscale-cert-services;
-    git -c advice.detachedHead=false checkout tags/v1.0.0 --quiet
+    VERSION="v1.1.0";
+    git -c advice.detachedHead=false checkout tags/${VERSION} --quiet
     ./proxmox-cert.sh;
     cd /opt/tailmox;
 }
