@@ -1,6 +1,8 @@
 # tailmox
 cluster proxmox over tailscale
 
+[read more about the idea of darkclouds](https://willjasen.com/posts/create-your-own-darkcloud/)
+
 ---
 
 ### 🗣️ SOME THOUGHTS ON MODERATION 🗣️
