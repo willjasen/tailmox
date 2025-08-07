@@ -38,6 +38,16 @@ function check_if_supported_proxmox_is_installed() {
     fi
 }
 
+# Check if this script is being run from the correct directory
+function check_script_directory() {
+    local script_dir=$(dirname "$(realpath "$0")")
+    if [[ "$script_dir" != *"/opt/tailmox"* ]]; then
+        echo -e "${RED}This script must be run from the '/opt/tailmox' directory.${RESET}"
+        exit 1
+    fi
+    echo -e "${GREEN}Running from the correct directory: $script_dir${RESET}"
+}
+
 # Install dependencies
 function install_dependencies() {
     echo -e "${YELLOW}Checking for required dependencies...${RESET}"
@@ -460,6 +470,11 @@ function add_local_node_to_cluster() {
 
 if ! check_if_supported_proxmox_is_installed; then
     echo -e "${RED}Proxmox VE 8.x or 9.x is required. Exiting...${RESET}"
+    exit 1
+fi
+
+if ! check_script_directory; then
+    echo -e "${RED}This script must be run from the '/opt/tailmox' directory. Exiting...${RESET}"
     exit 1
 fi
 
