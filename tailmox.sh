@@ -1,6 +1,10 @@
 #!/bin/bash
 # filepath: ./tailmox.sh
 
+###
+### This is the main script for installing and configuring Tailmox.
+###
+
 ###############################################################################
 # Tailmox script
 #
@@ -20,10 +24,6 @@
 #   - Proxmox VE 8.x or 9.x
 #   - Internet access for package installation and Tailscale login
 ###############################################################################
-
-###
-### This is the main script for installing and configuring Tailmox.
-###
 
 # Define color variables
 YELLOW="\e[33m"
