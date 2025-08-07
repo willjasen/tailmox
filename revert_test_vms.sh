@@ -4,6 +4,17 @@
 ###
 ### This script is used for testing purposes only.
 ### When testing, this script can stop, revert to a snapshot, then start the Proxmox VMs being tested with.
+### It can also delete all Tailscale devices with the tag "tailmox".
+###
+###
+### Usage:
+###   ./revert_test_vms.sh [--api-key <TAILSCALE_API_KEY>]
+###
+### Parameters:
+###   --api-key <TAILSCALE_API_KEY>   (Optional) Tailscale API key used to delete devices tagged with "tailmox".
+###
+### Example:
+###   ./revert_test_vms.sh --api-key tskey-xxxxxxxxxxxxxxxxxxxxxx
 ###
 
 # Define color codes for better output
