@@ -139,6 +139,13 @@ function check_all_peers_online() {
         echo -e "${YELLOW}No tailmox peers were found.${RESET}"
         return 1
     fi
+
+    # If only one peer is found, allow script to proceed
+    local peer_count=$(echo "$peers_data" | jq -s 'length')
+    if [ "$peer_count" -eq 1 ]; then
+        echo -e "${GREEN}Only one tailmox peer found. Proceeding...${RESET}"
+        return 0
+    fi
     
     # Check each peer's status
     echo "$peers_data" | jq -c '.HostName + ":" + (.Online|tostring)' | while read -r peer_status; do
