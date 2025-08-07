@@ -1,6 +1,26 @@
 #!/bin/bash
 # filepath: ./tailmox.sh
 
+###############################################################################
+# Tailmox script
+#
+# Usage:
+#   ./tailmox.sh [--staging] [--auth-key <TAILSCALE_AUTH_KEY>]
+#
+# Options:
+#   --staging           Run in staging mode (setup Tailscale and certs only)
+#   --auth-key <key>    Use the provided Tailscale auth key for login
+#
+# Description:
+#   This script installs dependencies, sets up Tailscale, configures certificates,
+#   checks peer connectivity, and helps create or join a Proxmox cluster over Tailscale.
+#
+# Requirements:
+#   - Must be run as root from /opt/tailmox
+#   - Proxmox VE 8.x or 9.x
+#   - Internet access for package installation and Tailscale login
+###############################################################################
+
 ###
 ### This is the main script for installing and configuring Tailmox.
 ###
