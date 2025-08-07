@@ -472,6 +472,16 @@ function add_local_node_to_cluster() {
 #### ---MAIN SCRIPT---
 ####
 
+# Parse the script parameters
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --staging) STAGING="true"; echo "Staging mode enabled."; ;;
+        --auth-key) AUTH_KEY="$2"; echo "Using auth key for Tailscale..."; shift; ;;
+        *) echo "Unknown parameter: $1"; exit 1 ;;
+    esac
+    shift
+done
+
 if ! check_if_supported_proxmox_is_installed; then
     echo -e "${RED}Proxmox VE 8.x or 9.x is required. Exiting...${RESET}"
     exit 1
@@ -486,19 +496,17 @@ install_dependencies
 install_tailscale
 
 # Start Tailscale; use auth key if supplied
-AUTH_KEY=""
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --auth-key) AUTH_KEY="$2"; echo "Using auth key for Tailscale..."; shift; ;;
-        *) echo "Unknown parameter: $1"; exit 1 ;;
-    esac
-    shift
-done
 start_tailscale $AUTH_KEY
 
 ### Now that Tailscale is running...
 
 run_tailscale_cert_services
+
+# Exit early if staging mode is enabled
+if [[ "$STAGING" == "true" ]]; then
+    echo -e "${YELLOW}Staging mode enabled. Exiting after Tailscale and certificate setup.${RESET}"
+    exit 0
+fi
 
 # Get all nodes with the "tailmox" tag as a JSON array
 TAILSCALE_IP=$(tailscale ip -4)
