@@ -14,8 +14,8 @@ RESET="\e[0m"
 ### 
 
 # Check if Proxmox is installed
-function check_proxmox_8_installed() {
-    echo -e "${YELLOW}Checking if Proxmox is installed...${RESET}"
+function check_if_supported_proxmox_is_installed() {
+    echo -e "${YELLOW}Checking if Proxmox v8 or 9 is installed...${RESET}"
     
     # Check for common Proxmox binaries and version file
     if [[ ! -f /usr/bin/pveversion ]]; then
@@ -29,8 +29,11 @@ function check_proxmox_8_installed() {
     if [[ "$pve_version" == "8" ]]; then
         echo -e "${GREEN}Proxmox VE 8.x detected.${RESET}"
         return 0
+    elif [[ "$pve_version" == "9" ]]; then
+        echo -e "${GREEN}Proxmox VE 9.x detected.${RESET}"
+        return 0
     else
-        echo -e "${RED}Proxmox VE 8.x is required. Found version: $pve_version${RESET}"
+        echo -e "${RED}Proxmox VE 8.x or 9.x is required. Found version: $pve_version${RESET}"
         return 1
     fi
 }
@@ -455,8 +458,8 @@ function add_local_node_to_cluster() {
 #### ---MAIN SCRIPT---
 ####
 
-if ! check_proxmox_8_installed; then
-    echo -e "${RED}Proxmox VE 8.x is required. Exiting...${RESET}"
+if ! check_if_supported_proxmox_is_installed; then
+    echo -e "${RED}Proxmox VE 8.x or 9.x is required. Exiting...${RESET}"
     exit 1
 fi
 
