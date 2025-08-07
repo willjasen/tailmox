@@ -84,6 +84,8 @@ Proxmox clustering requires TCP 22, TCP 8006, and UDP 5405 through 5412. Using t
 
 In order to make the Tailscale functions easier to handle, `tailmox.sh` accepts the "--auth-key" parameter, followed by a Tailscale auth key, which can be generated via their [Keys](https://login.tailscale.com/admin/settings/keys) page. It is recommended that the key generated is reusable.
 
+During the running of the script, if there are existing hosts within the tailmox cluster, it is likely to ask for the password of one of the remote hosts in order to properly join the Proxmox cluster.
+
 ---
 
 ### 🧪 Testing 🧪
