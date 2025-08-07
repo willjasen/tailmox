@@ -495,8 +495,8 @@ function add_local_node_to_cluster() {
 # Parse the script parameters
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --staging) STAGING="true"; echo "${YELLOW}Staging mode enabled.${RESET}"; ;;
-        --auth-key) AUTH_KEY="$2"; echo "${YELLOW}Using auth key for Tailscale...${RESET}"; shift; ;;
+        --staging) STAGING="true"; echo -e "${YELLOW}Staging mode enabled.${RESET}"; ;;
+        --auth-key) AUTH_KEY="$2"; echo -e "${YELLOW}Using auth key for Tailscale...${RESET}"; shift; ;;
         *) echo "${RED}Unknown parameter: $1${RESET}"; exit 1 ;;
     esac
     shift
