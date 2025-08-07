@@ -272,10 +272,13 @@ function test_guest_agents() {
     fi
 }
 
-# Run the functions
-stop_vms 10000 10001 10002
-revert_vms_to_snapshot 10000 10001 10002
-start_vms 10000 10001 10002
-test_guest_agents 10000 10001 10002
+# Specify the VM IDs to manage
+vm_ids=(10000 10001 10002)
+
+# Run the reverting functions
+stop_vms "${vm_ids[@]}"
+revert_vms_to_snapshot "${vm_ids[@]}"
+start_vms "${vm_ids[@]}"
+test_guest_agents "${vm_ids[@]}"
 
 echo -e "${GREEN}The script has completed successfully!${RESET}"
