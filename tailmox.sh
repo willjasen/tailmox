@@ -15,7 +15,7 @@ RESET="\e[0m"
 
 # Check if Proxmox is installed
 function check_if_supported_proxmox_is_installed() {
-    echo -e "${YELLOW}Checking if Proxmox v8 or 9 is installed...${RESET}"
+    echo -e "${YELLOW}Checking if Proxmox v8 or v9 is installed...${RESET}"
     
     # Check for common Proxmox binaries and version file
     if [[ ! -f /usr/bin/pveversion ]]; then
