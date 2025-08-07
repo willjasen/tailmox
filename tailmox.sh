@@ -1,6 +1,10 @@
 #!/bin/bash
 # filepath: ./tailmox.sh
 
+###
+### This is the main script for installing and configuring Tailmox.
+###
+
 # Define color variables
 YELLOW="\e[33m"
 RED="\e[31m"
