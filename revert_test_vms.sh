@@ -273,7 +273,7 @@ function test_guest_agents() {
 }
 
 # Specify the VM IDs to manage
-vm_ids=(10000 10001 10002)
+vm_ids=(10010 10011 10012)
 
 # Run the reverting functions
 stop_vms "${vm_ids[@]}"
