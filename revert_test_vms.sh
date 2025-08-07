@@ -14,6 +14,48 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 RESET='\033[0m'
 
+# Allow passing Tailscale API key as a parameter
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --api-key) TAILSCALE_API_KEY="$2"; echo "Using API key for Tailscale..."; shift; ;;
+        *) echo "Unknown parameter: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Function to delete all Tailscale devices with the tag "tailmox"
+function delete_tailscale_tagged_devices() {
+    if [ -z "$TAILSCALE_API_KEY" ]; then
+        echo -e "${RED}TAILSCALE_API_KEY is not set. Skipping Tailscale device deletion.${RESET}"
+        return 1
+    fi
+
+    echo -e "${YELLOW}Deleting all Tailscale devices with tag 'tailmox'...${RESET}"
+
+    # Get all devices with the tag "tailmox"
+    local devices_json
+    devices_json=$(curl -s -u "$TAILSCALE_API_KEY:" \
+        "https://api.tailscale.com/api/v2/tailnet/-/devices")
+
+    # Extract device IDs with the tag "tag:tailmox"
+    local device_ids
+    device_ids=$(echo "$devices_json" | jq -r '.devices[] | select(.tags[]? == "tag:tailmox") | .id')
+
+    if [ -z "$device_ids" ]; then
+        echo -e "${PURPLE}No devices found with tag 'tailmox'.${RESET}"
+        return 0
+    fi
+
+    # Delete each device
+    for id in $device_ids; do
+        echo -e "${BLUE}Deleting device $id...${RESET}"
+        curl -s -X DELETE -u "$TAILSCALE_API_KEY:" \
+            "https://api.tailscale.com/api/v2/device/$id"
+    done
+
+    echo -e "${GREEN}All tagged Tailscale devices deleted.${RESET}"
+}
+
 # Function to stop a single VM
 function stop_single_vm() {
     local vm_id=$1
@@ -278,6 +320,10 @@ vm_ids=(10010 10011 10012)
 # Run the reverting functions
 stop_vms "${vm_ids[@]}"
 revert_vms_to_snapshot "${vm_ids[@]}"
+
+# Delete all Tailscale hosts with tag "tailmox" before starting VMs
+delete_tailscale_tagged_devices
+
 start_vms "${vm_ids[@]}"
 test_guest_agents "${vm_ids[@]}"
 
