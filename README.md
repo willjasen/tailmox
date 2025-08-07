@@ -21,7 +21,7 @@ In the interest of complete transparency, if you follow this guide or use this p
 
 ### ⚠️ WARNING ⚠️
 - This project is for development, testing, and research purposes only. This guide comes with no guarantee or warranty that these steps will work within your environment. Should you attempt within a production environment, any negative outcomes are not the fault of this guide or its author.
-- It is recommended to use this script within a testing or development environment on freshly installed Proxmox v8 hosts. Testing has not been performed on hosts with further configuration and running this project on said hosts may break them.
+- It is recommended to use this script within a testing or development environment on freshly installed Proxmox or v9 hosts. Testing has not been performed on hosts with further configuration and running this project on said hosts may break them.
 
 ---
 
@@ -90,7 +90,7 @@ During the running of the script, if there are existing hosts within the tailmox
 
 ### 🧪 Testing 🧪
 
-This project has been tested to successfully join a cluster of three Proxmox v8 hosts together into a cluster via Tailscale. It has been tested up to the point of achieving this goal and not further. It is possible that further testing with other features related to clustering (like high availability and ZFS replication) may not work, though bugs can be patched appropriately when known.
+This project has been tested to successfully join a cluster of three Proxmox v8 and v9 hosts together into a cluster via Tailscale. It has been tested up to the point of achieving this goal and not further. It is possible that further testing with other features related to clustering (like high availability and ZFS replication) may not work, though bugs can be patched appropriately when known.
 
 `revert_test_vms.sh` is used to revert VMs installed with Proxmox to a state before the `tailmox.sh` script has been first run and erase any clustering processes and data within those VMs, to quickly restore to a state in which the `tailmox.sh` script can be tried again.
 
@@ -99,7 +99,7 @@ This project has been tested to successfully join a cluster of three Proxmox v8 
 ### 🤓 The Scripts 🤓
 
 `tailmox.sh` -  this is the main script of the project
-- checks that the host is Proxmox v8, installs dependencies and Tailscale, then starts Tailscale
+- checks that the host is Proxmox v8 or v9, installs dependencies and Tailscale, then starts Tailscale
 - once Tailscale is running, the host will generate a certificate from Tailscale (to be used with the web interface/API)
 - it will then retrieve other Tailscale machines with tag of "tailmox", then check if it can reach them via ping (ICMP) and TCP 8006 (HTTPS for Proxmox); if these checks do not pass, the script will exit as these are required for Proxmox clustering
 - after the checks pass, the host will check if it is in a cluster; if it is not, it will check the other Tailscale machines with the tag of "tailmox" to see if they are part of a cluster; when it finds a matching host in a cluster, it will then attempt to join to the cluster using it; if another host isn't found, then a new cluster will be prompted to be created
