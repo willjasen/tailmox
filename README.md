@@ -13,7 +13,7 @@ In the interest of complete transparency, if you follow this guide or use this p
 
 ### ⚠️ WARNING ⚠️
 - This project is for development, testing, and research purposes only. This guide comes with no guarantee or warranty that these steps will work within your environment. Should you attempt within a production environment, any negative outcomes are not the fault of this guide or its author.
-- It is recommended to use this script within a testing or development environment on freshly installed Proxmox or v9 hosts. Testing has not been performed on hosts with further configuration and running this project on said hosts may break them.
+- It is recommended to use this script within a testing or development environment on freshly installed Proxmox v8 or v9 hosts. Testing has not been performed on hosts with further configuration and running this project on said hosts may break them.
 
 ---
 
