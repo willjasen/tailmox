@@ -5,14 +5,6 @@ cluster proxmox over tailscale
 
 ---
 
-### 🗣️ SOME THOUGHTS ON MODERATION 🗣️
-
-The [Reddit post](https://www.reddit.com/r/Proxmox/comments/1k3ykbu/introducing_tailmox_cluster_proxmox_via_tailscale/) I made on “r/Proxmox” to announce this project seems to have generated some interest in this idea, which I am very thankful for. I have received more activity and stars on this project in less than 24 hours than my now 2nd most starred project has that I began in 2014.
-
-Unfortunately, the post was locked after I was told by a moderator account to be respectful after replying civilly to another member who used an expletive twice in replying to me (leaving me at no fault, with the same said member poking fun at me in a separate post by another user from the previous day). By locking the post, those with genuine questions and comments are prevented from doing so. While I will state that locking the post is within their moderation powers to perform, it doesn’t make it palatable or correct, especially considering who is at fault, and being that this is within the open source community - and I fervently and firmly disagree with their decision.
-
----
-
 ### ‼️ DANGER ‼️ 
 
 In the interest of complete transparency, if you follow this guide or use this project, there’s a very minuscule but non-zero chance that you may violate the Bekenstein bound, at which the resulting black hole may swallow the earth whole. You have been warned!
@@ -21,7 +13,7 @@ In the interest of complete transparency, if you follow this guide or use this p
 
 ### ⚠️ WARNING ⚠️
 - This project is for development, testing, and research purposes only. This guide comes with no guarantee or warranty that these steps will work within your environment. Should you attempt within a production environment, any negative outcomes are not the fault of this guide or its author.
-- It is recommended to use this script within a testing or development environment on freshly installed Proxmox v8 hosts. Testing has not been performed on hosts with further configuration and running this project on said hosts may break them.
+- It is recommended to use this script within a testing or development environment on freshly installed Proxmox or v9 hosts. Testing has not been performed on hosts with further configuration and running this project on said hosts may break them.
 
 ---
 
@@ -84,11 +76,15 @@ Proxmox clustering requires TCP 22, TCP 8006, and UDP 5405 through 5412. Using t
 
 In order to make the Tailscale functions easier to handle, `tailmox.sh` accepts the "--auth-key" parameter, followed by a Tailscale auth key, which can be generated via their [Keys](https://login.tailscale.com/admin/settings/keys) page. It is recommended that the key generated is reusable.
 
+During the running of the script, if there are existing hosts within the tailmox cluster, it is likely to ask for the password of one of the remote hosts in order to properly join the Proxmox cluster.
+
 ---
 
 ### 🧪 Testing 🧪
 
-This project has been tested to successfully join a cluster of three Proxmox v8 hosts together into a cluster via Tailscale. It has been tested up to the point of achieving this goal and not further. It is possible that further testing with other features related to clustering (like high availability and ZFS replication) may not work, though bugs can be patched appropriately when known.
+This project has been tested to successfully join a cluster of three Proxmox v8 and v9 hosts together into a cluster via Tailscale. It has been tested up to the point of achieving this goal and not further. It is possible that further testing with other features related to clustering (like high availability and ZFS replication) may not work, though bugs can be patched appropriately when known.
+
+If planning to run `tailmox.sh` many times in a short period, it is recommended that staging is performed first. By supplying the "--staging" parameter, `tailmox.sh` will install Tailscale and retrieve the Tailscale certificate and then stop. The purpose of staging is to prevent many requests to Tailscale for the same certificate in rapid succession. If staging is not performed, it is possible that the step to setup the certificate will take a very long time, which is not optimal when running many tests centered around setting up the Proxmox cluster.
 
 `revert_test_vms.sh` is used to revert VMs installed with Proxmox to a state before the `tailmox.sh` script has been first run and erase any clustering processes and data within those VMs, to quickly restore to a state in which the `tailmox.sh` script can be tried again.
 
@@ -97,7 +93,7 @@ This project has been tested to successfully join a cluster of three Proxmox v8 
 ### 🤓 The Scripts 🤓
 
 `tailmox.sh` -  this is the main script of the project
-- checks that the host is Proxmox v8, installs dependencies and Tailscale, then starts Tailscale
+- checks that the host is Proxmox v8 or v9, installs dependencies and Tailscale, then starts Tailscale
 - once Tailscale is running, the host will generate a certificate from Tailscale (to be used with the web interface/API)
 - it will then retrieve other Tailscale machines with tag of "tailmox", then check if it can reach them via ping (ICMP) and TCP 8006 (HTTPS for Proxmox); if these checks do not pass, the script will exit as these are required for Proxmox clustering
 - after the checks pass, the host will check if it is in a cluster; if it is not, it will check the other Tailscale machines with the tag of "tailmox" to see if they are part of a cluster; when it finds a matching host in a cluster, it will then attempt to join to the cluster using it; if another host isn't found, then a new cluster will be prompted to be created
@@ -189,3 +185,12 @@ You may find in a large cluster (5 or more members) that features like the web i
 
 ---
 *END OF GUIDE*
+
+---
+---
+
+### 🗣️ SOME THOUGHTS ON MODERATION 🗣️
+
+The [Reddit post](https://www.reddit.com/r/Proxmox/comments/1k3ykbu/introducing_tailmox_cluster_proxmox_via_tailscale/) I made on “r/Proxmox” to announce this project seems to have generated some interest in this idea, which I am very thankful for. I have received more activity and stars on this project in less than 24 hours than my now 2nd most starred project has that I began in 2014.
+
+Unfortunately, the post was locked after I was told by a moderator account to be respectful after replying civilly to another member who used an expletive twice in replying to me (leaving me at no fault, with the same said member poking fun at me in a separate post by another user from the previous day). By locking the post, those with genuine questions and comments are prevented from doing so. While I will state that locking the post is within their moderation powers to perform, it doesn’t make it palatable or correct, especially considering who is at fault, and being that this is within the open source community - and I fervently and firmly disagree with their decision.
