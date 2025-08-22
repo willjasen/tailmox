@@ -158,7 +158,7 @@ function check_all_peers_online() {
     # Get the peers data
     local peers_data=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox")))')
     
-    # If no peers are found, return 1
+    # If no peers are found, continue anyways
     if [ -z "$peers_data" ]; then
         echo -e "${YELLOW}No tailmox peers were found, but proceeding anyways.${RESET}"
         return 0
@@ -285,8 +285,17 @@ function report_peer_latency() {
 function are_hosts_tcp_port_8006_reachable() {
     echo -e "${YELLOW}Checking if TCP port 8006 is available on all nodes...${RESET}"
 
+    # Get the peers data
+    local peers_data=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox")))')
+    
+    # If no peers are found, continue anyways
+    if [ -z "$peers_data" ]; then
+        echo -e "${YELLOW}No tailmox peers were found, but proceeding anyways.${RESET}"
+        return 0
+    fi
+
     # Iterate through all peers
-    echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
+    echo "$peers_data" | jq -c '.[]' | while read -r peer; do
         local peer_ip=$(echo "$peer" | jq -r '.ip')
         local peer_hostname=$(echo "$peer" | jq -r '.hostname')
 
@@ -304,9 +313,18 @@ function are_hosts_tcp_port_8006_reachable() {
 function check_udp_ports_5405_to_5412() {
     echo -e "${YELLOW}Checking if UDP ports 5405 through 5412 (Corosync) are available on all nodes...${RESET}"
 
+    # Get the peers data
+    local peers_data=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox")))')
+    
+    # If no peers are found, continue anyways
+    if [ -z "$peers_data" ]; then
+        echo -e "${YELLOW}No tailmox peers were found, but proceeding anyways.${RESET}"
+        return 0
+    fi
+    
     # Iterate through all peers
     local peer_unavailable=false
-    echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
+    echo "$peers_data" | jq -c '.[]' | while read -r peer; do
         local peer_ip=$(echo "$peer" | jq -r '.ip')
         local peer_hostname=$(echo "$peer" | jq -r '.hostname')
 
