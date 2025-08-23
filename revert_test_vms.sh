@@ -50,7 +50,7 @@ function delete_tailscale_tagged_devices() {
 
     # Extract device IDs with the tag "tag:tailmox"
     local device_ids
-    device_ids=$(echo "$devices_json" | jq -r '.devices[] | select(.tags != null and (.tags[] == "tag:tailmox")) | .id')
+    device_ids=$(echo "$devices_json" | jq -r '.devices[] | select(.tags != null and (.tags[] == "tag:tailmox")) | .id' 2>/dev/null)
 
     if [ -z "$device_ids" ]; then
         echo -e "${PURPLE}No devices found with tag 'tailmox'.${RESET}"
