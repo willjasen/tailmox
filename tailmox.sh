@@ -1,6 +1,30 @@
 #!/bin/bash
 # filepath: ./tailmox.sh
 
+###
+### This is the main script for installing and configuring Tailmox.
+###
+
+###############################################################################
+# Tailmox script
+#
+# Usage:
+#   ./tailmox.sh [--staging] [--auth-key <TAILSCALE_AUTH_KEY>]
+#
+# Options:
+#   --staging           Run in staging mode (setup Tailscale and certs only)
+#   --auth-key <key>    Use the provided Tailscale auth key for login
+#
+# Description:
+#   This script installs dependencies, sets up Tailscale, configures certificates,
+#   checks peer connectivity, and helps create or join a Proxmox cluster over Tailscale.
+#
+# Requirements:
+#   - Must be run as root from /opt/tailmox
+#   - Proxmox VE 8.x or 9.x
+#   - Internet access for package installation and Tailscale login
+###############################################################################
+
 # Define color variables
 YELLOW="\e[33m"
 RED="\e[31m"
@@ -14,8 +38,8 @@ RESET="\e[0m"
 ### 
 
 # Check if Proxmox is installed
-function check_proxmox_8_installed() {
-    echo -e "${YELLOW}Checking if Proxmox is installed...${RESET}"
+function check_if_supported_proxmox_is_installed() {
+    echo -e "${YELLOW}Checking if Proxmox v8 or v9 is installed...${RESET}"
     
     # Check for common Proxmox binaries and version file
     if [[ ! -f /usr/bin/pveversion ]]; then
@@ -29,33 +53,39 @@ function check_proxmox_8_installed() {
     if [[ "$pve_version" == "8" ]]; then
         echo -e "${GREEN}Proxmox VE 8.x detected.${RESET}"
         return 0
+    elif [[ "$pve_version" == "9" ]]; then
+        echo -e "${GREEN}Proxmox VE 9.x detected.${RESET}"
+        return 0
     else
-        echo -e "${RED}Proxmox VE 8.x is required. Found version: $pve_version${RESET}"
+        echo -e "${RED}Proxmox VE 8.x or 9.x is required. Found version: $pve_version${RESET}"
         return 1
     fi
+}
+
+# Check if this script is being run from the correct directory
+function check_script_directory() {
+    local script_dir=$(dirname "$(realpath "$0")")
+    if [[ "$script_dir" != *"/opt/tailmox"* ]]; then
+        echo -e "${RED}This script must be run from the '/opt/tailmox' directory.${RESET}"
+        exit 1
+    fi
+    echo -e "${GREEN}Running from the correct directory: $script_dir${RESET}"
 }
 
 # Install dependencies
 function install_dependencies() {
     echo -e "${YELLOW}Checking for required dependencies...${RESET}"
-    if ! command -v jq &>/dev/null; then
-        echo -e "${YELLOW}jq not found. Installing...${RESET}"
-        apt update -qq;
-        DEBIAN_FRONTEND=noninteractive apt install jq -y
-    else
-        # echo -e "${GREEN}jq is already installed.${RESET}"
-        :
-    fi
 
-    if ! command -v expect &>/dev/null; then
-        echo -e "${YELLOW}expect not found. Installing...${RESET}"
-        apt update -qq;
-        DEBIAN_FRONTEND=noninteractive apt install expect -y
-    else
-        # echo -e "${GREEN}expect is already installed.${RESET}"
-        :
-    fi
-    # echo -e "${GREEN}All dependencies are installed.${RESET}"
+    local dependencies=(jq expect git)
+    for dep in "${dependencies[@]}"; do
+        if ! command -v "$dep" &>/dev/null; then
+            echo -e "${YELLOW}$dep not found. Installing...${RESET}"
+            apt update -qq;
+            DEBIAN_FRONTEND=noninteractive apt install "$dep" -y
+        else
+            :
+        fi
+    done
 }
 
 # Install Tailscale if it is not already installed
@@ -113,7 +143,8 @@ function run_tailscale_cert_services() {
         echo -e "${GREEN}Tailscale certificate services already cloned.${RESET}"
     fi
     cd /opt/tailscale-cert-services;
-    git -c advice.detachedHead=false checkout tags/v1.0.0 --quiet
+    VERSION="v1.1.1";
+    git -c advice.detachedHead=false checkout tags/${VERSION} --quiet
     ./proxmox-cert.sh;
     cd /opt/tailmox;
 }
@@ -129,8 +160,8 @@ function check_all_peers_online() {
     
     # If no peers are found, return 1
     if [ -z "$peers_data" ]; then
-        echo -e "${YELLOW}No tailmox peers were found.${RESET}"
-        return 1
+        echo -e "${YELLOW}No tailmox peers were found, but proceeding anyways.${RESET}"
+        return 0
     fi
     
     # Check each peer's status
@@ -461,8 +492,23 @@ function add_local_node_to_cluster() {
 #### ---MAIN SCRIPT---
 ####
 
-if ! check_proxmox_8_installed; then
-    echo -e "${RED}Proxmox VE 8.x is required. Exiting...${RESET}"
+# Parse the script parameters
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --staging) STAGING="true"; echo -e "${YELLOW}Staging mode enabled.${RESET}"; ;;
+        --auth-key) AUTH_KEY="$2"; echo -e "${YELLOW}Using auth key for Tailscale...${RESET}"; shift; ;;
+        *) echo "${RED}Unknown parameter: $1${RESET}"; exit 1 ;;
+    esac
+    shift
+done
+
+if ! check_if_supported_proxmox_is_installed; then
+    echo -e "${RED}Proxmox VE 8.x or 9.x is required. Exiting...${RESET}"
+    exit 1
+fi
+
+if ! check_script_directory; then
+    echo -e "${RED}This script must be run from the '/opt/tailmox' directory. Exiting...${RESET}"
     exit 1
 fi
 
@@ -470,19 +516,17 @@ install_dependencies
 install_tailscale
 
 # Start Tailscale; use auth key if supplied
-AUTH_KEY=""
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --auth-key) AUTH_KEY="$2"; echo "Using auth key for Tailscale..."; shift; ;;
-        *) echo "Unknown parameter: $1"; exit 1 ;;
-    esac
-    shift
-done
 start_tailscale $AUTH_KEY
 
 ### Now that Tailscale is running...
 
 run_tailscale_cert_services
+
+# Exit early if staging mode is enabled
+if [[ "$STAGING" == "true" ]]; then
+    echo -e "${YELLOW}Staging mode enabled. Exiting after Tailscale certificate setup.${RESET}"
+    exit 0
+fi
 
 # Get all nodes with the "tailmox" tag as a JSON array
 TAILSCALE_IP=$(tailscale ip -4)
