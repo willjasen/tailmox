@@ -61,21 +61,21 @@ function delete_tailscale_tagged_devices() {
         return 1
     fi
 
-    # Extract device IDs with the tag "tag:tailmox"
-    local device_ids
-    device_ids=$(echo "$devices_json" | jq -r '.devices[] | select(.tags != null and (.tags[] == "tag:tailmox")) | .id') # 2>/dev/null)
+    # Extract device IDs and names with the tag "tag:tailmox"
+    local device_info
+    device_info=$(echo "$devices_json" | jq -r '.devices[] | select(.tags != null and (.tags[] == "tag:tailmox")) | "\(.id) \(.name)"')
 
-    if [ -z "$device_ids" ]; then
+    if [ -z "$device_info" ]; then
         echo -e "${PURPLE}No devices found with tag 'tailmox'.${RESET}"
         return 0
     fi
 
     # Delete each device
-    for id in $device_ids; do
-        echo -e "${BLUE}Deleting device $id...${RESET}"
+    while read -r id name; do
+        echo -e "${BLUE}Deleting device $name...${RESET}"
         curl -s -X DELETE -u "$TAILSCALE_API_KEY:" \
             "https://api.tailscale.com/api/v2/device/$id" > /dev/null
-    done
+    done <<< "$device_info"
 
     echo -e "${GREEN}All tagged Tailscale devices deleted.${RESET}"
 }
