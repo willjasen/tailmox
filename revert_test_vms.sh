@@ -45,8 +45,21 @@ function delete_tailscale_tagged_devices() {
 
     # Get all devices with the tag "tailmox"
     local devices_json
-    devices_json=$(curl -s -u "$TAILSCALE_API_KEY:" \
+    local http_code
+    devices_json=$(curl -s -w "%{http_code}" -u "$TAILSCALE_API_KEY:" \
         "https://api.tailscale.com/api/v2/tailnet/-/devices")
+    http_code="${devices_json: -3}"
+    devices_json="${devices_json:0:${#devices_json}-3}"
+
+    if [ "$http_code" == "401" ] || [ "$http_code" == "403" ]; then
+        echo -e "${RED}Tailscale API key is invalid or unauthorized (HTTP $http_code).${RESET}"
+        return 1
+    fi
+
+    if [ -z "$devices_json" ] || ! echo "$devices_json" | jq empty &>/dev/null; then
+        echo -e "${RED}Failed to fetch devices from Tailscale API or received invalid response.${RESET}"
+        return 1
+    fi
 
     # Extract device IDs with the tag "tag:tailmox"
     local device_ids
