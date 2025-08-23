@@ -74,7 +74,7 @@ function delete_tailscale_tagged_devices() {
     for id in $device_ids; do
         echo -e "${BLUE}Deleting device $id...${RESET}"
         curl -s -X DELETE -u "$TAILSCALE_API_KEY:" \
-            "https://api.tailscale.com/api/v2/device/$id"
+            "https://api.tailscale.com/api/v2/device/$id" > /dev/null
     done
 
     echo -e "${GREEN}All tagged Tailscale devices deleted.${RESET}"
