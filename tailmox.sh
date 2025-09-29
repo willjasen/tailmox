@@ -591,6 +591,7 @@ if ! check_local_node_cluster_status; then
     log_echo "${YELLOW}This node is not part of a cluster. Attempting to create or join a cluster...${RESET}"
 else
     log_echo "${GREEN}This node is already part of a cluster, nothing further to do.${RESET}"
+    log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     exit 1
 fi
 
