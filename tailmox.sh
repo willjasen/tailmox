@@ -605,12 +605,12 @@ if ! check_local_node_cluster_status; then
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
         create_cluster
         log_echo "${GREEN}Cluster created successfully.${RESET}"
+        log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     else
         log_echo "${RED}Exiting without creating a cluster.${RESET}"
+        log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
         exit 1
     fi
 fi
 
-log_echo "${GREEN}The script has exited successfully!${RESET}"
-log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
 ### This version is working when tested with 3 nodes!
