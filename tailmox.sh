@@ -516,6 +516,8 @@ function add_local_node_to_cluster() {
 #### ---MAIN SCRIPT---
 ####
 
+log_echo "${GREEN}--- TAILMOX SCRIPT RUNNING ---${RESET}"
+
 # Parse the script parameters
 while [[ "$#" -gt 0 ]]; do
     case $1 in
