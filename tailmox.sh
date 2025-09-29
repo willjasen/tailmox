@@ -612,5 +612,5 @@ if ! check_local_node_cluster_status; then
 fi
 
 log_echo "${GREEN}The script has exited successfully!${RESET}"
-
+log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
 ### This version is working when tested with 3 nodes!
