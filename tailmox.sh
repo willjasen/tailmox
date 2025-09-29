@@ -34,7 +34,7 @@ PURPLE="\e[35m"
 RESET="\e[0m"
 
 # Define log file
-LOG_DIR="/var/log/tailmox"
+LOG_DIR="/var/log"
 LOG_FILE="$LOG_DIR/tailmox.log"
 
 # Create log directory if it doesn't exist
