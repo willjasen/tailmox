@@ -45,24 +45,37 @@ function delete_tailscale_tagged_devices() {
 
     # Get all devices with the tag "tailmox"
     local devices_json
-    devices_json=$(curl -s -u "$TAILSCALE_API_KEY:" \
+    local http_code
+    devices_json=$(curl -s -w "%{http_code}" -u "$TAILSCALE_API_KEY:" \
         "https://api.tailscale.com/api/v2/tailnet/-/devices")
+    http_code="${devices_json: -3}"
+    devices_json="${devices_json:0:${#devices_json}-3}"
 
-    # Extract device IDs with the tag "tag:tailmox"
-    local device_ids
-    device_ids=$(echo "$devices_json" | jq -r '.devices[] | select(.tags[]? == "tag:tailmox") | .id')
+    if [ "$http_code" == "401" ] || [ "$http_code" == "403" ]; then
+        echo -e "${RED}Tailscale API key is invalid or unauthorized (HTTP $http_code).${RESET}"
+        return 1
+    fi
 
-    if [ -z "$device_ids" ]; then
+    if [ -z "$devices_json" ] || ! echo "$devices_json" | jq empty &>/dev/null; then
+        echo -e "${RED}Failed to fetch devices from Tailscale API or received invalid response.${RESET}"
+        return 1
+    fi
+
+    # Extract device IDs and names with the tag "tag:tailmox"
+    local device_info
+    device_info=$(echo "$devices_json" | jq -r '.devices[] | select(.tags != null and (.tags[] == "tag:tailmox")) | "\(.id) \(.name)"')
+
+    if [ -z "$device_info" ]; then
         echo -e "${PURPLE}No devices found with tag 'tailmox'.${RESET}"
         return 0
     fi
 
     # Delete each device
-    for id in $device_ids; do
-        echo -e "${BLUE}Deleting device $id...${RESET}"
+    while read -r id name; do
+        echo -e "${BLUE}Deleting device $name...${RESET}"
         curl -s -X DELETE -u "$TAILSCALE_API_KEY:" \
-            "https://api.tailscale.com/api/v2/device/$id"
-    done
+            "https://api.tailscale.com/api/v2/device/$id" > /dev/null
+    done <<< "$device_info"
 
     echo -e "${GREEN}All tagged Tailscale devices deleted.${RESET}"
 }

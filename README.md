@@ -70,6 +70,14 @@ Proxmox clustering requires TCP 22, TCP 8006, and UDP 5405 through 5412. Using t
 
 ---
 
+### ⚒️ Installation ⚒️
+
+1. Change to the /opt directory: `cd /opt`
+2. Pull this repo: `git clone https://github.com/willjasen/tailmox`
+2. Change into the install directory: `cd tailmox`
+3. Make sure that the script is executable: `chmod +x tailmox.sh`
+4. Run the script: `./tailmox.sh`
+
 ### 🖥️ Usage 🖥️
 
 `tailmox.sh` can be run without any parameters, but if the host is not logged into Tailscale, then when the script performs `tailscale up`, Tailscale will provide a link to use to login with.
