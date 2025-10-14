@@ -338,10 +338,14 @@ function test_guest_agents() {
     fi
 }
 
+###
+### MAIN SCRIPT ###
+##
+
 # Specify the VM IDs to manage
 vm_ids=(10010 10011 10012)
 
-# Run the reverting functions
+# Revert the VMs back so that they are ready for testing again
 stop_vms "${vm_ids[@]}"
 revert_vms_to_snapshot "${vm_ids[@]}"
 
