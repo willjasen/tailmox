@@ -25,13 +25,8 @@
 #   - Internet access for package installation and Tailscale login
 ###############################################################################
 
-# Define color variables
-YELLOW="\e[33m"
-RED="\e[31m"
-GREEN="\e[32m"
-BLUE="\e[34m"
-PURPLE="\e[35m"
-RESET="\e[0m"
+# Source color definitions
+source "$(dirname "${BASH_SOURCE[0]}")/.colors.sh"
 
 # Define log file
 LOG_DIR="/var/log"
