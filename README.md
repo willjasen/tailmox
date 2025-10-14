@@ -45,6 +45,7 @@ Tailmox sets up each host's corosync clustering process to communicate via Tails
 
 In my usage, I have been able to move a virtual server of about 20 terbytes by staging it via ZFS replication from a server in the EU over to my own server at home in the US, and performed a live migration of that server after it was staged in which it moved within a few minutes. Keep in mind that I have a gigabit fiber connection at home and the server in the EU was within a datacenter, also with a gigabit connection.
 
+---
 
 ### ✏️ Preparation ✏️
 
