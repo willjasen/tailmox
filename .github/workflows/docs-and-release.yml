@@ -1,0 +1,119 @@
+name: Documentation and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate installation guide
+        run: |
+          # Extract installation instructions from README
+          sed -n '/### ⚒️ Installation ⚒️/,/### 🖥️ Usage 🖥️/p' README.md > INSTALL.md
+          
+          # Generate a deployment guide specifically for GitHub Actions
+          cat > GITHUB_ACTIONS_GUIDE.md << 'EOF'
+          # Tailmox GitHub Actions Integration Guide
+          
+          This guide explains how to set up GitHub Actions with your Tailmox infrastructure.
+          
+          ## Prerequisites
+          
+          1. **Tailscale Account Setup:**
+             - Create a Tailscale OAuth client with `auth_keys` scope
+             - Create a tag for CI/CD (e.g., `tag:ci`)
+          
+          2. **GitHub Secrets Setup:**
+             Set up the following secrets in your GitHub repository:
+             - `TS_OAUTH_CLIENT_ID`: Your Tailscale OAuth Client ID
+             - `TS_OAUTH_SECRET`: Your Tailscale OAuth Client secret
+             - `PROXMOX_HOST_IPS`: Comma-separated list of your Proxmox host IPs/hostnames
+             - `PROXMOX_SSH_KEY`: SSH private key for accessing your Proxmox hosts
+          
+          3. **Tailscale ACL Configuration:**
+             Add the following to your Tailscale ACL to allow GitHub Actions access:
+          
+             ```json
+             {
+               "tagOwners": {
+                 "tag:ci": ["autogroup:owner"],
+                 "tag:tailmox": ["autogroup:owner"]
+               },
+               "acls": [
+                 {
+                   "action": "accept",
+                   "proto": "tcp", 
+                   "src": ["tag:ci"],
+                   "dst": ["tag:tailmox:22,8006"]
+                 },
+                 {
+                   "action": "accept",
+                   "proto": "udp",
+                   "src": ["tag:ci"], 
+                   "dst": ["tag:tailmox:5405-5412"]
+                 }
+               ]
+             }
+             ```
+          
+          ## Available Workflows
+          
+          - **test-tailmox.yml**: Tests script syntax and basic functionality
+          - **deploy-to-proxmox.yml**: Deploys updates to your Proxmox hosts
+          - **cluster-health-check.yml**: Monitors cluster health automatically
+          
+          ## Security Considerations
+          
+          - All communication happens over your private Tailscale network
+          - SSH keys are stored as GitHub encrypted secrets
+          - Workflows use ephemeral Tailscale nodes that are automatically cleaned up
+          - Access is restricted to tagged resources only
+          EOF
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          body: |
+            ## What's Changed
+            
+            See the [VERSIONS.md](VERSIONS.md) file for detailed changes.
+            
+            ## Installation
+            
+            ```bash
+            cd /opt
+            git clone https://github.com/willjasen/tailmox
+            cd tailmox
+            chmod +x tailmox.sh
+            ./tailmox.sh
+            ```
+            
+            ## GitHub Actions Integration
+            
+            This release includes GitHub Actions workflows for automated testing, deployment, and monitoring. See [GITHUB_ACTIONS_GUIDE.md](GITHUB_ACTIONS_GUIDE.md) for setup instructions.
+          draft: false
+          prerelease: false
+
+      - name: Upload installation guide
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./INSTALL.md
+          asset_name: INSTALL.md
+          asset_content_type: text/markdown

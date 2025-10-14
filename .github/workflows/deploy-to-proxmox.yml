@@ -1,0 +1,70 @@
+name: Deploy to Proxmox Hosts
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      target_hosts:
+        description: 'Comma-separated list of target hosts (or "all")'
+        required: true
+        default: 'all'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci,tag:deploy
+          # Ping your Proxmox hosts to verify connectivity
+          ping: ${{ secrets.PROXMOX_HOST_IPS }}
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROXMOX_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PROXMOX_HOST_IPS }} >> ~/.ssh/known_hosts
+
+      - name: Deploy Tailmox updates
+        run: |
+          # Split the comma-separated host IPs or hostnames
+          IFS=',' read -ra HOSTS <<< "${{ secrets.PROXMOX_HOST_IPS }}"
+          
+          for host in "${HOSTS[@]}"; do
+            echo "Deploying to $host..."
+            
+            # Copy updated scripts
+            scp -i ~/.ssh/id_rsa tailmox.sh root@$host:/opt/tailmox/
+            scp -i ~/.ssh/id_rsa revert_test_vms.sh root@$host:/opt/tailmox/
+            
+            # Make executable
+            ssh -i ~/.ssh/id_rsa root@$host "chmod +x /opt/tailmox/*.sh"
+            
+            # Optionally run health checks
+            ssh -i ~/.ssh/id_rsa root@$host "tailscale status"
+          done
+
+      - name: Verify deployment
+        run: |
+          IFS=',' read -ra HOSTS <<< "${{ secrets.PROXMOX_HOST_IPS }}"
+          
+          for host in "${HOSTS[@]}"; do
+            echo "Verifying deployment on $host..."
+            ssh -i ~/.ssh/id_rsa root@$host "ls -la /opt/tailmox/ && tailscale status"
+          done

@@ -1,0 +1,93 @@
+name: Proxmox Cluster Health Check
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci,tag:monitoring
+          ping: ${{ secrets.PROXMOX_HOST_IPS }}
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PROXMOX_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PROXMOX_HOST_IPS }} >> ~/.ssh/known_hosts
+
+      - name: Check cluster health
+        id: health_check
+        run: |
+          echo "# Proxmox Cluster Health Report" > health_report.md
+          echo "Generated on: $(date)" >> health_report.md
+          echo "" >> health_report.md
+          
+          IFS=',' read -ra HOSTS <<< "${{ secrets.PROXMOX_HOST_IPS }}"
+          
+          for host in "${HOSTS[@]}"; do
+            echo "## Host: $host" >> health_report.md
+            echo "" >> health_report.md
+            
+            # Check if host is reachable
+            if ssh -i ~/.ssh/id_rsa -o ConnectTimeout=10 root@$host "echo 'Connection successful'"; then
+              echo "✅ SSH Connection: OK" >> health_report.md
+              
+              # Check Tailscale status
+              echo "### Tailscale Status:" >> health_report.md
+              echo '```' >> health_report.md
+              ssh -i ~/.ssh/id_rsa root@$host "tailscale status" >> health_report.md
+              echo '```' >> health_report.md
+              
+              # Check Proxmox cluster status
+              echo "### Proxmox Cluster Status:" >> health_report.md
+              echo '```' >> health_report.md
+              ssh -i ~/.ssh/id_rsa root@$host "pvecm status" >> health_report.md 2>&1 || echo "Failed to get cluster status" >> health_report.md
+              echo '```' >> health_report.md
+              
+              # Check corosync status
+              echo "### Corosync Status:" >> health_report.md
+              echo '```' >> health_report.md
+              ssh -i ~/.ssh/id_rsa root@$host "systemctl is-active corosync" >> health_report.md
+              echo '```' >> health_report.md
+              
+            else
+              echo "❌ SSH Connection: FAILED" >> health_report.md
+            fi
+            
+            echo "" >> health_report.md
+          done
+
+      - name: Upload health report
+        uses: actions/upload-artifact@v4
+        with:
+          name: cluster-health-report-${{ github.run_number }}
+          path: health_report.md
+
+      - name: Comment on latest commit (if issues found)
+        if: contains(steps.health_check.outputs.result, 'FAILED')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = fs.readFileSync('health_report.md', 'utf8');
+            
+            github.rest.repos.createCommitComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+              body: `🚨 **Cluster Health Issues Detected**\n\n${report}`
+            });

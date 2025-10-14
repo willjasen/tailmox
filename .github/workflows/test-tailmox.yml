@@ -1,0 +1,62 @@
+name: Test Tailmox Scripts
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-script-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Lint tailmox.sh
+        run: shellcheck tailmox.sh
+
+      - name: Lint revert_test_vms.sh
+        run: shellcheck revert_test_vms.sh
+
+      - name: Test script executability
+        run: |
+          chmod +x tailmox.sh
+          chmod +x revert_test_vms.sh
+          # Test help/usage without actually running
+          bash -n tailmox.sh
+          bash -n revert_test_vms.sh
+
+  test-with-tailscale:
+    runs-on: ubuntu-latest
+    needs: test-script-syntax
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Test Tailscale connectivity
+        run: |
+          # Verify Tailscale is running
+          tailscale status
+          
+          # Test basic networking
+          ping -c 3 8.8.8.8
+
+      - name: Simulate dependency installation check
+        run: |
+          # Test the dependency checking logic without installing Proxmox
+          # This would test the parts of your script that check for dependencies
+          echo "Testing dependency availability..."
+          command -v jq || echo "jq not found (expected in CI)"
+          command -v expect || echo "expect not found (expected in CI)"
+          command -v git && echo "git found"
