@@ -348,6 +348,7 @@ revert_vms_to_snapshot "${vm_ids[@]}"
 # Delete all Tailscale hosts with tag "tailmox" before starting VMs
 delete_tailscale_tagged_devices
 
+# Start the VMs and wait until their guest agents are responsive
 start_vms "${vm_ids[@]}"
 test_guest_agents "${vm_ids[@]}"
 
