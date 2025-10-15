@@ -630,6 +630,7 @@ start_tailscale $AUTH_KEY
 
 # running 'tailscale serve' with these options allows a valid certificate on port 443, along with the built-in handling of the certificate
 tailscale serve --bg https+insecure://localhost:8006 &>/dev/null
+log_echo "${GREEN}Tailscale serve is now running.${RESET}"
 
 # Exit early if staging mode is enabled
 if [[ "$STAGING" == "true" ]]; then
