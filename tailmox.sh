@@ -630,6 +630,7 @@ if ! check_local_node_cluster_status; then
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
         create_cluster
         log_echo "${GREEN}Cluster created successfully.${RESET}"
+        log_echo "${GREEN}You can now access your tailmox server at: https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
         log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     else
         log_echo "${RED}Exiting without creating a cluster.${RESET}"
