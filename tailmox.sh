@@ -263,12 +263,12 @@ function ensure_ping_reachability() {
 
     # Check ping reachability for each peer
     echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
-        log_echo "${BLUE}Pinging $peer_ip...${RESET}"
-        if ! ping -c 1 -W 2 "$peer_ip" &>/dev/null; then
-            log_echo "${RED}Failed to ping $peer_ip.${RESET}"
-            return 1
-        else
+        log_echo "${BLUE}Pinging $peer_ip (5 pings over 1 second)...${RESET}"
+        if ! ping -c 5 -i 0.2 -W 1 "$peer_ip" | grep -q "0 received"; then
             log_echo "${GREEN}Successfully pinged $peer_ip.${RESET}"
+        else
+            log_echo "${RED}Failed to ping $peer_ip. All responses were lost.${RESET}"
+            return 1
         fi
     done
 }
