@@ -265,8 +265,8 @@ function ensure_ping_reachability() {
     echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
         # Get the hostname for the peer
         local peer_hostname=$(tailscale status --json | jq -r ".Peer[] | select(.TailscaleIPs[0] == \"$peer_ip\") | .HostName")
-        local ping_interval=0.2
-        local ping_count=25
+        local ping_interval=0.5
+        local ping_count=6
         local ping_span=$(echo "$ping_interval * $ping_count" | bc)
 
         log_echo "${BLUE}Pinging $peer_hostname ($peer_ip) ($ping_count pings over $ping_span seconds)...${RESET}"
