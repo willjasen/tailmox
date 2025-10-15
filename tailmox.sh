@@ -195,11 +195,11 @@ function check_all_peers_online() {
     done
     
     if [ "$all_peers_online" = true ]; then
-        log_echo "${GREEN}All tailmox peers are online.${RESET}"
+        log_echo "${GREEN}All tailmox peers are registered as online in Tailscale.${RESET}"
         return 0
     else
         offline_peers=${offline_peers%, }
-        log_echo "${RED}Not all tailmox peers are online. Offline peers: $offline_peers"
+        log_echo "${RED}Not all tailmox peers are online in Tailscale. Offline peers: $offline_peers"
         return 1
     fi
 }
