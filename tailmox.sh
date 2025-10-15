@@ -319,6 +319,25 @@ function are_hosts_tcp_port_8006_reachable() {
     done
 }
 
+# Check if TCP port 443 is available on all nodes
+function are_hosts_tcp_port_443_reachable() {
+    log_echo "${YELLOW}Checking if TCP port 443 is available on all nodes...${RESET}"
+
+    # Iterate through all peers
+    echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
+        local peer_ip=$(echo "$peer" | jq -r '.ip')
+        local peer_hostname=$(echo "$peer" | jq -r '.hostname')
+
+        log_echo "${BLUE}Checking TCP port 443 on $peer_hostname ($peer_ip)...${RESET}"
+        if ! nc -z -w 2 "$peer_ip" 443 &>/dev/null; then
+            log_echo "${RED}TCP port 443 is not available on $peer_hostname ($peer_ip).${RESET}"
+            return 1
+        else
+            log_echo "${GREEN}TCP port 443 is available on $peer_hostname ($peer_ip).${RESET}"
+        fi
+    done
+}
+
 # Check if UDP port 5405 is open on all nodes (corosync)
 function check_udp_ports_5405_to_5412() {
     log_echo "${YELLOW}Checking if UDP ports 5405 through 5412 (Corosync) are available on all nodes...${RESET}"
@@ -581,6 +600,14 @@ if ! are_hosts_tcp_port_8006_reachable; then
     exit 1
 else
     log_echo "${GREEN}All Tailmox peers have TCP port 8006 available.${RESET}"
+fi
+
+# Ensure that all peers are reachable via TCP port 443
+if ! are_hosts_tcp_port_443_reachable; then
+    log_echo "${RED}Some peers have TCP port 443 unavailable. Please check the network configuration.${RESET}"
+    exit 1
+else
+    log_echo "${GREEN}All Tailmox peers have TCP port 443 available.${RESET}"
 fi
 
 # Check if the local node is already in a cluster
