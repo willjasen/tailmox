@@ -268,7 +268,7 @@ function ensure_ping_reachability() {
         local ping_interval=0.25
         local ping_count=25
 
-        log_echo "${BLUE}Pinging $peer_hostname ($peer_ip) ($ping_count pings over $((ping_interval * $ping_count)) seconds)...${RESET}"
+        log_echo "${BLUE}Pinging $peer_hostname ($peer_ip) ($ping_count pings over $(($ping_interval * $ping_count)) seconds)...${RESET}"
         if ! ping -c $ping_count -i $ping_interval -W 1 "$peer_ip" | grep -q "0 received"; then
             log_echo "${GREEN}Successfully pinged $peer_hostname ($peer_ip).${RESET}"
         else
