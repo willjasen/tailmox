@@ -379,7 +379,7 @@ function check_udp_ports_5405_to_5412() {
 # Check if this node is already part of a Proxmox cluster
 # Returns true/false ?
 function check_local_node_cluster_status() {
-    log_echo "${YELLOW}Checking if this node is already part of a Proxmox cluster...${RESET}"
+    # log_echo "${YELLOW}Checking if this node is already part of a Proxmox cluster...${RESET}"
     
     # Check if the pvecm command exists (should be installed with Proxmox)
     if ! command -v pvecm &>/dev/null; then
@@ -396,7 +396,7 @@ function check_local_node_cluster_status() {
         return 1
     elif echo "$cluster_status" | grep -q "Cluster information"; then
         local cluster_name=$(pvecm status | grep "Name:" | awk '{print $2}')
-        log_echo "${GREEN}This node is already part of cluster named: $cluster_name${RESET}"
+        # log_echo "${GREEN}This node is already part of cluster named: $cluster_name${RESET}"
         return 0
     else
         log_echo "${RED}Unable to determine cluster status. Output: $cluster_status${RESET}"
