@@ -156,10 +156,12 @@ The [gist](https://gist.github.com/willjasen/df71ca4ec635211d83cdc18fe7f658ca) g
 	- ```100.64.2.2 host2.example-test.ts.net host2```
   
 4. Since DNS queries will be served via Tailscale, ensure that your global DNS server via Tailscale can resolve host1 as 100.64.1.1 and host2 as 100.64.2.2
-5. If you need to allow for the traffic within your Tailscale ACL, allow TCP 22, TCP 8006, and UDP 5405 - 5412; example as follows:
+5. If you need to allow for the traffic within your Tailscale ACL: allow TCP 22, TCP 443, TCP 8006, and UDP 5405 - 5412; example as follows:
 	```// allow Proxmox clustering
 	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host1:22"]},   // SSH
 	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host2:22"]},   // SSH
+	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host1:443"]}, // Proxmox web
+	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host2:443"]}, // Proxmox web
 	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host1:8006"]}, // Proxmox web
 	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host2:8006"]}, // Proxmox web
 	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host1:5405"]}, // corosync
