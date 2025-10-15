@@ -568,7 +568,7 @@ tailscale serve --bg https+insecure://localhost:8006
 
 # Exit early if staging mode is enabled
 if [[ "$STAGING" == "true" ]]; then
-    log_echo "${YELLOW}Staging mode enabled. Exiting after Tailscale certificate setup.${RESET}"
+    log_echo "${YELLOW}Staging mode enabled. Exiting after \`tailscale serve\` setup.${RESET}"
     exit 0
 fi
 
