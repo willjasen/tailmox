@@ -263,11 +263,14 @@ function ensure_ping_reachability() {
 
     # Check ping reachability for each peer
     echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
-        log_echo "${BLUE}Pinging $peer_ip (5 pings over 1 second)...${RESET}"
+        # Get the hostname for the peer
+        local peer_hostname=$(tailscale status --json | jq -r ".Peer[] | select(.TailscaleIPs[0] == \"$peer_ip\") | .HostName")
+        
+        log_echo "${BLUE}Pinging $peer_hostname ($peer_ip) (5 pings over 1 second)...${RESET}"
         if ! ping -c 5 -i 0.2 -W 1 "$peer_ip" | grep -q "0 received"; then
-            log_echo "${GREEN}Successfully pinged $peer_ip.${RESET}"
+            log_echo "${GREEN}Successfully pinged $peer_hostname ($peer_ip).${RESET}"
         else
-            log_echo "${RED}Failed to ping $peer_ip. All responses were lost.${RESET}"
+            log_echo "${RED}Failed to ping $peer_hostname ($peer_ip). All responses were lost.${RESET}"
             return 1
         fi
     done
