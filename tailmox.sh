@@ -584,7 +584,7 @@ function add_local_node_to_cluster() {
                 # Check if successful
                 if [ $? -eq 0 ]; then
                     log_echo "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
-                    log_echo "${GREEN}You can now access your tailmox server at: https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+                    log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
                     exit 0
                 else
                     log_echo "${RED}Failed to join cluster with $TARGET_HOSTNAME. Check the password and try again.${RESET}"
@@ -689,7 +689,7 @@ if ! check_local_node_cluster_status; then
     add_local_node_to_cluster
 else
     log_echo "${GREEN}This node is already part of a cluster, nothing further to do.${RESET}"
-    log_echo "${GREEN}You can now access your tailmox server at: https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+    log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     exit 1
 fi
@@ -702,7 +702,7 @@ if ! check_local_node_cluster_status; then
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
         create_cluster
         log_echo "${GREEN}Cluster created successfully.${RESET}"
-        log_echo "${GREEN}You can now access your tailmox server at: https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+        log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
         log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     else
         log_echo "${RED}Exiting without creating a cluster.${RESET}"
