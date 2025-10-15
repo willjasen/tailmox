@@ -541,8 +541,8 @@ function add_local_node_to_cluster() {
             local cluster_exists=false
             if check_remote_node_cluster_status_via_api "$TARGET_HOSTNAME" "root@pam" "$ROOT_PASSWORD"; then
                 cluster_exists=true
-            elif check_remote_node_cluster_status_via_ssh "$TARGET_HOSTNAME"; then
-                cluster_exists=true
+            # elif check_remote_node_cluster_status_via_ssh "$TARGET_HOSTNAME"; then
+            #    cluster_exists=true
             fi
             
             if [ "$cluster_exists" = true ]; then
