@@ -680,15 +680,14 @@ fi
 # Check if the local node is already in a cluster
 if ! check_local_node_cluster_status; then
     log_echo "${YELLOW}This node is not part of a cluster. Attempting to create or join a cluster...${RESET}"
+    # Add this local node to a cluster if it exists
+    add_local_node_to_cluster
 else
     log_echo "${GREEN}This node is already part of a cluster, nothing further to do.${RESET}"
     log_echo "${GREEN}You can now access your tailmox server at: https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     exit 1
 fi
-
-# Add this local node to a cluster if it exists
-add_local_node_to_cluster
 
 # If local node is now in the cluster...
 if ! check_local_node_cluster_status; then
