@@ -199,7 +199,7 @@ if command -v ipfs >/dev/null 2>&1; then
   fi
 else
   if [[ "$GATEWAY" == "kubo1.risk-mermaid.ts.net" ]]; then
-    URL="https://kubo1.risk-mermaid.ts.net/ipfs/${CID}"
+    URL="http://kubo1.risk-mermaid.ts.net:8080/ipfs/${CID}"
   else
     URL="https://${CID}.${GATEWAY}"
   fi
