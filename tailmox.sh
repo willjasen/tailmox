@@ -95,7 +95,7 @@ function check_script_directory() {
 function install_dependencies() {
     log_echo "${YELLOW}Checking for required dependencies...${RESET}"
 
-    local dependencies=(jq expect git)
+    local dependencies=(curl expect git jq)
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
             log_echo "${YELLOW}$dep not found. Installing...${RESET}"
@@ -111,11 +111,23 @@ function install_dependencies() {
 function install_tailscale() {
     if ! command -v tailscale &>/dev/null; then
         log_echo "${YELLOW}Tailscale not found. Installing...${RESET}"
-        apt install curl -y
-        curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
-        curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list
-        apt update
-        apt install tailscale -y
+        
+        # Check Proxmox version
+        local pve_version=$(pveversion | grep -oP 'pve-manager/\K[0-9]+' | head -1)
+        
+        if [[ "$pve_version" == "8" ]]; then
+            log_echo "${YELLOW}Detected Proxmox v8. Proceeding with Tailscale installation for Proxmox v8...${RESET}"
+            curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+            curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list
+            apt update
+            apt install tailscale -y
+        elif [[ "$pve_version" == "9" ]]; then
+            log_echo "${YELLOW}Detected Proxmox v9. Proceeding with Tailscale installation for Proxmox v9...${RESET}"
+            curl -fsSL https://tailscale.com/install.sh | sh
+        else
+            log_echo "${RED}Unsupported Proxmox version: $pve_version. Exiting...${RESET}"
+            exit 1
+        fi
     else
         # log_echo "${GREEN}Tailscale is already installed.${RESET}"
         :
@@ -151,21 +163,6 @@ function start_tailscale() {
     TAILSCALE_DNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')
     log_echo "${GREEN}This host's Tailscale IPv4 address: $TAILSCALE_IP ${RESET}"
     log_echo "${GREEN}This host's Tailscale MagicDNS name: $TAILSCALE_DNS_NAME ${RESET}"
-}
-
-# Run Tailscale certificate services
-function run_tailscale_cert_services() {
-    if [ ! -d "/opt/tailscale-cert-services" ]; then
-        log_echo "${YELLOW}Tailscale certificate services not found. Cloning repository...${RESET}"
-        git clone --quiet https://github.com/willjasen/tailscale-cert-services /opt/tailscale-cert-services;
-    else
-        log_echo "${GREEN}Tailscale certificate services already cloned.${RESET}"
-    fi
-    cd /opt/tailscale-cert-services;
-    VERSION="v1.1.1";
-    git -c advice.detachedHead=false checkout tags/${VERSION} --quiet
-    ./proxmox-cert.sh;
-    cd /opt/tailmox;
 }
 
 # Check if all peers with the "tailmox" tag are online
@@ -261,6 +258,9 @@ function ensure_ping_reachability() {
         return 1
     fi
 
+    # Number of attempts for pinging
+    local max_attempts=3
+
     # Check ping reachability for each peer
     echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
         # Get the hostname for the peer
@@ -269,13 +269,21 @@ function ensure_ping_reachability() {
         local ping_count=6
         local ping_span=$(echo "$ping_interval * $ping_count" | bc)
 
-        log_echo "${BLUE}Pinging $peer_hostname ($peer_ip) ($ping_count pings over $ping_span seconds)...${RESET}"
-        if ! ping -c $ping_count -i $ping_interval -W 1 "$peer_ip" | grep -q "0 received"; then
-            log_echo "${GREEN}Successfully pinged $peer_hostname ($peer_ip).${RESET}"
-        else
-            log_echo "${RED}Failed to ping $peer_hostname ($peer_ip). All responses were lost.${RESET}"
-            return 1
-        fi
+        for attempt in $(seq 1 $max_attempts); do
+            log_echo "${BLUE}Attempt $attempt: Pinging $peer_hostname ($peer_ip) ($ping_count pings over $ping_span seconds)...${RESET}"
+            if ! ping -c $ping_count -i $ping_interval -W 1 "$peer_ip" | grep -q "0 received"; then
+                log_echo "${GREEN}Successfully pinged $peer_hostname ($peer_ip) on attempt $attempt.${RESET}"
+                break
+            else
+                log_echo "${YELLOW}Attempt $attempt failed to ping $peer_hostname ($peer_ip). Retrying...${RESET}"
+            fi
+
+            # If this was the last attempt, log failure and return
+            if [ "$attempt" -eq 3 ]; then
+                log_echo "${RED}Failed to ping $peer_hostname ($peer_ip) after 3 attempts. All responses were lost.${RESET}"
+                return 1
+            fi
+        done
     done
 }
 
