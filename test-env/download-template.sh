@@ -75,7 +75,7 @@ GZIP_FLAG=$(json_read '.template.gzip_compressed' || true)
 if [[ "$GZIP_FLAG" == "true" || "$GZIP_FLAG" == "1" ]]; then
   if [[ "$OUTFILE" == *.tar.gz ]]; then
     DOWNLOAD_PATH="$OUTFILE"
-    FINAL_OUTFILE="${OUTFILE%.targz}"
+    FINAL_OUTFILE="${OUTFILE%.tar.gz}"
   else
     DOWNLOAD_PATH="${OUTFILE}.tar.gz"
     FINAL_OUTFILE="$OUTFILE"
@@ -84,6 +84,10 @@ else
   DOWNLOAD_PATH="$OUTFILE"
   FINAL_OUTFILE="$OUTFILE"
 fi
+
+# Echo the derived paths
+echo "Download path: $DOWNLOAD_PATH"
+echo "Final outfile: $FINAL_OUTFILE"
 
 # Helper function to calculate sha256 hash
 calculate_hash() {
