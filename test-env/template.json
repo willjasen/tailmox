@@ -6,15 +6,15 @@
             "compressed": {
                 "xz_compressed": true,
                 "name": "tailmox.qcow2.tar.xz",
-                "size_in_bytes": 1866475744,
-                "hash": "sha256:e233fc60442c0f7f924529ae88d7b356c35d137c85ae7555e85709554c758f7c",
+                "size_in_bytes": 1866482496,
+                "hash": "sha256:5644986a684318f2a7e85bc413f810f41aa5d2a2454cb7a3bf5cf3da98a97e32",
                 "ipfs": {
-                    "cid_v0": "QmPz6g7f8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7a8b9c0d1e2f3g4h5i6j7k8l9m0n1o2p3q4r5s6t7u8v9w",
-                    "cid_v1": "bafybeigwm2f3ntdkchwfv5yguihqqseht4mb6lpy7rzsjhscghvlewrrsm"
+                    "cid_v0": "Qmd6rdZ7KoTdY7NNv6aA4MswRVWazwXTMso4aUYqDA5f9o",
+                    "cid_v1": "bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy"
                 }
             },
             "uncompressed": {
-                "gzip_compressed": false,
+                "xz_compressed": false,
                 "name": "tailmox.qcow2",
                 "size_in_bytes": 6630408192,
                 "hash": "sha256:2b4b219ca7974ef4921e0b9fc0f213b07e1b4e37400b5ca3ed9dee93588e30bb",
