@@ -95,7 +95,7 @@ function check_script_directory() {
 function install_dependencies() {
     log_echo "${YELLOW}Checking for required dependencies...${RESET}"
 
-    local dependencies=(jq expect git)
+    local dependencies=(curl expect git jq)
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
             log_echo "${YELLOW}$dep not found. Installing...${RESET}"
@@ -117,14 +117,12 @@ function install_tailscale() {
         
         if [[ "$pve_version" == "8" ]]; then
             log_echo "${YELLOW}Detected Proxmox v8. Proceeding with Tailscale installation for Proxmox v8...${RESET}"
-            apt install curl -y
             curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
             curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list
             apt update
             apt install tailscale -y
         elif [[ "$pve_version" == "9" ]]; then
             log_echo "${YELLOW}Detected Proxmox v9. Proceeding with Tailscale installation for Proxmox v9...${RESET}"
-            apt install curl -y
             curl -fsSL https://tailscale.com/install.sh | sh
         else
             log_echo "${RED}Unsupported Proxmox version: $pve_version. Exiting...${RESET}"
