@@ -153,21 +153,6 @@ function start_tailscale() {
     log_echo "${GREEN}This host's Tailscale MagicDNS name: $TAILSCALE_DNS_NAME ${RESET}"
 }
 
-# Run Tailscale certificate services
-function run_tailscale_cert_services() {
-    if [ ! -d "/opt/tailscale-cert-services" ]; then
-        log_echo "${YELLOW}Tailscale certificate services not found. Cloning repository...${RESET}"
-        git clone --quiet https://github.com/willjasen/tailscale-cert-services /opt/tailscale-cert-services;
-    else
-        log_echo "${GREEN}Tailscale certificate services already cloned.${RESET}"
-    fi
-    cd /opt/tailscale-cert-services;
-    VERSION="v1.1.1";
-    git -c advice.detachedHead=false checkout tags/${VERSION} --quiet
-    ./proxmox-cert.sh;
-    cd /opt/tailmox;
-}
-
 # Check if all peers with the "tailmox" tag are online
 function check_all_peers_online() {
     log_echo "${YELLOW}Checking if all tailmox peers are online...${RESET}"
