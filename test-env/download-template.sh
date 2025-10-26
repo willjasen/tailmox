@@ -96,8 +96,8 @@ else
 fi
 
 # Echo the derived paths
-echo "Download path: $DOWNLOAD_PATH"
-echo "Final outfile: $FINAL_OUTFILE"
+# echo "Download path: $DOWNLOAD_PATH"
+# echo "Final outfile: $FINAL_OUTFILE"
 
 # Helper function to calculate sha256 hash
 calculate_hash() {
