@@ -118,6 +118,62 @@ decompress_gzip() {
   fi
 }
 
+# New: if the decompressed file is a tar archive, extract it.
+# - On success prints:
+#   * path to the single extracted file if exactly one regular file was inside
+#   * "__MULTI__" if multiple regular files were extracted (files moved to the tar's directory)
+# - Returns non-zero on fatal extraction error.
+extract_tar_if_needed() {
+  local tarpath="$1"
+  # Not a tar if tar -tf fails
+  if ! tar -tf "$tarpath" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local destdir="$(dirname "$tarpath")"
+  local tmpd
+  tmpd="$(mktemp -d "${destdir}/extract.XXXX" 2>/dev/null || mktemp -d)" || { echo "mktemp failed" >&2; return 2; }
+
+  if ! tar -xf "$tarpath" -C "$tmpd"; then
+    echo "tar extraction failed for $tarpath" >&2
+    rm -rf "$tmpd"
+    return 3
+  fi
+
+  # Gather regular files extracted
+  local files=()
+  while IFS= read -r -d $'\0' f; do
+    files+=("$f")
+  done < <(find "$tmpd" -type f -print0)
+
+  local n=${#files[@]}
+  if (( n == 0 )); then
+    echo "No regular files found inside tar $tarpath" >&2
+    rm -rf "$tmpd"
+    return 4
+  elif (( n == 1 )); then
+    # Move single file to destdir and return its new path
+    local base
+    base="$(basename "${files[0]}")"
+    if ! mv -- "${files[0]}" "$destdir/"; then
+      echo "Failed to move extracted file ${files[0]} to $destdir" >&2
+      rm -rf "$tmpd"
+      return 5
+    fi
+    rm -rf "$tmpd"
+    echo "$destdir/$base"
+    return 0
+  else
+    # Multiple files: move all to destdir and signal multi-file result
+    for f in "${files[@]}"; do
+      mv -- "$f" "$destdir/" || true
+    done
+    rm -rf "$tmpd"
+    echo "__MULTI__"
+    return 0
+  fi
+}
+
 # Check if final file exists and verify hash (handle compressed existing file too)
 if [[ -f "$FINAL_OUTFILE" ]]; then
   echo "File already exists: $FINAL_OUTFILE"
@@ -138,16 +194,34 @@ elif [[ "$GZIP_FLAG" == "true" && -f "$DOWNLOAD_PATH" ]]; then
   echo "Found existing compressed file: $DOWNLOAD_PATH. Attempting to decompress."
   if decompress_gzip "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
     echo "Decompressed existing file to $FINAL_OUTFILE"
+
+    # If the decompressed result is a tar, extract it and possibly update FINAL_OUTFILE
+    maybe=$(extract_tar_if_needed "$FINAL_OUTFILE" || true)
+    if [[ "$maybe" == "__MULTI__" ]]; then
+      HASH_FULL=$(json_read '.template.hash' || true)
+      if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" && "$HASH_FULL" == sha256:* ]]; then
+        echo "Multiple files were extracted from archive but JSON provides a single-file hash; cannot verify." >&2
+        exit 11
+      else
+        echo "Extracted multiple files into $(dirname "$FINAL_OUTFILE"). Skipping single-file verification."
+        rm -f "$DOWNLOAD_PATH" || true
+        exit 0
+      fi
+    elif [[ -n "$maybe" ]]; then
+      FINAL_OUTFILE="$maybe"
+      echo "Using extracted single file: $FINAL_OUTFILE"
+    fi
+
     HASH_FULL=$(json_read '.template.hash' || true)
     if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" && "$HASH_FULL" == sha256:* ]]; then
       EXPECTED=${HASH_FULL#sha256:}
       ACTUAL=$(calculate_hash "$FINAL_OUTFILE")
       if [[ -n "$ACTUAL" && "$ACTUAL" == "$EXPECTED" ]]; then
-        echo "Existing (decompressed) file hash matches. Skipping download."
+        echo "Existing (decompressed/extracted) file hash matches. Skipping download."
         rm -f "$DOWNLOAD_PATH" || true
         exit 0
       else
-        echo "Existing decompressed hash mismatch. Will download fresh copy."
+        echo "Existing decompressed/extracted hash mismatch. Will download fresh copy."
       fi
     else
       echo "No valid hash provided in JSON. Will download fresh copy."
@@ -210,6 +284,24 @@ fi
 if [[ "$GZIP_FLAG" == "true" || "$GZIP_FLAG" == "1" ]]; then
   if decompress_gzip "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
     echo "Decompression succeeded: $FINAL_OUTFILE"
+
+    # If the decompressed result is a tar, extract it and possibly update FINAL_OUTFILE
+    maybe=$(extract_tar_if_needed "$FINAL_OUTFILE" || true)
+    if [[ "$maybe" == "__MULTI__" ]]; then
+      HASH_FULL=$(json_read '.template.hash' || true)
+      if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" && "$HASH_FULL" == sha256:* ]]; then
+        echo "Multiple files were extracted from archive but JSON provides a single-file hash; cannot verify." >&2
+        exit 11
+      else
+        echo "Extracted multiple files into $(dirname "$FINAL_OUTFILE"). Skipping single-file verification."
+        rm -f "$DOWNLOAD_PATH" || true
+        exit 0
+      fi
+    elif [[ -n "$maybe" ]]; then
+      FINAL_OUTFILE="$maybe"
+      echo "Using extracted single file: $FINAL_OUTFILE"
+    fi
+
     rm -f "$DOWNLOAD_PATH" || true
   else
     echo "Decompression failed for $DOWNLOAD_PATH" >&2
