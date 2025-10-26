@@ -119,7 +119,7 @@ decompress_xz() {
   echo "Decompressing $src -> $dst"
   if [[ "$src" == *.tar.xz ]]; then
     if command -v tar >/dev/null 2>&1; then
-      tar -xJf "$src"
+      tar -xJf $src
       return $?
     else
       echo "tar/xz is not available to decompress $src" >&2
