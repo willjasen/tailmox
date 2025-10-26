@@ -198,7 +198,11 @@ if command -v ipfs >/dev/null 2>&1; then
     exit 5
   fi
 else
-  URL="https://${CID}.${GATEWAY}"
+  if [[ "$GATEWAY" == "kubo1.risk-mermaid.ts.net" ]]; then
+    URL="https://kubo1.risk-mermaid.ts.net/ipfs/${CID}"
+  else
+    URL="https://${CID}.${GATEWAY}"
+  fi
   echo "Using HTTP gateway: $URL"
   # Use curl with fail and follow redirects
   if command -v curl >/dev/null 2>&1; then
