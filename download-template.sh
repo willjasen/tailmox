@@ -81,6 +81,36 @@ if [[ -z "$OUTFILE" ]]; then
   fi
 fi
 
+# Helper function to calculate sha256 hash
+calculate_hash() {
+  local file="$1"
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$file" | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+  else
+    echo ""
+  fi
+}
+
+# Check if file exists and verify hash
+if [[ -f "$OUTFILE" ]]; then
+  echo "File already exists: $OUTFILE"
+  HASH_FULL=$(json_read '.template.hash' || true)
+  if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" && "$HASH_FULL" == sha256:* ]]; then
+    EXPECTED=${HASH_FULL#sha256:}
+    ACTUAL=$(calculate_hash "$OUTFILE")
+    if [[ -n "$ACTUAL" && "$ACTUAL" == "$EXPECTED" ]]; then
+      echo "Existing file hash matches. Skipping download."
+      exit 0
+    else
+      echo "Existing file hash mismatch. Will download fresh copy."
+    fi
+  else
+    echo "No valid hash provided in JSON. Will download fresh copy."
+  fi
+fi
+
 echo "Downloading IPFS CID: $CID"
 echo "Saving to: $OUTFILE"
 
@@ -111,17 +141,10 @@ fi
 # Optional verification: check sha256 if provided
 HASH_FULL=$(json_read '.template.hash' || true)
 if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" ]]; then
+  echo "Verifying hash..."
   if [[ "$HASH_FULL" == sha256:* ]]; then
     EXPECTED=${HASH_FULL#sha256:}
-    if command -v shasum >/dev/null 2>&1; then
-      ACTUAL=$(shasum -a 256 "$OUTFILE" | awk '{print $1}')
-    elif command -v sha256sum >/dev/null 2>&1; then
-      ACTUAL=$(sha256sum "$OUTFILE" | awk '{print $1}')
-    else
-      echo "No shasum/sha256sum available to verify the file. Skipping verification." >&2
-      ACTUAL=""
-    fi
-
+    ACTUAL=$(calculate_hash "$OUTFILE")
     if [[ -n "$ACTUAL" ]]; then
       if [[ "$ACTUAL" == "$EXPECTED" ]]; then
         echo "sha256 verification passed."
