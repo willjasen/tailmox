@@ -1,5 +1,13 @@
 # VERSIONS.md
 
+### v1.2.1
+
+ - perform installation of Tailscale different between Proxmox versions
+ - make `curl` a dependency
+ - remove `run_tailscale_cert_services` function (no longer needed)
+
+---
+
 ### v1.2.0
 
 This version changes a core piece of architecture for tailmox - mainly that `tailscale serve` is now used as a reverse proxy for the pveproxy service, rather than managing the Tailscale certificate manually. This allows communication between hosts on port 443, meaning that URLs can now exclude the ":8006" port specification at the end. It also decouples Proxmox from Tailscale a bit, insomuch that binding the Tailscale certificate directly to pveproxy is no longer necessary.
