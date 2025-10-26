@@ -97,14 +97,7 @@ qm create "$VMID" \
 
 # Import the disk
 echo "Importing disk image..."
-qm importdisk "$VMID" "$TEMPLATE" "zfs" || {
-  echo "Error: Failed to import disk" >&2
-  exit 1
-}
-  || {
-    echo "Error: Failed to create VM" >&2
-    exit 1
-  }
+qm importdisk "$VMID" "$TEMPLATE" "zfs" 
 
 # Attach the imported disk
 qm set "$VMID" --scsi0 "local-lvm:vm-${VMID}-disk-0" || {
