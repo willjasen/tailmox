@@ -84,7 +84,7 @@ qm create "$VMID" \
   --cores 2 \
   --net0 virtio,bridge=vmbr0 \
   --serial0 socket \
-  --vga serial0 \
+  --vga std \
   --onboot 1 \
   --boot c --bootdisk scsi0 \
   --ostype l26 \
