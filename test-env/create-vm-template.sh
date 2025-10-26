@@ -77,13 +77,6 @@ fi
 # Create a new VM
 echo "Creating VM $VMID ($NAME)..."
 
-# Import the disk
-echo "Importing disk image..."
-qm importdisk "$VMID" "$TEMPLATE" "zfs" || {
-  echo "Error: Failed to import disk" >&2
-  exit 1
-}
-
 # Create the VM with basic configuration
 qm create "$VMID" \
   --name "$NAME" \
@@ -97,6 +90,17 @@ qm create "$VMID" \
   --ostype l26 \
   --agent 1 \
   --tablet 0 \
+  || {
+    echo "Error: Failed to create VM" >&2
+    exit 1
+  }
+
+# Import the disk
+echo "Importing disk image..."
+qm importdisk "$VMID" "$TEMPLATE" "zfs" || {
+  echo "Error: Failed to import disk" >&2
+  exit 1
+}
   || {
     echo "Error: Failed to create VM" >&2
     exit 1
