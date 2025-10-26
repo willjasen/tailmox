@@ -104,6 +104,28 @@ if [[ -f "$OUTFILE" ]]; then
   fi
 fi
 
+# --- Added: ensure target directory exists and has enough free space based on JSON size_in_bytes ---
+DIR="$(dirname "$OUTFILE")"
+if [[ ! -d "$DIR" ]]; then
+  mkdir -p "$DIR" || { echo "Cannot create directory $DIR" >&2; exit 8; }
+fi
+
+SIZE_BYTES=$(json_read '.template.size_in_bytes' || true)
+if [[ -n "$SIZE_BYTES" && "$SIZE_BYTES" != "null" ]]; then
+  if [[ "$SIZE_BYTES" =~ ^[0-9]+$ ]]; then
+    # Get available kilobytes for the filesystem containing DIR, convert to bytes
+    AVAIL_KB=$(df -Pk "$DIR" 2>/dev/null | tail -1 | awk '{print $4}')
+    AVAIL_BYTES=$(( (${AVAIL_KB:-0} * 1024) + (1024 * 1024 * 1024) )) # Add 1GB buffer
+    if (( AVAIL_BYTES < SIZE_BYTES )); then
+      echo "Not enough free space in $DIR. Required: $SIZE_BYTES bytes, Available: $AVAIL_BYTES bytes (including 1GB buffer)" >&2
+      exit 9
+    fi
+  else
+    echo "Invalid size_in_bytes in JSON: $SIZE_BYTES; skipping space check." >&2
+  fi
+fi
+# --- end added section ---
+
 echo "Downloading IPFS CID: $CID"
 echo "Saving to: $OUTFILE"
 
