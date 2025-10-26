@@ -83,11 +83,11 @@ fi
 # --- Added: support xz_compressed flag and derive download vs final paths ---
 XZ_FLAG=$(json_read ".template.versions.$VERSION.xz_compressed" || true)
 if [[ "$XZ_FLAG" == "true" || "$XZ_FLAG" == "1" ]]; then
-  if [[ "$OUTFILE" == *.xz ]]; then
+  if [[ "$OUTFILE" == *.tar.xz ]]; then
     DOWNLOAD_PATH="$OUTFILE"
-    FINAL_OUTFILE="${OUTFILE%.xz}"
+    FINAL_OUTFILE="${OUTFILE%.tar.xz}"
   else
-    DOWNLOAD_PATH="${OUTFILE}.xz"
+    DOWNLOAD_PATH="${OUTFILE}.tar.xz"
     FINAL_OUTFILE="$OUTFILE"
   fi
 else
@@ -117,36 +117,16 @@ calculate_hash() {
 decompress_xz() {
   local src="$1" dst="$2"
   echo "Decompressing $src -> $dst"
-  if [[ "$src" == *.xz ]]; then
-    if command -v xz >/dev/null 2>&1; then
-      mkdir -p "$(dirname "$dst")"
-      xz -dc "$src" > "$dst"
-      return $?
-    else
-      echo "xz is not available to decompress $src" >&2
-      return 2
-    fi
-  else
-    echo "File $src is not an .xz archive" >&2
-    return 3
-  fi
-}
-
-# Function: extract tar file
-extract_tar() {
-  local src="$1" dst_dir="$2"
-  echo "Extracting tar archive $src -> $dst_dir"
-  if [[ "$src" == *.tar ]]; then
+  if [[ "$src" == *.tar.xz ]]; then
     if command -v tar >/dev/null 2>&1; then
-      mkdir -p "$dst_dir"
-      tar xvf "$src" -C "$dst_dir"
+      tar -xJf "$src"
       return $?
     else
-      echo "tar is not available to extract $src" >&2
+      echo "tar/xz is not available to decompress $src" >&2
       return 2
     fi
   else
-    echo "File $src is not a .tar archive" >&2
+    echo "File $src is not an .tar.xz archive" >&2
     return 3
   fi
 }
@@ -177,7 +157,7 @@ elif [[ "$XZ_FLAG" == "true" && -f "$DOWNLOAD_PATH" ]]; then
       ACTUAL=$(calculate_hash "$FINAL_OUTFILE")
       if [[ -n "$ACTUAL" && "$ACTUAL" == "$EXPECTED" ]]; then
         echo "Existing (decompressed) file hash matches. Skipping download."
-        rm -f "$DOWNLOAD_PATH" || true
+        # rm -f "$DOWNLOAD_PATH" || true
         exit 0
       else
         echo "Existing decompressed hash mismatch. Will download fresh copy."
@@ -247,23 +227,7 @@ fi
 if [[ "$XZ_FLAG" == "true" || "$XZ_FLAG" == "1" ]]; then
   if decompress_xz "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
     echo "Decompression succeeded: $FINAL_OUTFILE"
-    
-    # Handle tar extraction if file ends in .tar.xz or .tar
-    if [[ "$DOWNLOAD_PATH" == *.tar.xz || "$FINAL_OUTFILE" == *.tar ]]; then
-      TAR_FILE="$FINAL_OUTFILE"
-      EXTRACT_DIR="${FINAL_OUTFILE%.tar}"
-      
-      if extract_tar "$TAR_FILE" "$EXTRACT_DIR"; then
-        echo "Tar extraction succeeded: $EXTRACT_DIR"
-        rm -f "$TAR_FILE" || true
-        FINAL_OUTFILE="$EXTRACT_DIR"
-      else
-        echo "Tar extraction failed for $TAR_FILE" >&2
-        exit 11
-      fi
-    fi
-    
-    rm -f "$DOWNLOAD_PATH" || true
+    # rm -f "$DOWNLOAD_PATH" || true
   else
     echo "Decompression failed for $DOWNLOAD_PATH" >&2
     exit 10
