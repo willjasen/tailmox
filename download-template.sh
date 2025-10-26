@@ -28,7 +28,7 @@ EOF
 }
 
 CID=""
-GATEWAY="https://ipfs.io/ipfs/"
+GATEWAY="https://kubo1.risk-mermaid.ts.net/ipfs/"
 OUTFILE=""
 
 while [[ $# -gt 0 ]]; do
