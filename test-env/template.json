@@ -2,9 +2,10 @@
     "description": "Create a Proxmox VM template for testing tailmox.",
     "related_repo": "github.com/willjasen/tailmox",
     "template": {
-        "name": "tailmox.qcow2.tar.gz",
+        "name": "tailmox.qcow2",
         "size_in_bytes_compressed": 2597365931,
-        "gzip_compressed": true,
+        "size_in_bytes_uncompressed": 6630408192,
+        "gzip_compressed": false,
         "hash": "sha256:2b4b219ca7974ef4921e0b9fc0f213b07e1b4e37400b5ca3ed9dee93588e30bb",
         "ipfs": {
             "cid_v0": "QmWQHQxs8GAovXP4DmUdp2NtxyzqcRdHzveK2QFLxUmrrK",
