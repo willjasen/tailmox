@@ -100,10 +100,7 @@ echo "Importing disk image..."
 qm importdisk "$VMID" "$TEMPLATE" "zfs" 
 
 # Attach the imported disk
-qm set "$VMID" --scsi0 "local-lvm:vm-${VMID}-disk-0" || {
-  echo "Error: Failed to attach disk" >&2
-  exit 1
-}
+qm set "$VMID" --scsi0 "local-lvm:vm-${VMID}-disk-0"
 
 echo "VM $VMID ($NAME) created successfully"
 echo "You can now start the VM with: qm start $VMID"
