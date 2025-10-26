@@ -3,7 +3,7 @@ set -euo pipefail
 
 # tailmox-download-template.sh
 # Download the template image referenced in tailmox-template.json from IPFS.
-# Usage: ./tailmox-download-template.sh [--cid CID] [--gateway URL] [--output FILE]
+# Usage: ./tailmox-download-template.sh [--gateway URL] [--output FILE]
 # If --cid is omitted, the script reads `template.ipfs` from tailmox-template.json located
 # next to this script. If `template.name` is present it will be used as the default output filename.
 
@@ -12,17 +12,17 @@ JSON_PATH="$SCRIPT_DIR/template.json"
 
 usage() {
   cat <<EOF
-Usage: $0 [--cid CID] [--gateway URL] [--output FILE]
+Usage: $0 [--gateway URL] [--output FILE]
 
 Options:
-  --cid CID         IPFS CID to download (defaults to value from $JSON_PATH)
-  --gateway URL     HTTP gateway prefix (default: https://ipfs.io/ipfs/)
+  --gateway URL     HTTP gateway host (default: ipfs.dweb.link; used as <CID>.<gateway>)
   --output FILE     Path to save file (default: template name from JSON or <CID>.img)
   --help            Show this help
 
 Behavior:
-  - Prefers the `ipfs` CLI if available (uses `ipfs cat`), otherwise uses curl against a gateway.
-  - If the JSON includes a sha256 hash in `template.hash` (format: sha256:<hex>), the downloaded
+  - Prefers the \`ipfs\` CLI if available (uses \`ipfs cat\`), otherwise uses curl/wget against a gateway.
+  - The CID is read from template.json next to this script (.template.ipfs.cid_v1).
+  - If the JSON includes a sha256 hash in \`template.hash\` (format: sha256:<hex>), the downloaded
     file will be verified automatically.
 EOF
 }
@@ -33,7 +33,6 @@ OUTFILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --cid) CID="$2"; shift 2 ;;
     --gateway) GATEWAY="$2"; shift 2 ;;
     --output) OUTFILE="$2"; shift 2 ;;
     --help) usage; exit 0 ;;
@@ -49,17 +48,16 @@ json_read() {
   jq -r "$key // empty" "$JSON_PATH" 2>/dev/null || true
 }
 
-if [[ -z "$CID" ]]; then
-  if [[ -f "$JSON_PATH" ]]; then
-    CID=$(json_read '.template.ipfs.cid_v1')
-    if [[ -z "$CID" ]]; then
-      echo "No CID found in $JSON_PATH (field .template.ipfs.cid_v1). Provide --cid." >&2
-      exit 3
-    fi
-  else
-    echo "$JSON_PATH not found and --cid not provided." >&2
-    exit 4
-  fi
+# Require template.json and read CID from it (no --cid option anymore)
+if [[ ! -f "$JSON_PATH" ]]; then
+  echo "$JSON_PATH not found. This script requires template.json next to the script." >&2
+  exit 4
+fi
+
+CID=$(json_read '.template.ipfs.cid_v1')
+if [[ -z "$CID" || "$CID" == "null" ]]; then
+  echo "No CID found in $JSON_PATH (field .template.ipfs.cid_v1). Please add it to template.json." >&2
+  exit 3
 fi
 
 # Default outfile from JSON template.name if not given
