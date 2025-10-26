@@ -132,6 +132,25 @@ decompress_xz() {
   fi
 }
 
+# Function: extract tar file
+extract_tar() {
+  local src="$1" dst_dir="$2"
+  echo "Extracting tar archive $src -> $dst_dir"
+  if [[ "$src" == *.tar ]]; then
+    if command -v tar >/dev/null 2>&1; then
+      mkdir -p "$dst_dir"
+      tar xf "$src" -C "$dst_dir"
+      return $?
+    else
+      echo "tar is not available to extract $src" >&2
+      return 2
+    fi
+  else
+    echo "File $src is not a .tar archive" >&2
+    return 3
+  fi
+}
+
 # Check if final file exists and verify hash
 if [[ -f "$FINAL_OUTFILE" ]]; then
   echo "File already exists: $FINAL_OUTFILE"
@@ -228,6 +247,22 @@ fi
 if [[ "$XZ_FLAG" == "true" || "$XZ_FLAG" == "1" ]]; then
   if decompress_xz "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
     echo "Decompression succeeded: $FINAL_OUTFILE"
+    
+    # Handle tar extraction if file ends in .tar.xz or .tar
+    if [[ "$DOWNLOAD_PATH" == *.tar.xz || "$FINAL_OUTFILE" == *.tar ]]; then
+      TAR_FILE="$FINAL_OUTFILE"
+      EXTRACT_DIR="${FINAL_OUTFILE%.tar}"
+      
+      if extract_tar "$TAR_FILE" "$EXTRACT_DIR"; then
+        echo "Tar extraction succeeded: $EXTRACT_DIR"
+        rm -f "$TAR_FILE" || true
+        FINAL_OUTFILE="$EXTRACT_DIR"
+      else
+        echo "Tar extraction failed for $TAR_FILE" >&2
+        exit 11
+      fi
+    fi
+    
     rm -f "$DOWNLOAD_PATH" || true
   else
     echo "Decompression failed for $DOWNLOAD_PATH" >&2
