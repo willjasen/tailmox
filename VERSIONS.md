@@ -5,7 +5,7 @@
  - perform installation of Tailscale between different Proxmox versions
  - attempt initial ping reachability tests a few times
  - make `curl` a dependency
- - remove `run_tailscale_cert_services` function (no longer needed)
+ - remove `run_tailscale_cert_services` function (removed in v1.2.0)
 
 ---
 
