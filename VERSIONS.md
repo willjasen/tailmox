@@ -15,10 +15,10 @@ This version changes a core piece of architecture for tailmox - mainly that `tai
 
 Because of this change, [tailscale-cert-services](https://github.com/willjasen/tailscale-cert-services) is no longer needed.
 
-- switch to using `tailscale serve` to handle HTTP/API communication
-- check that TCP 443 is available on all tailmox hosts (available via `tailscale serve`)
-- ensure that the ping check tries a few times over a few seconds
-- clean up unneccessary console output/logging
+ - switch to using `tailscale serve` to handle HTTP/API communication
+ - check that TCP 443 is available on all tailmox hosts (available via `tailscale serve`)
+ - ensure that the ping check tries a few times over a few seconds
+ - clean up unneccessary console output/logging
 
 ---
 
