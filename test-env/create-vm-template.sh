@@ -101,6 +101,6 @@ qm importdisk "$VMID" "$TEMPLATE" "zfs"
 
 # Attach the imported disk
 qm set "$VMID" --scsi0 "zfs:vm-${VMID}-disk-0"
-qm set "$VMID" --template 1
+qm template "$VMID"
 
 echo "VM template $VMID ($NAME) created successfully"
