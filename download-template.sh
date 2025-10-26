@@ -84,6 +84,7 @@ fi
 # Helper function to calculate sha256 hash
 calculate_hash() {
   local file="$1"
+  echo "Calculating sha256 hash for $file ..."
   if command -v shasum >/dev/null 2>&1; then
     shasum -a 256 "$file" | awk '{print $1}'
   elif command -v sha256sum >/dev/null 2>&1; then
