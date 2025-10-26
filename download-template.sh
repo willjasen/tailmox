@@ -110,6 +110,7 @@ if [[ ! -d "$DIR" ]]; then
   mkdir -p "$DIR" || { echo "Cannot create directory $DIR" >&2; exit 8; }
 fi
 
+echo "Checking if there is enough free space in $DIR..."
 SIZE_BYTES=$(json_read '.template.size_in_bytes' || true)
 if [[ -n "$SIZE_BYTES" && "$SIZE_BYTES" != "null" ]]; then
   if [[ "$SIZE_BYTES" =~ ^[0-9]+$ ]]; then
@@ -124,7 +125,6 @@ if [[ -n "$SIZE_BYTES" && "$SIZE_BYTES" != "null" ]]; then
     echo "Invalid size_in_bytes in JSON: $SIZE_BYTES; skipping space check." >&2
   fi
 fi
-# --- end added section ---
 
 echo "Downloading IPFS CID: $CID"
 echo "Saving to: $OUTFILE"
