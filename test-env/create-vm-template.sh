@@ -10,10 +10,7 @@ JSON_PATH="$SCRIPT_DIR/template.json"
 
 usage() {
   cat <<EOF
-Usage: $0 --node NODE [--vmid ID] [--name NAME] [--template FILE]
-
-Required:
-  --node NODE      Proxmox node name where the VM will be created
+Usage: $0 [--vmid ID] [--name NAME] [--template FILE]
 
 Optional:
   --vmid ID       VM ID to use (default: next available ID)
@@ -24,7 +21,6 @@ EOF
 }
 
 # Default values
-NODE=""
 VMID=""
 NAME="tailmox-test"
 TEMPLATE=""
@@ -32,7 +28,6 @@ TEMPLATE=""
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --node) NODE="$2"; shift 2 ;;
     --vmid) VMID="$2"; shift 2 ;;
     --name) NAME="$2"; shift 2 ;;
     --template) TEMPLATE="$2"; shift 2 ;;
@@ -40,13 +35,6 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown argument: $1" >&2; usage; exit 1 ;;
   esac
 done
-
-# Validate required arguments
-if [[ -z "$NODE" ]]; then
-  echo "Error: --node is required" >&2
-  usage
-  exit 1
-fi
 
 # Helper: read field from JSON using jq
 json_read() {
@@ -87,7 +75,7 @@ if [[ -z "$VMID" ]]; then
 fi
 
 # Create a new VM
-echo "Creating VM $VMID ($NAME) on node $NODE..."
+echo "Creating VM $VMID ($NAME)..."
 
 # Import the disk
 echo "Importing disk image..."
@@ -120,5 +108,5 @@ qm set "$VMID" --scsi0 "local-lvm:vm-${VMID}-disk-0" || {
   exit 1
 }
 
-echo "VM $VMID ($NAME) created successfully on node $NODE"
+echo "VM $VMID ($NAME) created successfully"
 echo "You can now start the VM with: qm start $VMID"
