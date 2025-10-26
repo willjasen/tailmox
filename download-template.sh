@@ -60,9 +60,9 @@ json_read() {
 
 if [[ -z "$CID" ]]; then
   if [[ -f "$JSON_PATH" ]]; then
-    CID=$(json_read '.template.ipfs')
+    CID=$(json_read '.template.ipfs.cid-v0')
     if [[ -z "$CID" ]]; then
-      echo "No CID found in $JSON_PATH (field .template.ipfs). Provide --cid." >&2
+      echo "No CID found in $JSON_PATH (field .template.ipfs.cid-v0). Provide --cid." >&2
       exit 3
     fi
   else

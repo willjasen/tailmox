@@ -4,6 +4,9 @@
     "template": {
         "name": "tailmox-image.qcow2",
         "hash": "sha256:2b4b219ca7974ef4921e0b9fc0f213b07e1b4e37400b5ca3ed9dee93588e30bb",
-        "ipfs": "QmWQHQxs8GAovXP4DmUdp2NtxyzqcRdHzveK2QFLxUmrrK"
+        "ipfs": {
+            "cid-v0": "QmWQHQxs8GAovXP4DmUdp2NtxyzqcRdHzveK2QFLxUmrrK",
+            "cid-v1": "bafybeidxzo6vw73phymnsvqeb7ltulw3xj6yvrp4etd4vwcr7wweb6foya"
+        }
     }
 }
