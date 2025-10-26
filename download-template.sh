@@ -95,7 +95,7 @@ if command -v ipfs >/dev/null 2>&1; then
     exit 5
   fi
 else
-  URL="https://${CID}/${GATEWAY}"
+  URL="https://${CID}.${GATEWAY}"
   echo "Using HTTP gateway: $URL"
   # Use curl with fail and follow redirects
   if command -v curl >/dev/null 2>&1; then
