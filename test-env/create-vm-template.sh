@@ -79,7 +79,7 @@ echo "Creating VM $VMID ($NAME)..."
 
 # Import the disk
 echo "Importing disk image..."
-qm importdisk "$VMID" "$TEMPLATE" "local-lvm" || {
+qm importdisk "$VMID" "$TEMPLATE" "zfs" || {
   echo "Error: Failed to import disk" >&2
   exit 1
 }
