@@ -195,11 +195,11 @@ function check_all_peers_online() {
     done
     
     if [ "$all_peers_online" = true ]; then
-        log_echo "${GREEN}All tailmox peers are online.${RESET}"
+        log_echo "${GREEN}All tailmox peers are registered as online in Tailscale.${RESET}"
         return 0
     else
         offline_peers=${offline_peers%, }
-        log_echo "${RED}Not all tailmox peers are online. Offline peers: $offline_peers"
+        log_echo "${RED}Not all tailmox peers are online in Tailscale. Offline peers: $offline_peers"
         return 1
     fi
 }
@@ -263,12 +263,18 @@ function ensure_ping_reachability() {
 
     # Check ping reachability for each peer
     echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
-        log_echo "${BLUE}Pinging $peer_ip...${RESET}"
-        if ! ping -c 1 -W 2 "$peer_ip" &>/dev/null; then
-            log_echo "${RED}Failed to ping $peer_ip.${RESET}"
-            return 1
+        # Get the hostname for the peer
+        local peer_hostname=$(tailscale status --json | jq -r ".Peer[] | select(.TailscaleIPs[0] == \"$peer_ip\") | .HostName")
+        local ping_interval=0.5
+        local ping_count=6
+        local ping_span=$(echo "$ping_interval * $ping_count" | bc)
+
+        log_echo "${BLUE}Pinging $peer_hostname ($peer_ip) ($ping_count pings over $ping_span seconds)...${RESET}"
+        if ! ping -c $ping_count -i $ping_interval -W 1 "$peer_ip" | grep -q "0 received"; then
+            log_echo "${GREEN}Successfully pinged $peer_hostname ($peer_ip).${RESET}"
         else
-            log_echo "${GREEN}Successfully pinged $peer_ip.${RESET}"
+            log_echo "${RED}Failed to ping $peer_hostname ($peer_ip). All responses were lost.${RESET}"
+            return 1
         fi
     done
 }
@@ -288,8 +294,8 @@ function report_peer_latency() {
 
     # Calculate average latency for each peer
     echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
-        local ping_count=25
-        local ping_interval=0.1
+        local ping_count=50
+        local ping_interval=0.05
         log_echo "${BLUE}Calculating average latency for $peer_ip ($ping_count pings with an interval of $ping_interval seconds)...${RESET}"
         avg_latency=$(ping -c $ping_count -i $ping_interval "$peer_ip" | awk -F'/' 'END {print $5}')
         if [ -n "$avg_latency" ]; then
@@ -315,6 +321,25 @@ function are_hosts_tcp_port_8006_reachable() {
             return 1
         else
             log_echo "${GREEN}TCP port 8006 is available on $peer_hostname ($peer_ip).${RESET}"
+        fi
+    done
+}
+
+# Check if TCP port 443 is available on all nodes
+function are_hosts_tcp_port_443_reachable() {
+    log_echo "${YELLOW}Checking if TCP port 443 is available on all nodes...${RESET}"
+
+    # Iterate through all peers
+    echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
+        local peer_ip=$(echo "$peer" | jq -r '.ip')
+        local peer_hostname=$(echo "$peer" | jq -r '.hostname')
+
+        log_echo "${BLUE}Checking TCP port 443 on $peer_hostname ($peer_ip)...${RESET}"
+        if ! nc -z -w 2 "$peer_ip" 443 &>/dev/null; then
+            log_echo "${RED}TCP port 443 is not available on $peer_hostname ($peer_ip).${RESET}"
+            return 1
+        else
+            log_echo "${GREEN}TCP port 443 is available on $peer_hostname ($peer_ip).${RESET}"
         fi
     done
 }
@@ -354,7 +379,7 @@ function check_udp_ports_5405_to_5412() {
 # Check if this node is already part of a Proxmox cluster
 # Returns true/false ?
 function check_local_node_cluster_status() {
-    log_echo "${YELLOW}Checking if this node is already part of a Proxmox cluster...${RESET}"
+    # log_echo "${YELLOW}Checking if this node is already part of a Proxmox cluster...${RESET}"
     
     # Check if the pvecm command exists (should be installed with Proxmox)
     if ! command -v pvecm &>/dev/null; then
@@ -371,7 +396,7 @@ function check_local_node_cluster_status() {
         return 1
     elif echo "$cluster_status" | grep -q "Cluster information"; then
         local cluster_name=$(pvecm status | grep "Name:" | awk '{print $2}')
-        log_echo "${GREEN}This node is already part of cluster named: $cluster_name${RESET}"
+        # log_echo "${GREEN}This node is already part of cluster named: $cluster_name${RESET}"
         return 0
     else
         log_echo "${RED}Unable to determine cluster status. Output: $cluster_status${RESET}"
@@ -381,9 +406,9 @@ function check_local_node_cluster_status() {
 
 # Check if a remote node is already part of a Proxmox cluster
 # Returns true/false ?
-function check_remote_node_cluster_status() {
+function check_remote_node_cluster_status_via_ssh() {
     local node_ip=$1
-    log_echo "${YELLOW}Checking if remote node $node_ip is part of a Proxmox cluster...${RESET}"
+    log_echo "${YELLOW}Checking if remote node $node_ip is part of a Proxmox cluster via SSH...${RESET}"
     
     # Check if the pvecm command exists (should be installed with Proxmox)
     if ! command -v pvecm &>/dev/null; then
@@ -408,6 +433,63 @@ function check_remote_node_cluster_status() {
         exit 1
     fi
 
+}
+
+# Check if a remote node is already part of a Proxmox cluster using API
+# Returns true/false ?
+function check_remote_node_cluster_status_via_api() {
+    local node_hostname=$1
+    local username=${2:-"root@pam"}  # Default to root@pam if not provided
+    local password=$3
+    
+    log_echo "${YELLOW}Checking if remote node $node_hostname is part of a Proxmox cluster via API...${RESET}"
+    
+    # First, authenticate and get a ticket
+    local auth_response=$(curl -k -s -d "username=$username&password=$password" \
+        "https://$node_hostname:8006/api2/json/access/ticket" 2>/dev/null)
+    
+    if [ $? -ne 0 ] || [ -z "$auth_response" ]; then
+        log_echo "${RED}Failed to connect to Proxmox API on $node_hostname${RESET}"
+        return 1
+    fi
+    
+    # Extract ticket and CSRFPreventionToken
+    local ticket=$(echo "$auth_response" | jq -r '.data.ticket // empty')
+    local csrf_token=$(echo "$auth_response" | jq -r '.data.CSRFPreventionToken // empty')
+    
+    if [ -z "$ticket" ] || [ "$ticket" == "null" ]; then
+        log_echo "${RED}Authentication failed for $node_hostname. Check credentials.${RESET}"
+        return 1
+    fi
+    
+    # Get cluster status using the API
+    local cluster_response=$(curl -k -s \
+        -H "Cookie: PVEAuthCookie=$ticket" \
+        -H "CSRFPreventionToken: $csrf_token" \
+        "https://$node_hostname:8006/api2/json/cluster/status" 2>/dev/null)
+    
+    if [ $? -ne 0 ] || [ -z "$cluster_response" ]; then
+        log_echo "${RED}Failed to get cluster status from $node_hostname API${RESET}"
+        return 1
+    fi
+    
+    # Check if the response indicates a cluster exists
+    local cluster_data=$(echo "$cluster_response" | jq -r '.data // empty')
+    
+    if [ -z "$cluster_data" ] || [ "$cluster_data" == "null" ] || [ "$cluster_data" == "[]" ]; then
+        log_echo "${BLUE}Remote node $node_hostname is not part of any cluster.${RESET}"
+        return 1
+    else
+        # Extract cluster name from the first cluster entry
+        local cluster_name=$(echo "$cluster_response" | jq -r '.data[] | select(.type == "cluster") | .name // empty' | head -1)
+        if [ -n "$cluster_name" ] && [ "$cluster_name" != "null" ]; then
+            log_echo "${GREEN}Remote node $node_hostname is part of cluster named: $cluster_name${RESET}"
+            return 0
+        else
+            log_echo "${BLUE}Remote node $node_hostname is not part of any cluster.${RESET}"
+            return 1
+        fi
+    fi
 }
 
 # Get the certificate fingerprint for a Proxmox node
@@ -453,21 +535,29 @@ function add_local_node_to_cluster() {
             TARGET_DNSNAME=$(echo "$target_peer" | jq -r '.dnsName' | sed 's/\.$//')
             
             log_echo "${BLUE}Checking cluster status on $TARGET_HOSTNAME ($TARGET_IP)...${RESET}"
-            if check_remote_node_cluster_status "$TARGET_HOSTNAME"; then
+            
+            # Prompt for root password of the remote node first
+            read -s -p "Please enter the root password for ${TARGET_HOSTNAME}: " ROOT_PASSWORD < /dev/tty
+            echo
+            
+            # Try API-based check first, fall back to SSH if it fails
+            local cluster_exists=false
+            if check_remote_node_cluster_status_via_api "$TARGET_HOSTNAME" "root@pam" "$ROOT_PASSWORD"; then
+                cluster_exists=true
+            # elif check_remote_node_cluster_status_via_ssh "$TARGET_HOSTNAME"; then
+            #    cluster_exists=true
+            fi
+            
+            if [ "$cluster_exists" = true ]; then
                 local LOCAL_TAILSCALE_IP=$(tailscale ip -4)
                 local target_fingerprint=$(get_pve_certificate_fingerprint "$TARGET_HOSTNAME")
 
                 log_echo "${GREEN}Found an existing cluster on $TARGET_HOSTNAME. Joining the cluster...${RESET}"
 
-                # Prompt for root password of the remote node
-                # log_echo "${YELLOW}Please enter the root password for ${TARGET_HOSTNAME}:${RESET}"
-                read -s -p "Please enter the root password for ${TARGET_HOSTNAME}: " ROOT_PASSWORD < /dev/tty
-                echo
-
                  # Use expect to handle the password prompt with proper authentication
                 expect -c "
                 set timeout 60
-                spawn pvecm add \"$TARGET_HOSTNAME\" --link0 address=$LOCAL_TAILSCALE_IP --fingerprint $target_fingerprint
+                spawn pvecm add \"$TARGET_HOSTNAME.$MAGICDNS_DOMAIN_NAME\" --link0 address=$LOCAL_TAILSCALE_IP --fingerprint $target_fingerprint
                 expect {
                     \"*?assword:*\" {
                         send \"$ROOT_PASSWORD\r\"
@@ -494,6 +584,7 @@ function add_local_node_to_cluster() {
                 # Check if successful
                 if [ $? -eq 0 ]; then
                     log_echo "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
+                    log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
                     exit 0
                 else
                     log_echo "${RED}Failed to join cluster with $TARGET_HOSTNAME. Check the password and try again.${RESET}"
@@ -541,11 +632,13 @@ start_tailscale $AUTH_KEY
 
 ### Now that Tailscale is running...
 
-run_tailscale_cert_services
+# running 'tailscale serve' with these options allows a valid certificate on port 443, along with the built-in handling of the certificate
+tailscale serve --bg https+insecure://localhost:8006 &>/dev/null
+log_echo "${GREEN}Tailscale serve is now running.${RESET}"
 
 # Exit early if staging mode is enabled
 if [[ "$STAGING" == "true" ]]; then
-    log_echo "${YELLOW}Staging mode enabled. Exiting after Tailscale certificate setup.${RESET}"
+    log_echo "${YELLOW}Staging mode enabled. Exiting after \`tailscale serve\` setup.${RESET}"
     exit 0
 fi
 
@@ -581,17 +674,25 @@ else
     log_echo "${GREEN}All Tailmox peers have TCP port 8006 available.${RESET}"
 fi
 
+# Ensure that all peers are reachable via TCP port 443
+if ! are_hosts_tcp_port_443_reachable; then
+    log_echo "${RED}Some peers have TCP port 443 unavailable. Please check the network configuration.${RESET}"
+    exit 1
+else
+    log_echo "${GREEN}All Tailmox peers have TCP port 443 available.${RESET}"
+fi
+
 # Check if the local node is already in a cluster
 if ! check_local_node_cluster_status; then
     log_echo "${YELLOW}This node is not part of a cluster. Attempting to create or join a cluster...${RESET}"
+    # Add this local node to a cluster if it exists
+    add_local_node_to_cluster
 else
     log_echo "${GREEN}This node is already part of a cluster, nothing further to do.${RESET}"
+    log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     exit 1
 fi
-
-# Add this local node to a cluster if it exists
-add_local_node_to_cluster
 
 # If local node is now in the cluster...
 if ! check_local_node_cluster_status; then
@@ -601,6 +702,7 @@ if ! check_local_node_cluster_status; then
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
         create_cluster
         log_echo "${GREEN}Cluster created successfully.${RESET}"
+        log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
         log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     else
         log_echo "${RED}Exiting without creating a cluster.${RESET}"

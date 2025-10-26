@@ -21,8 +21,6 @@ In the interest of complete transparency, if you follow this guide or use this p
 
 This project was originally started as a [gist](https://gist.github.com/willjasen/df71ca4ec635211d83cdc18fe7f658ca) guide on how to cluster Proxmox servers together using Tailscale so that hosts not physically located together could participate in a cluster. While a how-to is great, being able to replicate the steps in code and sharing that with others was always been the goal.
 
-Tailmox also uses the project [tailscale-cert-services](https://github.com/willjasen/tailscale-cert-services) in order to generate and maintain each host's Tailscale certificate as it applies to Proxmox.
-
 ---
 
 ### 😮 Controversy 😮
@@ -49,7 +47,7 @@ In my usage, I have been able to move a virtual server of about 20 terbytes by s
 
 ### ✏️ Preparation ✏️
 
-Because Tailscale allows for an access control list, if you use an ACL, then it should be prepared for cluster communications. The script will check that TCP 22 and TCP 8006 are available on all other hosts and will exit if not.
+Because Tailscale allows for an access control list, if you use an ACL, then it should be prepared for cluster communications. The script will check that TCP 22, TCP 443, and TCP 8006 are available on all other hosts and will exit if not.
 
 This script uses the tag of "tailmox" to determine which Tailscale machines are using this project to establish a cluster together. The "tailmox" tag should be specified under "tagOwners":
 ```
@@ -60,13 +58,14 @@ This script uses the tag of "tailmox" to determine which Tailscale machines are 
 }
 ```
 
-Proxmox clustering requires TCP 22, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", we can create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. There is also an included rule at the end to allow all devices within the tailnet to access the web interface of the hosts with the tag.
+Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", we can create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. There is also an included rule at the end to allow all devices within the tailnet to access the web interface of the hosts with the tag.
 ```
 "acls": [
 	/// ... ACL rules before
 
 	// allow Tailmox
 	{"action": "accept", "proto": "tcp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:22"]},   // Tailmox SSH
+	{"action": "accept", "proto": "tcp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:443"]}, // Tailmox web
 	{"action": "accept", "proto": "tcp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:8006"]}, // Tailmox web
 	{"action": "accept", "proto": "udp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:5405"]}, // Tailmox clustering
 	{"action": "accept", "proto": "udp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:5406"]}, // Tailmox clustering
@@ -78,6 +77,7 @@ Proxmox clustering requires TCP 22, TCP 8006, and UDP 5405 through 5412. Using t
 	{"action": "accept", "proto": "udp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:5412"]}, // Tailmox clustering
 
 	// allow Proxmox web from all other devices
+	{"action": "accept", "proto": "tcp", "src": ["*"], "dst": ["tag:tailmox:443"]}, // Tailmox web
 	{"action": "accept", "proto": "tcp", "src": ["*"], "dst": ["tag:tailmox:8006"]}, // Tailmox web
 
 	/// ... ACL rules after 
@@ -156,10 +156,12 @@ The [gist](https://gist.github.com/willjasen/df71ca4ec635211d83cdc18fe7f658ca) g
 	- ```100.64.2.2 host2.example-test.ts.net host2```
   
 4. Since DNS queries will be served via Tailscale, ensure that your global DNS server via Tailscale can resolve host1 as 100.64.1.1 and host2 as 100.64.2.2
-5. If you need to allow for the traffic within your Tailscale ACL, allow TCP 22, TCP 8006, and UDP 5405 - 5412; example as follows:
+5. If you need to allow for the traffic within your Tailscale ACL: allow TCP 22, TCP 443, TCP 8006, and UDP 5405 - 5412; example as follows:
 	```// allow Proxmox clustering
 	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host1:22"]},   // SSH
 	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host2:22"]},   // SSH
+	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host1:443"]}, // Proxmox web
+	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host2:443"]}, // Proxmox web
 	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host1:8006"]}, // Proxmox web
 	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host2:8006"]}, // Proxmox web
 	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host1:5405"]}, // corosync
