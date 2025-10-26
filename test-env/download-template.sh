@@ -80,14 +80,14 @@ if [[ -z "$OUTFILE" ]]; then
   fi
 fi
 
-# --- Added: support gzip_compressed flag and derive download vs final paths ---
-GZIP_FLAG=$(json_read ".template.versions.$VERSION.gzip_compressed" || true)
-if [[ "$GZIP_FLAG" == "true" || "$GZIP_FLAG" == "1" ]]; then
-  if [[ "$OUTFILE" == *.tar.gz ]]; then
+# --- Added: support xz_compressed flag and derive download vs final paths ---
+XZ_FLAG=$(json_read ".template.versions.$VERSION.xz_compressed" || true)
+if [[ "$XZ_FLAG" == "true" || "$XZ_FLAG" == "1" ]]; then
+  if [[ "$OUTFILE" == *.xz ]]; then
     DOWNLOAD_PATH="$OUTFILE"
-    FINAL_OUTFILE="${OUTFILE%.tar.gz}"
+    FINAL_OUTFILE="${OUTFILE%.xz}"
   else
-    DOWNLOAD_PATH="${OUTFILE}.tar.gz"
+    DOWNLOAD_PATH="${OUTFILE}.xz"
     FINAL_OUTFILE="$OUTFILE"
   fi
 else
@@ -113,27 +113,26 @@ calculate_hash() {
   fi
 }
 
-# Function: decompress gzip using tar for .tar.gz files
-decompress_gzip() {
+# Function: decompress xz file
+decompress_xz() {
   local src="$1" dst="$2"
   echo "Decompressing $src -> $dst"
-  if [[ "$src" == *.tar.gz ]]; then
-    if command -v tar >/dev/null 2>&1; then
+  if [[ "$src" == *.xz ]]; then
+    if command -v xz >/dev/null 2>&1; then
       mkdir -p "$(dirname "$dst")"
-      # Extract directly to the destination file using -O
-      tar -xzOf "$src" > "$dst"
+      xz -dc "$src" > "$dst"
       return $?
     else
-      echo "tar is not available to decompress $src" >&2
+      echo "xz is not available to decompress $src" >&2
       return 2
     fi
   else
-    echo "File $src is not a .tar.gz archive" >&2
+    echo "File $src is not an .xz archive" >&2
     return 3
   fi
 }
 
-# Check if final file exists and verify hash (handle compressed existing file too)
+# Check if final file exists and verify hash
 if [[ -f "$FINAL_OUTFILE" ]]; then
   echo "File already exists: $FINAL_OUTFILE"
   HASH_FULL=$(json_read ".template.versions.$VERSION.hash" || true)
@@ -149,9 +148,9 @@ if [[ -f "$FINAL_OUTFILE" ]]; then
   else
     echo "No valid hash provided in JSON. Will download fresh copy."
   fi
-elif [[ "$GZIP_FLAG" == "true" && -f "$DOWNLOAD_PATH" ]]; then
+elif [[ "$XZ_FLAG" == "true" && -f "$DOWNLOAD_PATH" ]]; then
   echo "Found existing compressed file: $DOWNLOAD_PATH. Attempting to decompress."
-  if decompress_gzip "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
+  if decompress_xz "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
     echo "Decompressed existing file to $FINAL_OUTFILE"
     HASH_FULL=$(json_read ".template.versions.$VERSION.hash" || true)
     if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" && "$HASH_FULL" == sha256:* ]]; then
@@ -225,9 +224,9 @@ else
   fi
 fi
 
-# If gzip flag set, decompress downloaded file into FINAL_OUTFILE (strict shell)
-if [[ "$GZIP_FLAG" == "true" || "$GZIP_FLAG" == "1" ]]; then
-  if decompress_gzip "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
+# If xz flag set, decompress downloaded file into FINAL_OUTFILE
+if [[ "$XZ_FLAG" == "true" || "$XZ_FLAG" == "1" ]]; then
+  if decompress_xz "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
     echo "Decompression succeeded: $FINAL_OUTFILE"
     rm -f "$DOWNLOAD_PATH" || true
   else

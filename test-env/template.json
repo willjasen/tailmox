@@ -4,12 +4,12 @@
     "template": {
         "versions": {
             "compressed": {
-                "gzip_compressed": true,
-                "name": "tailmox.qcow2.gz",
-                "size_in_bytes": 2597365931,
-                "hash": "sha256:a7d2cbc30eb6dffa7f37064e59fca3801a071b94ac5fa121a9421c0839f066aa",
+                "xz_compressed": true,
+                "name": "tailmox.qcow2.tar.xz",
+                "size_in_bytes": 1866475744,
+                "hash": "sha256:e233fc60442c0f7f924529ae88d7b356c35d137c85ae7555e85709554c758f7c",
                 "ipfs": {
-                    "cid_v0": "QmcmaeayUpDzZ8MVeNPNvKnHyobvg4AoVB4JEDYQMP2cwc",
+                    "cid_v0": "QmPz6g7f8h9i0j1k2l3m4n5o6p7q8r9s0t1u2v3w4x5y6z7a8b9c0d1e2f3g4h5i6j7k8l9m0n1o2p3q4r5s6t7u8v9w",
                     "cid_v1": "bafybeigwm2f3ntdkchwfv5yguihqqseht4mb6lpy7rzsjhscghvlewrrsm"
                 }
             },
