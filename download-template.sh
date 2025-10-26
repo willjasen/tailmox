@@ -75,9 +75,9 @@ fi
 if [[ -z "$OUTFILE" ]]; then
   NAME_FROM_JSON=$(json_read '.template.name' || true)
   if [[ -n "$NAME_FROM_JSON" && "$NAME_FROM_JSON" != "null" ]]; then
-    OUTFILE="$SCRIPT_DIR/$NAME_FROM_JSON"
+    OUTFILE="/tmp/$NAME_FROM_JSON"
   else
-    OUTFILE="$SCRIPT_DIR/${CID}.img"
+    OUTFILE="/tmp/${CID}.img"
   fi
 fi
 
