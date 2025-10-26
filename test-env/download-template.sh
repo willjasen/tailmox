@@ -73,11 +73,11 @@ fi
 # --- Added: support gzip_compressed flag and derive download vs final paths ---
 GZIP_FLAG=$(json_read '.template.gzip_compressed' || true)
 if [[ "$GZIP_FLAG" == "true" || "$GZIP_FLAG" == "1" ]]; then
-  if [[ "$OUTFILE" == *.gz ]]; then
+  if [[ "$OUTFILE" == *.tar.gz ]]; then
     DOWNLOAD_PATH="$OUTFILE"
-    FINAL_OUTFILE="${OUTFILE%.gz}"
+    FINAL_OUTFILE="${OUTFILE%.targz}"
   else
-    DOWNLOAD_PATH="${OUTFILE}.gz"
+    DOWNLOAD_PATH="${OUTFILE}.tar.gz"
     FINAL_OUTFILE="$OUTFILE"
   fi
 else
