@@ -139,7 +139,7 @@ extract_tar() {
   if [[ "$src" == *.tar ]]; then
     if command -v tar >/dev/null 2>&1; then
       mkdir -p "$dst_dir"
-      tar xf "$src" -C "$dst_dir"
+      tar xvf "$src" -C "$dst_dir"
       return $?
     else
       echo "tar is not available to extract $src" >&2
