@@ -111,11 +111,25 @@ function install_dependencies() {
 function install_tailscale() {
     if ! command -v tailscale &>/dev/null; then
         log_echo "${YELLOW}Tailscale not found. Installing...${RESET}"
-        apt install curl -y
-        curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
-        curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list
-        apt update
-        apt install tailscale -y
+        
+        # Check Proxmox version
+        local pve_version=$(pveversion | grep -oP 'pve-manager/\K[0-9]+' | head -1)
+        
+        if [[ "$pve_version" == "8" ]]; then
+            log_echo "${YELLOW}Detected Proxmox v8. Proceeding with Tailscale installation for Proxmox v8...${RESET}"
+            apt install curl -y
+            curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg | tee /usr/share/keyrings/tailscale-archive-keyring.gpg >/dev/null
+            curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list | tee /etc/apt/sources.list.d/tailscale.list
+            apt update
+            apt install tailscale -y
+        elif [[ "$pve_version" == "9" ]]; then
+            log_echo "${YELLOW}Detected Proxmox v9. Proceeding with Tailscale installation for Proxmox v9...${RESET}"
+            apt install curl -y
+            curl -fsSL https://tailscale.com/install.sh | sh
+        else
+            log_echo "${RED}Unsupported Proxmox version: $pve_version. Exiting...${RESET}"
+            exit 1
+        fi
     else
         # log_echo "${GREEN}Tailscale is already installed.${RESET}"
         :
