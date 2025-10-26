@@ -4,6 +4,7 @@
     "template": {
         "name": "tailmox-image.qcow2",
         "size_in_bytes": 6630408192,
+        "gzip_compressed": false,
         "hash": "sha256:2b4b219ca7974ef4921e0b9fc0f213b07e1b4e37400b5ca3ed9dee93588e30bb",
         "ipfs": {
             "cid_v0": "QmWQHQxs8GAovXP4DmUdp2NtxyzqcRdHzveK2QFLxUmrrK",

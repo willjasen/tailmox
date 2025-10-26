@@ -70,6 +70,21 @@ if [[ -z "$OUTFILE" ]]; then
   fi
 fi
 
+# --- Added: support gzip_compressed flag and derive download vs final paths ---
+GZIP_FLAG=$(json_read '.template.gzip_compressed' || true)
+if [[ "$GZIP_FLAG" == "true" || "$GZIP_FLAG" == "1" ]]; then
+  if [[ "$OUTFILE" == *.gz ]]; then
+    DOWNLOAD_PATH="$OUTFILE"
+    FINAL_OUTFILE="${OUTFILE%.gz}"
+  else
+    DOWNLOAD_PATH="${OUTFILE}.gz"
+    FINAL_OUTFILE="$OUTFILE"
+  fi
+else
+  DOWNLOAD_PATH="$OUTFILE"
+  FINAL_OUTFILE="$OUTFILE"
+fi
+
 # Helper function to calculate sha256 hash
 calculate_hash() {
   local file="$1"
@@ -84,13 +99,32 @@ calculate_hash() {
   fi
 }
 
-# Check if file exists and verify hash
-if [[ -f "$OUTFILE" ]]; then
-  echo "File already exists: $OUTFILE"
+# Function: decompress gzip using only shell tools (gzip/gunzip/zcat)
+decompress_gzip() {
+  local src="$1" dst="$2"
+  echo "Decompressing $src -> $dst"
+  if command -v gzip >/dev/null 2>&1; then
+    gzip -dc -- "$src" > "$dst"
+    return $?
+  elif command -v gunzip >/dev/null 2>&1; then
+    gunzip -c -- "$src" > "$dst"
+    return $?
+  elif command -v zcat >/dev/null 2>&1; then
+    zcat -- "$src" > "$dst"
+    return $?
+  else
+    echo "No gzip/gunzip/zcat available to decompress $src" >&2
+    return 2
+  fi
+}
+
+# Check if final file exists and verify hash (handle compressed existing file too)
+if [[ -f "$FINAL_OUTFILE" ]]; then
+  echo "File already exists: $FINAL_OUTFILE"
   HASH_FULL=$(json_read '.template.hash' || true)
   if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" && "$HASH_FULL" == sha256:* ]]; then
     EXPECTED=${HASH_FULL#sha256:}
-    ACTUAL=$(calculate_hash "$OUTFILE")
+    ACTUAL=$(calculate_hash "$FINAL_OUTFILE")
     if [[ -n "$ACTUAL" && "$ACTUAL" == "$EXPECTED" ]]; then
       echo "Existing file hash matches. Skipping download."
       exit 0
@@ -100,10 +134,31 @@ if [[ -f "$OUTFILE" ]]; then
   else
     echo "No valid hash provided in JSON. Will download fresh copy."
   fi
+elif [[ "$GZIP_FLAG" == "true" && -f "$DOWNLOAD_PATH" ]]; then
+  echo "Found existing compressed file: $DOWNLOAD_PATH. Attempting to decompress."
+  if decompress_gzip "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
+    echo "Decompressed existing file to $FINAL_OUTFILE"
+    HASH_FULL=$(json_read '.template.hash' || true)
+    if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" && "$HASH_FULL" == sha256:* ]]; then
+      EXPECTED=${HASH_FULL#sha256:}
+      ACTUAL=$(calculate_hash "$FINAL_OUTFILE")
+      if [[ -n "$ACTUAL" && "$ACTUAL" == "$EXPECTED" ]]; then
+        echo "Existing (decompressed) file hash matches. Skipping download."
+        rm -f "$DOWNLOAD_PATH" || true
+        exit 0
+      else
+        echo "Existing decompressed hash mismatch. Will download fresh copy."
+      fi
+    else
+      echo "No valid hash provided in JSON. Will download fresh copy."
+    fi
+  else
+    echo "Failed to decompress existing compressed file. Will download fresh copy."
+  fi
 fi
 
-# --- Added: ensure target directory exists and has enough free space based on JSON size_in_bytes ---
-DIR="$(dirname "$OUTFILE")"
+# --- Ensure target directory exists and has enough free space (use DOWNLOAD_PATH) ---
+DIR="$(dirname "$DOWNLOAD_PATH")"
 if [[ ! -d "$DIR" ]]; then
   mkdir -p "$DIR" || { echo "Cannot create directory $DIR" >&2; exit 8; }
 fi
@@ -125,13 +180,13 @@ if [[ -n "$SIZE_BYTES" && "$SIZE_BYTES" != "null" ]]; then
 fi
 
 echo "Downloading IPFS CID: $CID"
-echo "Saving to: $OUTFILE"
+echo "Saving to: $DOWNLOAD_PATH"
 
 # Check for ipfs CLI
 if command -v ipfs >/dev/null 2>&1; then
   echo "Using local ipfs CLI to fetch..."
   # ipfs cat writes to stdout; redirect to outfile
-  if ipfs cat "$CID" > "$OUTFILE"; then
+  if ipfs cat "$CID" > "$DOWNLOAD_PATH"; then
     echo "Downloaded via ipfs CLI."
   else
     echo "ipfs CLI failed to fetch $CID" >&2
@@ -142,22 +197,33 @@ else
   echo "Using HTTP gateway: $URL"
   # Use curl with fail and follow redirects
   if command -v curl >/dev/null 2>&1; then
-    curl -fL --progress-bar -o "$OUTFILE" "$URL"
+    curl -fL --progress-bar -o "$DOWNLOAD_PATH" "$URL"
   elif command -v wget >/dev/null 2>&1; then
-    wget -O "$OUTFILE" "$URL"
+    wget -O "$DOWNLOAD_PATH" "$URL"
   else
     echo "Neither curl nor wget nor ipfs was found on PATH. Cannot download." >&2
     exit 6
   fi
 fi
 
-# Optional verification: check sha256 if provided
+# If gzip flag set, decompress downloaded file into FINAL_OUTFILE (strict shell)
+if [[ "$GZIP_FLAG" == "true" || "$GZIP_FLAG" == "1" ]]; then
+  if decompress_gzip "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
+    echo "Decompression succeeded: $FINAL_OUTFILE"
+    rm -f "$DOWNLOAD_PATH" || true
+  else
+    echo "Decompression failed for $DOWNLOAD_PATH" >&2
+    exit 10
+  fi
+fi
+
+# Optional verification: check sha256 if provided (verify FINAL_OUTFILE)
 HASH_FULL=$(json_read '.template.hash' || true)
 if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" ]]; then
   echo "Verifying hash..."
   if [[ "$HASH_FULL" == sha256:* ]]; then
     EXPECTED=${HASH_FULL#sha256:}
-    ACTUAL=$(calculate_hash "$OUTFILE")
+    ACTUAL=$(calculate_hash "$FINAL_OUTFILE")
     if [[ -n "$ACTUAL" ]]; then
       if [[ "$ACTUAL" == "$EXPECTED" ]]; then
         echo "sha256 verification passed."
@@ -173,4 +239,4 @@ else
   echo "No hash provided in JSON; skipping verification."
 fi
 
-echo "Done. File saved to: $OUTFILE"
+echo "Done. File saved to: $FINAL_OUTFILE"
