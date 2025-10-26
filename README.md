@@ -121,7 +121,7 @@ If planning to run `tailmox.sh` many times in a short period, it is recommended 
 `tailmox.sh` -  this is the main script of the project
 - checks that the host is Proxmox v8 or v9, installs dependencies and Tailscale, then starts Tailscale
 - once Tailscale is running, the host will generate a certificate from Tailscale (to be used with the web interface/API)
-- it will then retrieve other Tailscale machines with tag of "tailmox", then check if it can reach them via ping (ICMP) and TCP 8006 (HTTPS for Proxmox); if these checks do not pass, the script will exit as these are required for Proxmox clustering
+- it will then retrieve other Tailscale machines with tag of "tailmox", then check if it can reach them via ping (ICMP), via TCP 443, and via TCP 8006; if these checks do not pass, the script will exit
 - after the checks pass, the host will check if it is in a cluster; if it is not, it will check the other Tailscale machines with the tag of "tailmox" to see if they are part of a cluster; when it finds a matching host in a cluster, it will then attempt to join to the cluster using it; if another host isn't found, then a new cluster will be prompted to be created
 
 `revert_test_vms.sh` - this is a testing script used to revert VMs being tested with
