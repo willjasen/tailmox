@@ -110,7 +110,8 @@ decompress_gzip() {
   if [[ "$src" == *.tar.gz ]]; then
     if command -v tar >/dev/null 2>&1; then
       mkdir -p "$(dirname "$dst")"
-      tar -xzf "$src" -C "$(dirname "$dst")" --strip-components=1
+      # Extract directly to the destination file using -O
+      tar -xzOf "$src" > "$dst"
       return $?
     else
       echo "tar is not available to decompress $src" >&2
