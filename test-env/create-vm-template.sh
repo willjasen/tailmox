@@ -104,3 +104,5 @@ qm set "$VMID" --scsi0 "zfs:vm-${VMID}-disk-0"
 qm template "$VMID"
 
 echo "VM template $VMID ($NAME) created successfully"
+
+### SCRIPTS ARE MAKING A VM TEMPLATE FROM A COMPRESSED IMAGE VIA IPFS
