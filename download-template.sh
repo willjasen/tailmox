@@ -45,17 +45,8 @@ done
 # Helper: read field from JSON using jq if available, else use simple sed/grep
 json_read() {
   local key="$1"
-  if command -v jq >/dev/null 2>&1; then
-    jq -r "$key // empty" "$JSON_PATH" 2>/dev/null || true
-  else
-    # Very small, permissive fallback for simple JSON with double quotes.
-    # key should be like '.template.ipfs' -> we only support .template.<name>
-    local field
-    field=$(echo "$key" | awk -F'.' '{print $3}')
-    grep -o "\"$field\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$JSON_PATH" 2>/dev/null \
-      | head -n1 \
-      | sed -E 's/^[^:\"]*:[[:space:]]*\"(.*)\"/\1/' || true
-  fi
+  # Use jq unconditionally (assume jq is available)
+  jq -r "$key // empty" "$JSON_PATH" 2>/dev/null || true
 }
 
 if [[ -z "$CID" ]]; then
