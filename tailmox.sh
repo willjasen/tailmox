@@ -258,6 +258,9 @@ function ensure_ping_reachability() {
         return 1
     fi
 
+    # Number of attempts for pinging
+    local max_attempts=3
+
     # Check ping reachability for each peer
     echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
         # Get the hostname for the peer
@@ -266,13 +269,21 @@ function ensure_ping_reachability() {
         local ping_count=6
         local ping_span=$(echo "$ping_interval * $ping_count" | bc)
 
-        log_echo "${BLUE}Pinging $peer_hostname ($peer_ip) ($ping_count pings over $ping_span seconds)...${RESET}"
-        if ! ping -c $ping_count -i $ping_interval -W 1 "$peer_ip" | grep -q "0 received"; then
-            log_echo "${GREEN}Successfully pinged $peer_hostname ($peer_ip).${RESET}"
-        else
-            log_echo "${RED}Failed to ping $peer_hostname ($peer_ip). All responses were lost.${RESET}"
-            return 1
-        fi
+        for attempt in $(seq 1 $max_attempts); do
+            log_echo "${BLUE}Attempt $attempt: Pinging $peer_hostname ($peer_ip) ($ping_count pings over $ping_span seconds)...${RESET}"
+            if ! ping -c $ping_count -i $ping_interval -W 1 "$peer_ip" | grep -q "0 received"; then
+                log_echo "${GREEN}Successfully pinged $peer_hostname ($peer_ip) on attempt $attempt.${RESET}"
+                break
+            else
+                log_echo "${YELLOW}Attempt $attempt failed to ping $peer_hostname ($peer_ip). Retrying...${RESET}"
+            fi
+
+            # If this was the last attempt, log failure and return
+            if [ "$attempt" -eq 3 ]; then
+                log_echo "${RED}Failed to ping $peer_hostname ($peer_ip) after 3 attempts. All responses were lost.${RESET}"
+                return 1
+            fi
+        done
     done
 }
 
