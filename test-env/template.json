@@ -2,14 +2,27 @@
     "description": "Create a Proxmox VM template for testing tailmox.",
     "related_repo": "github.com/willjasen/tailmox",
     "template": {
-        "name": "tailmox.qcow2",
-        "size_in_bytes_compressed": 2597365931,
-        "size_in_bytes_uncompressed": 6630408192,
-        "gzip_compressed": false,
-        "hash": "sha256:2b4b219ca7974ef4921e0b9fc0f213b07e1b4e37400b5ca3ed9dee93588e30bb",
-        "ipfs": {
-            "cid_v0": "QmWQHQxs8GAovXP4DmUdp2NtxyzqcRdHzveK2QFLxUmrrK",
-            "cid_v1": "bafybeidxzo6vw73phymnsvqeb7ltulw3xj6yvrp4etd4vwcr7wweb6foya"
+        "versions": {
+            "compressed": {
+                "gzip_compressed": true,
+                "name": "tailmox.qcow2.gz",
+                "size_in_bytes": 2597365931,
+                "hash": "sha256:a7d2cbc30eb6dffa7f37064e59fca3801a071b94ac5fa121a9421c0839f066aa",
+                "ipfs": {
+                    "cid_v0": "QmcmaeayUpDzZ8MVeNPNvKnHyobvg4AoVB4JEDYQMP2cwc",
+                    "cid_v1": "bafybeigwm2f3ntdkchwfv5yguihqqseht4mb6lpy7rzsjhscghvlewrrsm"
+                }
+            },
+            "uncompressed": {
+                "gzip_compressed": false,
+                "name": "tailmox.qcow2",
+                "size_in_bytes": 6630408192,
+                "hash": "sha256:2b4b219ca7974ef4921e0b9fc0f213b07e1b4e37400b5ca3ed9dee93588e30bb",
+                "ipfs": {
+                    "cid_v0": "QmWQHQxs8GAovXP4DmUdp2NtxyzqcRdHzveK2QFLxUmrrK",
+                    "cid_v1": "bafybeidxzo6vw73phymnsvqeb7ltulw3xj6yvrp4etd4vwcr7wweb6foya"
+                }
+            }
         },
         "change_log": [
             { "0": "Installed Proxmox 9.0-1 into virtual machine." },

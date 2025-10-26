@@ -12,11 +12,12 @@ JSON_PATH="$SCRIPT_DIR/template.json"
 
 usage() {
   cat <<EOF
-Usage: $0 [--gateway URL] [--output FILE]
+Usage: $0 [--gateway URL] [--output FILE] [--version VERSION]
 
 Options:
   --gateway URL     HTTP gateway host (default: ipfs.dweb.link; used as <CID>.<gateway>)
   --output FILE     Path to save file (default: template name from JSON or <CID>.img)
+  --version VER     Version to download (compressed|uncompressed, default: uncompressed)
   --help            Show this help
 
 Behavior:
@@ -30,16 +31,24 @@ EOF
 CID=""
 GATEWAY="ipfs.dweb.link"
 OUTFILE=""
+VERSION="uncompressed"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --gateway) GATEWAY="$2"; shift 2 ;;
     --output) OUTFILE="$2"; shift 2 ;;
+    --version) VERSION="$2"; shift 2 ;;
     --help) usage; exit 0 ;;
     -h) usage; exit 0 ;;
     *) echo "Unknown arg: $1" >&2; usage; exit 2 ;;
   esac
 done
+
+# Validate version
+if [[ "$VERSION" != "compressed" && "$VERSION" != "uncompressed" ]]; then
+  echo "Invalid version: $VERSION. Must be 'compressed' or 'uncompressed'" >&2
+  exit 2
+fi
 
 # Helper: read field from JSON using jq if available, else use simple sed/grep
 json_read() {
@@ -54,15 +63,16 @@ if [[ ! -f "$JSON_PATH" ]]; then
   exit 4
 fi
 
-CID=$(json_read '.template.ipfs.cid_v1')
+# Update JSON reading paths to use version-specific paths
+CID=$(json_read ".template.versions.$VERSION.ipfs.cid_v1")
 if [[ -z "$CID" || "$CID" == "null" ]]; then
-  echo "No CID found in $JSON_PATH (field .template.ipfs.cid_v1). Please add it to template.json." >&2
+  echo "No CID found in $JSON_PATH for version $VERSION" >&2
   exit 3
 fi
 
 # Default outfile from JSON template.name if not given
 if [[ -z "$OUTFILE" ]]; then
-  NAME_FROM_JSON=$(json_read '.template.name' || true)
+  NAME_FROM_JSON=$(json_read ".template.versions.$VERSION.name" || true)
   if [[ -n "$NAME_FROM_JSON" && "$NAME_FROM_JSON" != "null" ]]; then
     OUTFILE="/tmp/$NAME_FROM_JSON"
   else
@@ -71,7 +81,7 @@ if [[ -z "$OUTFILE" ]]; then
 fi
 
 # --- Added: support gzip_compressed flag and derive download vs final paths ---
-GZIP_FLAG=$(json_read '.template.gzip_compressed' || true)
+GZIP_FLAG=$(json_read ".template.versions.$VERSION.gzip_compressed" || true)
 if [[ "$GZIP_FLAG" == "true" || "$GZIP_FLAG" == "1" ]]; then
   if [[ "$OUTFILE" == *.tar.gz ]]; then
     DOWNLOAD_PATH="$OUTFILE"
@@ -126,7 +136,7 @@ decompress_gzip() {
 # Check if final file exists and verify hash (handle compressed existing file too)
 if [[ -f "$FINAL_OUTFILE" ]]; then
   echo "File already exists: $FINAL_OUTFILE"
-  HASH_FULL=$(json_read '.template.hash' || true)
+  HASH_FULL=$(json_read ".template.versions.$VERSION.hash" || true)
   if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" && "$HASH_FULL" == sha256:* ]]; then
     EXPECTED=${HASH_FULL#sha256:}
     ACTUAL=$(calculate_hash "$FINAL_OUTFILE")
@@ -143,7 +153,7 @@ elif [[ "$GZIP_FLAG" == "true" && -f "$DOWNLOAD_PATH" ]]; then
   echo "Found existing compressed file: $DOWNLOAD_PATH. Attempting to decompress."
   if decompress_gzip "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
     echo "Decompressed existing file to $FINAL_OUTFILE"
-    HASH_FULL=$(json_read '.template.hash' || true)
+    HASH_FULL=$(json_read ".template.versions.$VERSION.hash" || true)
     if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" && "$HASH_FULL" == sha256:* ]]; then
       EXPECTED=${HASH_FULL#sha256:}
       ACTUAL=$(calculate_hash "$FINAL_OUTFILE")
@@ -169,7 +179,7 @@ if [[ ! -d "$DIR" ]]; then
 fi
 
 echo "Checking if there is enough free space in $DIR..."
-SIZE_BYTES=$(json_read '.template.size_in_bytes' || true)
+SIZE_BYTES=$(json_read ".template.versions.$VERSION.size_in_bytes" || true)
 if [[ -n "$SIZE_BYTES" && "$SIZE_BYTES" != "null" ]]; then
   if [[ "$SIZE_BYTES" =~ ^[0-9]+$ ]]; then
     # Get available kilobytes for the filesystem containing DIR, convert to bytes
@@ -227,7 +237,7 @@ if [[ "$GZIP_FLAG" == "true" || "$GZIP_FLAG" == "1" ]]; then
 fi
 
 # Optional verification: check sha256 if provided (verify FINAL_OUTFILE)
-HASH_FULL=$(json_read '.template.hash' || true)
+HASH_FULL=$(json_read ".template.versions.$VERSION.hash" || true)
 if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" ]]; then
   echo "Verifying hash..."
   if [[ "$HASH_FULL" == sha256:* ]]; then
