@@ -8,6 +8,14 @@
         "ipfs": {
             "cid_v0": "QmWQHQxs8GAovXP4DmUdp2NtxyzqcRdHzveK2QFLxUmrrK",
             "cid_v1": "bafybeidxzo6vw73phymnsvqeb7ltulw3xj6yvrp4etd4vwcr7wweb6foya"
-        }
+        },
+        "change_log": [
+            { "0": "Installed Proxmox 9.0-1 into virtual machine." },
+            { "1": "Disabled the 'enterprise' repo, enabled the 'no-subscription' repo." },
+            { "2": "Applied OS updates (2025-10-26)." },
+            { "3": "Installed dependencies (curl expect git jq qemu-guest-agent)." },
+            { "4": "Installed Tailscale (version 1.90.2)." },
+            { "5": "Cloned the 'tailmox' repo." }
+        ]
     }
 }
