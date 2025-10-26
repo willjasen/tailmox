@@ -134,7 +134,7 @@ decompress_xz() {
 # Check if final file exists and verify hash
 if [[ -f "$FINAL_OUTFILE" ]]; then
   echo "File already exists: $FINAL_OUTFILE"
-  HASH_FULL=$(json_read ".template.versions.$VERSION.hash" || true)
+  HASH_FULL=$(json_read ".template.versions.uncompressed.hash" || true)
   if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" && "$HASH_FULL" == sha256:* ]]; then
     EXPECTED=${HASH_FULL#sha256:}
     ACTUAL=$(calculate_hash "$FINAL_OUTFILE")
@@ -151,7 +151,7 @@ elif [[ "$XZ_FLAG" == "true" && -f "$DOWNLOAD_PATH" ]]; then
   echo "Found existing compressed file: $DOWNLOAD_PATH. Attempting to decompress."
   if decompress_xz "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
     echo "Decompressed existing file to $FINAL_OUTFILE"
-    HASH_FULL=$(json_read ".template.versions.$VERSION.hash" || true)
+    HASH_FULL=$(json_read ".template.versions.uncompressed.hash" || true)
     if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" && "$HASH_FULL" == sha256:* ]]; then
       EXPECTED=${HASH_FULL#sha256:}
       ACTUAL=$(calculate_hash "$FINAL_OUTFILE")
@@ -235,7 +235,7 @@ if [[ "$XZ_FLAG" == "true" || "$XZ_FLAG" == "1" ]]; then
 fi
 
 # Optional verification: check sha256 if provided (verify FINAL_OUTFILE)
-HASH_FULL=$(json_read ".template.versions.$VERSION.hash" || true)
+HASH_FULL=$(json_read ".template.versions.uncompressed.hash" || true)
 if [[ -n "$HASH_FULL" && "$HASH_FULL" != "null" ]]; then
   echo "Verifying hash..."
   if [[ "$HASH_FULL" == sha256:* ]]; then
