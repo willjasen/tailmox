@@ -1,6 +1,8 @@
 # tailmox
 cluster proxmox over tailscale
 
+![GitHub Release](https://img.shields.io/github/v/release/willjasen/tailmox)
+
 [read more about the idea of darkclouds](https://willjasen.com/posts/create-your-own-darkcloud/)
 
 ---
