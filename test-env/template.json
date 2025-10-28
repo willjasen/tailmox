@@ -1,0 +1,36 @@
+{
+    "description": "Create a Proxmox VM template for testing tailmox.",
+    "related_repo": "github.com/willjasen/tailmox",
+    "template": {
+        "versions": {
+            "compressed": {
+                "xz_compressed": true,
+                "name": "tailmox.qcow2.tar.xz",
+                "size_in_bytes": 1866482496,
+                "hash": "sha256:5644986a684318f2a7e85bc413f810f41aa5d2a2454cb7a3bf5cf3da98a97e32",
+                "ipfs": {
+                    "cid_v0": "Qmd6rdZ7KoTdY7NNv6aA4MswRVWazwXTMso4aUYqDA5f9o",
+                    "cid_v1": "bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy"
+                }
+            },
+            "uncompressed": {
+                "xz_compressed": false,
+                "name": "tailmox.qcow2",
+                "size_in_bytes": 6630408192,
+                "hash": "sha256:2b4b219ca7974ef4921e0b9fc0f213b07e1b4e37400b5ca3ed9dee93588e30bb",
+                "ipfs": {
+                    "cid_v0": "QmWQHQxs8GAovXP4DmUdp2NtxyzqcRdHzveK2QFLxUmrrK",
+                    "cid_v1": "bafybeidxzo6vw73phymnsvqeb7ltulw3xj6yvrp4etd4vwcr7wweb6foya"
+                }
+            }
+        },
+        "change_log": [
+            { "0": "Installed Proxmox 9.0-1 into virtual machine." },
+            { "1": "Disabled the 'enterprise' repo, enabled the 'no-subscription' repo." },
+            { "2": "Applied OS updates (2025-10-26)." },
+            { "3": "Installed dependencies (curl expect git jq qemu-guest-agent)." },
+            { "4": "Installed Tailscale (version 1.90.2)." },
+            { "5": "Cloned the 'tailmox' repo." }
+        ]
+    }
+}
