@@ -36,6 +36,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+# Source the download template script
+source "$(dirname "${BASH_SOURCE[0]}")/test-env/download-template.sh"
+
 # Helper: read field from JSON using jq
 json_read() {
   local key="$1"
