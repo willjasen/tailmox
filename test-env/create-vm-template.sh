@@ -14,7 +14,7 @@ Usage: $0 [--vmid ID] [--name NAME] [--template FILE]
 
 Optional:
   --vmid ID       VM ID to use (default: next available ID)
-  --name NAME     Name for the VM (default: tailmox-test)
+  --name NAME     Name for the VM (default: tailmox-template)
   --template FILE Path to the .qcow2 template (default: from template.json)
   --help          Show this help
 EOF
@@ -22,7 +22,7 @@ EOF
 
 # Default values
 VMID=""
-NAME="tailmox-test"
+NAME="tailmox-template"
 TEMPLATE=""
 
 # Parse arguments
