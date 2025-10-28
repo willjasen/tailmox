@@ -1,7 +1,7 @@
 # tailmox
 cluster proxmox over tailscale
 
-![GitHub Release](https://img.shields.io/github/v/release/willjasen/tailmox)
+![GitHub Release](https://img.shields.io/github/v/release/willjasen/tailmox) -- ![GitHub Repo stars](https://img.shields.io/github/stars/willjasen/tailmox)
 
 [read more about the idea of darkclouds](https://willjasen.com/posts/create-your-own-darkcloud/)
 
@@ -130,6 +130,12 @@ If planning to run `tailmox.sh` many times in a short period, it is recommended 
 - I currently have three Proxmox VMs with Proxmox installed inside of each
 - this script reverts each VM to a snapshot named "ready-for-testing" that was taken after dependencies are installed and the "tailmox" project was cloned into the VM, but right before the script has been run for the first time
 - this allows testing `tailmox.sh` easily by reverting the VMs before the clustering processes and data have been created
+
+---
+
+### 🏁 Afterword 🏁
+
+This project has been a fun experiment of mine after seeing many say that it could never work and I like a challenge myself. It's received much more attention that I had expected it to and I'm pleased to see it!
 
 ---
 ---
