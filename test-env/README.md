@@ -1,5 +1,31 @@
 # Deploying a Proxmox VM for Testing
 
+### 📖 Overview 📖
+
+To faciliate in quick testing, I have developed a way to create a testing environment such that multiple semi-preconfigured Proxmox hosts that are ready to test with can be setup easily by virtualizing Proxmox within Proxmox.
+
+---
+
+### ✏️ Preparation ✏️
+
+The `create-vm-template.sh` script will download the preconfigured image from an IPFS gateway and set it up as a template named "tailmox-template" in Proxmox. Then, you'll create linked clones of the template (I typically will create three).
+
+In ensure that the linked clones can get online, review the network adapter settings within each VM. The network adapter is set for "vmbr0" with no VLAN by default, but your environment may be different.
+
+Boot up each linked clone VM (the default credentials are "root" and "tailmox-test"), then make the following changes:
+
+ - edit the IP address of the host to one that works within your environment (it is "192.168.123.90" by default)
+ - edit `/etc/hostname` to a unique hostname within the Tailmox cluster (example: tailmox1)
+ - edit `/etc/hosts` to reflect the new IP and hostname (example: "10.2.3.10 tailmox1.local tailmox1")
+
+Once you have verified online connectivity, shutdown the VM and create a snapshot named "ready-for-testing". This snapshot name is used by the `revert-test-vms.sh` script.
+
+You are now ready to run/test the main script: `cd /opt/tailmox; git switch main; git pull --quiet; /opt/tailmox/tailmox.sh;`
+
+Be sure to include the "--auth-key" parameter as well.
+
+---
+
 ### 🤓 The Scripts 🤓
 
 `test-env/create-vm-template.sh` - used to create a VM template using the downloaded template image
