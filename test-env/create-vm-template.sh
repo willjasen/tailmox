@@ -37,7 +37,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Source the download template script
-source "$(dirname "${BASH_SOURCE[0]}")/test-env/download-template.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/download-template.sh"
 
 # Helper: read field from JSON using jq
 json_read() {
