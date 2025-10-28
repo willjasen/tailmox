@@ -50,7 +50,15 @@ In my usage, I have been able to move a virtual server of about 20 terbytes by s
 
 ### ✏️ Preparation ✏️
 
-Because Tailscale allows for an access control list, if you use an ACL, then it should be prepared for cluster communications. The script will check that TCP 22, TCP 443, and TCP 8006 are available on all other hosts and will exit if not.
+Tailmox requires a Tailscale ACL and one should be prepared for cluster and web communications. Please review the three codeblocks within this section and make sure your ACL includes those pieces!
+
+The script will check that the following TCP ports are available:
+
+ - TCP 22
+ - TCP 443
+ - TCP 8006
+
+The script will exit if any of the ports aren't available.
 
 This script uses the tag of "tailmox" to determine which Tailscale machines are using this project to establish a cluster together. The "tailmox" tag should be specified under "tagOwners":
 ```
@@ -61,7 +69,7 @@ This script uses the tag of "tailmox" to determine which Tailscale machines are 
 }
 ```
 
-Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", we can create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. There is also an included rule at the end to allow all devices within the tailnet to access the web interface of the hosts with the tag.
+Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. There is also an included rule at the end to allow all devices within the tailnet to access the web interface of the hosts with the tag.
 ```
 "acls": [
 	/// ... ACL rules before
@@ -86,6 +94,28 @@ Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412
 	/// ... ACL rules after 
 ]
 ```
+
+Tailmox uses the Tailscale Services feature which allows one URL to access any of the tailmox hosts (via https://tailmox.MAGICDNS_NAME.net):
+
+```
+"autoApprovers": {
+	"services": {
+		"svc:tailmox": ["tag:tailmox"],
+		"tag:tailmox": ["tag:tailmox"],
+	},
+},
+```
+
+The last step is to create a Tailscale service (via https://login.tailscale.com/admin/services):
+
+Under the "Advertised" section, click "Define Service". Then fill in the following details:
+
+ - Service name: tailmox
+ - Description: (this can be whatever you want)
+ - Ports: 443
+ - Service tags: (add the tag of 'tailmox')
+
+then submit.
 
 ---
 
