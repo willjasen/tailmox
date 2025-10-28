@@ -31,7 +31,7 @@ EOF
 CID=""
 GATEWAY="ipfs.dweb.link"
 OUTFILE=""
-VERSION="uncompressed"
+VERSION="compressed"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
