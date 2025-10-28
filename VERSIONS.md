@@ -1,5 +1,13 @@
 # VERSIONS.md
 
+### v2.0.0
+
+This version introduces a breaking change as it will now require an access control list in Tailscale. This is because Tailmox now uses the [Tailscale Services](https://tailscale.com/kb/1552/tailscale-services) feature and `autoApprovers.services` must be set correctly in the ACL.
+
+ - use the services feature of `tailscale serve` so that the Tailmox cluster can be accessed via a standard services link (as opposed to a device link)
+
+---
+
 ### v1.2.1
 
  - perform installation of Tailscale between different Proxmox versions
