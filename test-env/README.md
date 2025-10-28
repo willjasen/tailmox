@@ -33,9 +33,8 @@ Be sure to include the "--auth-key" parameter as well.
 `test-env/download-template.sh` - used to download the disk image of a previously configured Proxmox host that is ready for testing with Tailmox
 
 `test-env/revert-test-vms.sh` - used to revert VMs being tested with
-- I currently have three Proxmox VMs with Proxmox installed inside of each
-- this script reverts each VM to a snapshot named "ready-for-testing" that was taken after dependencies are installed and the "tailmox" project was cloned into the VM, but right before the script has been run for the first time
-- this allows testing `tailmox.sh` easily by reverting the VMs before the clustering processes and data have been created
+
+I currently have three Proxmox VMs with Proxmox installed inside of each. I am able to revert each VM to a snapshot named "ready-for-testing" that was taken after dependencies are installed and the "tailmox" project was cloned into the VM, but right before the script has been run for the first time. This allows testing `tailmox.sh` easily by reverting the VMs before the clustering processes and data have been created.
 
 ---
 

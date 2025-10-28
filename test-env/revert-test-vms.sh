@@ -53,6 +53,15 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Check if the VM_IDS array has a size greater than 0
+if [ ${#VM_IDS[@]} -eq 0 ]; then
+    # Output the error message to standard error (>&2)
+    echo "Error: You must specify at least one VM ID." >&2
+    echo "Usage: $0 [--api-key <KEY>] <VM_ID_1> [VM_ID_2] ..." >&2
+    # Exit with a non-zero status code (1) to signal an error
+    exit 1
+fi
+
 # Allow passing Tailscale API key as a parameter
 # while [[ "$#" -gt 0 ]]; do
 #    case $1 in
