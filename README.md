@@ -134,7 +134,7 @@ If planning to run `tailmox.sh` many times in a short period, it is recommended 
 ---
 ---
 
-The guide has been moved to [GUIDE.md]
+The guide has been moved to [GUIDE.md](https://raw.githubusercontent.com/willjasen/tailmox/refs/heads/make-template/GUIDE.md)
 
 ---
 ---
