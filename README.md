@@ -115,7 +115,7 @@ This project has been tested to successfully join a cluster of three Proxmox v8 
 
 If planning to run `tailmox.sh` many times in a short period, it is recommended that staging is performed first. By supplying the "--staging" parameter, `tailmox.sh` will install Tailscale and retrieve the Tailscale certificate and then stop. The purpose of staging is to prevent many requests to Tailscale for the same certificate in rapid succession. If staging is not performed, it is possible that the step to setup the certificate will take a very long time, which is not optimal when running many tests centered around setting up the Proxmox cluster.
 
-`revert_test_vms.sh` is used to revert VMs installed with Proxmox to a state before the `tailmox.sh` script has been first run and erase any clustering processes and data within those VMs, to quickly restore to a state in which the `tailmox.sh` script can be tried again.
+To deploy fresh Proxmox hosts within an existing Proxmox environment and to perform quicker testing of Tailmox, [read more here](test-env/README.md).
 
 ---
 
