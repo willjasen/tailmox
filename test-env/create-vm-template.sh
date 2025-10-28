@@ -93,6 +93,7 @@ qm create "$VMID" \
   --ostype l26 \
   --agent 1 \
   --tablet 0 \
+  --tags "tailmox"
   || {
     echo "Error: Failed to create VM" >&2
     exit 1
