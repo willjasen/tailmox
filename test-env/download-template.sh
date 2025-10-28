@@ -140,7 +140,7 @@ if [[ -f "$FINAL_OUTFILE" ]]; then
     ACTUAL=$(calculate_hash "$FINAL_OUTFILE")
     if [[ -n "$ACTUAL" && "$ACTUAL" == "$EXPECTED" ]]; then
       echo "Existing file hash matches. Skipping download."
-      exit 0
+      return 0
     else
       echo "Existing file hash mismatch. Will download fresh copy."
     fi
@@ -158,7 +158,7 @@ elif [[ "$XZ_FLAG" == "true" && -f "$DOWNLOAD_PATH" ]]; then
       if [[ -n "$ACTUAL" && "$ACTUAL" == "$EXPECTED" ]]; then
         echo "Existing (decompressed) file hash matches. Skipping download."
         # rm -f "$DOWNLOAD_PATH" || true
-        exit 0
+        return 0
       else
         echo "Existing decompressed hash mismatch. Will download fresh copy."
       fi
