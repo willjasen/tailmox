@@ -83,8 +83,8 @@ echo "Creating VM $VMID ($NAME)..."
 # Create the VM with basic configuration
 qm create "$VMID" \
   --name "$NAME" \
-  --memory 2048 \
-  --cores 2 \
+  --memory 1024 \
+  --cores 1 \
   --net0 virtio,bridge=vmbr0 \
   --serial0 socket \
   --vga std \
