@@ -323,12 +323,12 @@ function are_hosts_tcp_port_8006_reachable() {
         local peer_ip=$(echo "$peer" | jq -r '.ip')
         local peer_hostname=$(echo "$peer" | jq -r '.hostname')
 
-        log_echo "${BLUE}Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
+        log_echo "${BLUE} - Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
         if ! nc -z -w 2 "$peer_ip" 8006 &>/dev/null; then
-            log_echo "${RED}TCP port 8006 is not available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${RED} - TCP port 8006 is not available on $peer_hostname ($peer_ip).${RESET}"
             return 1
         else
-            log_echo "${GREEN}TCP port 8006 is available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${GREEN} - TCP port 8006 is available on $peer_hostname ($peer_ip).${RESET}"
         fi
     done
 }
@@ -342,12 +342,12 @@ function are_hosts_tcp_port_443_reachable() {
         local peer_ip=$(echo "$peer" | jq -r '.ip')
         local peer_hostname=$(echo "$peer" | jq -r '.hostname')
 
-        log_echo "${BLUE}Checking TCP port 443 on $peer_hostname ($peer_ip)...${RESET}"
+        log_echo "${BLUE} - Checking TCP port 443 on $peer_hostname ($peer_ip)...${RESET}"
         if ! nc -z -w 2 "$peer_ip" 443 &>/dev/null; then
-            log_echo "${RED}TCP port 443 is not available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${RED} - TCP port 443 is not available on $peer_hostname ($peer_ip).${RESET}"
             return 1
         else
-            log_echo "${GREEN}TCP port 443 is available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${GREEN} - TCP port 443 is available on $peer_hostname ($peer_ip).${RESET}"
         fi
     done
 }
