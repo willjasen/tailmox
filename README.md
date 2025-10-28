@@ -135,7 +135,7 @@ If planning to run `tailmox.sh` many times in a short period, it is recommended 
 
 ### 🏁 Afterword 🏁
 
-This project has been a fun experiment of mine after seeing many say that it could never work and I like a challenge myself. It's received much more attention that I had expected it to and I'm pleased to see it!
+This project has been a fun experiment of mine after seeing many say that it could never work and I like a challenge myself. It's received much more attention that I had expected it to and I'm pleased to see it! It seems that others are also interested in the idea of geographically distanced hosts and the ability to move around virtual machines and containers with less effort!
 
 ---
 ---
