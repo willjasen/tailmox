@@ -1,5 +1,5 @@
 # tailmox
-cluster proxmox over tailscale
+cluster proxmox over tailscale -- move virtual machines and containers across geographically distant nodes
 
 ![GitHub Release](https://img.shields.io/github/v/release/willjasen/tailmox)
 ![GitHub Repo stars](https://img.shields.io/github/stars/willjasen/tailmox)
