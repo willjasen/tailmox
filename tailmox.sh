@@ -592,7 +592,8 @@ function add_local_node_to_cluster() {
                 # Check if successful
                 if [ $? -eq 0 ]; then
                     log_echo "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
-                    log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+                    log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+                    log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
                     exit 0
                 else
                     log_echo "${RED}Failed to join cluster with $TARGET_HOSTNAME. Check the password and try again.${RESET}"
@@ -643,6 +644,9 @@ start_tailscale $AUTH_KEY
 # running 'tailscale serve' with these options allows a valid certificate on port 443, along with the built-in handling of the certificate
 tailscale serve --bg https+insecure://localhost:8006 &>/dev/null
 log_echo "${GREEN}Tailscale serve is now running.${RESET}"
+
+tailscale serve --service=svc:tailmox https+insecure://localhost:8006 &>/dev/null
+log_echo "${GREEN}Tailscale service started for tailmox.${RESET}"
 
 # Exit early if staging mode is enabled
 if [[ "$STAGING" == "true" ]]; then
@@ -697,7 +701,8 @@ if ! check_local_node_cluster_status; then
     add_local_node_to_cluster
 else
     log_echo "${GREEN}This node is already part of a cluster, nothing further to do.${RESET}"
-    log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+    log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+    log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     exit 1
 fi
@@ -710,7 +715,8 @@ if ! check_local_node_cluster_status; then
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
         create_cluster
         log_echo "${GREEN}Cluster created successfully.${RESET}"
-        log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+        log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+        log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
         log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     else
         log_echo "${RED}Exiting without creating a cluster.${RESET}"
