@@ -127,11 +127,6 @@ If planning to run `tailmox.sh` many times in a short period, it is recommended 
 - it will then retrieve other Tailscale machines with tag of "tailmox", then check if it can reach them via ping (ICMP) and TCP 8006 (HTTPS for Proxmox); if these checks do not pass, the script will exit as these are required for Proxmox clustering
 - after the checks pass, the host will check if it is in a cluster; if it is not, it will check the other Tailscale machines with the tag of "tailmox" to see if they are part of a cluster; when it finds a matching host in a cluster, it will then attempt to join to the cluster using it; if another host isn't found, then a new cluster will be prompted to be created
 
-`test-env/revert-test-vms.sh` - this is a testing script used to revert VMs being tested with
-- I currently have three Proxmox VMs with Proxmox installed inside of each
-- this script reverts each VM to a snapshot named "ready-for-testing" that was taken after dependencies are installed and the "tailmox" project was cloned into the VM, but right before the script has been run for the first time
-- this allows testing `tailmox.sh` easily by reverting the VMs before the clustering processes and data have been created
-
 ---
 
 ### 🏁 Afterword 🏁
