@@ -95,7 +95,7 @@ Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412
 ]
 ```
 
-Tailmox uses the Tailscale Services feature which allows one URL to access any of the tailmox hosts (via https://tailmox.MAGICDNS_NAME.net):
+Tailmox uses the Tailscale Services feature which allows one URL to access any of the tailmox hosts (via https://tailmox.MAGICDNS_NAME.ts.net):
 
 ```
 "autoApprovers": {
