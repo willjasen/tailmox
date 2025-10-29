@@ -270,17 +270,17 @@ function ensure_ping_reachability() {
         local ping_span=$(echo "$ping_interval * $ping_count" | bc)
 
         for attempt in $(seq 1 $max_attempts); do
-            log_echo "${BLUE}Attempt $attempt: Pinging $peer_hostname ($peer_ip) ($ping_count pings over $ping_span seconds)...${RESET}"
+            log_echo "${BLUE} - Attempt $attempt: Pinging $peer_hostname ($peer_ip) ($ping_count pings over $ping_span seconds)...${RESET}"
             if ! ping -c $ping_count -i $ping_interval -W 1 "$peer_ip" | grep -q "0 received"; then
-                log_echo "${GREEN}Successfully pinged $peer_hostname ($peer_ip) on attempt $attempt.${RESET}"
+                log_echo "${GREEN} - Successfully pinged $peer_hostname ($peer_ip) on attempt $attempt.${RESET}"
                 break
             else
-                log_echo "${YELLOW}Attempt $attempt failed to ping $peer_hostname ($peer_ip). Retrying...${RESET}"
+                log_echo "${YELLOW} - Attempt $attempt failed to ping $peer_hostname ($peer_ip). Retrying...${RESET}"
             fi
 
             # If this was the last attempt, log failure and return
             if [ "$attempt" -eq 3 ]; then
-                log_echo "${RED}Failed to ping $peer_hostname ($peer_ip) after 3 attempts. All responses were lost.${RESET}"
+                log_echo "${RED} - Failed to ping $peer_hostname ($peer_ip) after 3 attempts. All responses were lost.${RESET}"
                 return 1
             fi
         done
@@ -304,12 +304,12 @@ function report_peer_latency() {
     echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
         local ping_count=50
         local ping_interval=0.05
-        log_echo "${BLUE}Calculating average latency for $peer_ip ($ping_count pings with an interval of $ping_interval seconds)...${RESET}"
+        log_echo "${BLUE} - Calculating average latency for $peer_ip ($ping_count pings with an interval of $ping_interval seconds)...${RESET}"
         avg_latency=$(ping -c $ping_count -i $ping_interval "$peer_ip" | awk -F'/' 'END {print $5}')
         if [ -n "$avg_latency" ]; then
-            log_echo "${GREEN}Average latency to $peer_ip: ${avg_latency} ms${RESET}"
+            log_echo "${GREEN} - Average latency to $peer_ip: ${avg_latency} ms${RESET}"
         else
-            log_echo "${RED}Failed to calculate latency for $peer_ip.${RESET}"
+            log_echo "${RED} - Failed to calculate latency for $peer_ip.${RESET}"
         fi
     done
 }
@@ -323,12 +323,12 @@ function are_hosts_tcp_port_8006_reachable() {
         local peer_ip=$(echo "$peer" | jq -r '.ip')
         local peer_hostname=$(echo "$peer" | jq -r '.hostname')
 
-        log_echo "${BLUE}Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
+        log_echo "${BLUE} - Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
         if ! nc -z -w 2 "$peer_ip" 8006 &>/dev/null; then
-            log_echo "${RED}TCP port 8006 is not available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${RED} - TCP port 8006 is not available on $peer_hostname ($peer_ip).${RESET}"
             return 1
         else
-            log_echo "${GREEN}TCP port 8006 is available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${GREEN} - TCP port 8006 is available on $peer_hostname ($peer_ip).${RESET}"
         fi
     done
 }
@@ -342,12 +342,12 @@ function are_hosts_tcp_port_443_reachable() {
         local peer_ip=$(echo "$peer" | jq -r '.ip')
         local peer_hostname=$(echo "$peer" | jq -r '.hostname')
 
-        log_echo "${BLUE}Checking TCP port 443 on $peer_hostname ($peer_ip)...${RESET}"
+        log_echo "${BLUE} - Checking TCP port 443 on $peer_hostname ($peer_ip)...${RESET}"
         if ! nc -z -w 2 "$peer_ip" 443 &>/dev/null; then
-            log_echo "${RED}TCP port 443 is not available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${RED} - TCP port 443 is not available on $peer_hostname ($peer_ip).${RESET}"
             return 1
         else
-            log_echo "${GREEN}TCP port 443 is available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${GREEN} - TCP port 443 is available on $peer_hostname ($peer_ip).${RESET}"
         fi
     done
 }
@@ -592,7 +592,8 @@ function add_local_node_to_cluster() {
                 # Check if successful
                 if [ $? -eq 0 ]; then
                     log_echo "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
-                    log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+                    log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+                    log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
                     exit 0
                 else
                     log_echo "${RED}Failed to join cluster with $TARGET_HOSTNAME. Check the password and try again.${RESET}"
@@ -643,6 +644,9 @@ start_tailscale $AUTH_KEY
 # running 'tailscale serve' with these options allows a valid certificate on port 443, along with the built-in handling of the certificate
 tailscale serve --bg https+insecure://localhost:8006 &>/dev/null
 log_echo "${GREEN}Tailscale serve is now running.${RESET}"
+
+tailscale serve --service=svc:tailmox https+insecure://localhost:8006 &>/dev/null
+log_echo "${GREEN}Tailscale service started for tailmox.${RESET}"
 
 # Exit early if staging mode is enabled
 if [[ "$STAGING" == "true" ]]; then
@@ -697,7 +701,8 @@ if ! check_local_node_cluster_status; then
     add_local_node_to_cluster
 else
     log_echo "${GREEN}This node is already part of a cluster, nothing further to do.${RESET}"
-    log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+    log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+    log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     exit 1
 fi
@@ -710,7 +715,8 @@ if ! check_local_node_cluster_status; then
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
         create_cluster
         log_echo "${GREEN}Cluster created successfully.${RESET}"
-        log_echo "${GREEN}You can now access your tailmox server at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+        log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+        log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
         log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     else
         log_echo "${RED}Exiting without creating a cluster.${RESET}"

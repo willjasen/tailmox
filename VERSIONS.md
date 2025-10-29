@@ -1,5 +1,16 @@
 # VERSIONS.md
 
+### v2.0.0
+
+This version introduces a breaking change as it will now require an access control list in Tailscale. This is because tailmox now implements the [Tailscale Services](https://tailscale.com/kb/1552/tailscale-services) feature and `autoApprovers.services` must be set correctly in the ACL.
+
+This version also expands on the original testing environment and introduces a way to easily deploy multiple Proxmox hosts to test tailmox with, and being able to revert those VMs back to state before the script is ran.
+
+ - use the services feature of `tailscale serve` so that the tailmox cluster can be accessed via a standard services link (as opposed to a device link)
+ - deploy a virtual machine template in Proxmox of a semi-preconfigured Proxmox host that is ready for testing with tailmox
+
+---
+
 ### v1.2.1
 
  - perform installation of Tailscale between different Proxmox versions

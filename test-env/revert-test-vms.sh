@@ -20,14 +20,56 @@
 # Source color definitions
 source "$(dirname "${BASH_SOURCE[0]}")/.colors.sh"
 
-# Allow passing Tailscale API key as a parameter
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --api-key) TAILSCALE_API_KEY="$2"; echo "Using API key for Tailscale..."; shift; ;;
-        *) echo "Unknown parameter: $1"; exit 1 ;;
+# Initialize the optional variable
+TAILSCALE_API_KEY=""
+VM_IDS=()
+
+# --- 1. Argument Parsing Loop ---
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --api-key)
+            # Check if the next argument (the actual key) exists
+            if [[ -n "$2" && "$2" != --* ]]; then
+                TAILSCALE_API_KEY="$2"
+                shift 2 # Consume the flag (--api-key) AND its value (the key)
+            else
+                echo "Error: --api-key requires a value." >&2
+                exit 1
+            fi
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--api-key <KEY>] <VM_ID_1> [VM_ID_2] ..."
+            exit 0
+            ;;
+        -*)
+            echo "Error: Unknown option '$1'" >&2
+            exit 1
+            ;;
+        *)
+            # This handles the remaining positional arguments (VM IDs)
+            VM_IDS+=("$1")
+            shift 1 # Consume the argument
+            ;;
     esac
-    shift
 done
+
+# Check if the VM_IDS array has a size greater than 0
+if [ ${#VM_IDS[@]} -eq 0 ]; then
+    # Output the error message to standard error (>&2)
+    echo "Error: You must specify at least one VM ID." >&2
+    echo "Usage: $0 [--api-key <KEY>] <VM_ID_1> [VM_ID_2] ..." >&2
+    # Exit with a non-zero status code (1) to signal an error
+    exit 1
+fi
+
+# Allow passing Tailscale API key as a parameter
+# while [[ "$#" -gt 0 ]]; do
+#    case $1 in
+#        --api-key) TAILSCALE_API_KEY="$2"; echo "Using API key for Tailscale..."; shift; ;;
+#        *) echo "Unknown parameter: $1"; exit 1 ;;
+#    esac
+#    shift
+# done
 
 # Function to delete all Tailscale devices with the tag "tailmox"
 function delete_tailscale_tagged_devices() {
@@ -337,18 +379,15 @@ function test_guest_agents() {
 ### MAIN SCRIPT ###
 ##
 
-# Specify the VM IDs to manage
-vm_ids=(10010 10011 10012)
-
 # Revert the VMs back so that they are ready for testing again
-stop_vms "${vm_ids[@]}"
-revert_vms_to_snapshot "${vm_ids[@]}"
+stop_vms "${VM_IDS[@]}"
+revert_vms_to_snapshot "${VM_IDS[@]}"
 
 # Delete all Tailscale hosts with tag "tailmox" before starting VMs
 delete_tailscale_tagged_devices
 
 # Start the VMs and wait until their guest agents are responsive
-start_vms "${vm_ids[@]}"
-test_guest_agents "${vm_ids[@]}"
+start_vms "${VM_IDS[@]}"
+test_guest_agents "${VM_IDS[@]}"
 
 echo -e "${GREEN}The script has completed successfully!${RESET}"

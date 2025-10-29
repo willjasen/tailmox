@@ -1,5 +1,8 @@
 # tailmox
-cluster proxmox over tailscale
+cluster proxmox over tailscale -- move virtual machines and containers across geographically distant nodes
+
+![GitHub Release](https://img.shields.io/github/v/release/willjasen/tailmox)
+![GitHub Repo stars](https://img.shields.io/github/stars/willjasen/tailmox)
 
 [read more about the idea of darkclouds](https://willjasen.com/posts/create-your-own-darkcloud/)
 
@@ -47,7 +50,15 @@ In my usage, I have been able to move a virtual server of about 20 terbytes by s
 
 ### ✏️ Preparation ✏️
 
-Because Tailscale allows for an access control list, if you use an ACL, then it should be prepared for cluster communications. The script will check that TCP 22, TCP 443, and TCP 8006 are available on all other hosts and will exit if not.
+Tailmox requires a Tailscale ACL and one should be prepared for cluster and web communications. Please review the three codeblocks within this section and make sure your ACL includes those pieces!
+
+The script will check that the following TCP ports are available:
+
+ - TCP 22
+ - TCP 443
+ - TCP 8006
+
+The script will exit if any of the ports aren't available.
 
 This script uses the tag of "tailmox" to determine which Tailscale machines are using this project to establish a cluster together. The "tailmox" tag should be specified under "tagOwners":
 ```
@@ -58,7 +69,7 @@ This script uses the tag of "tailmox" to determine which Tailscale machines are 
 }
 ```
 
-Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", we can create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. There is also an included rule at the end to allow all devices within the tailnet to access the web interface of the hosts with the tag.
+Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. There is also an included rule at the end to allow all devices within the tailnet to access the web interface of the hosts with the tag.
 ```
 "acls": [
 	/// ... ACL rules before
@@ -83,6 +94,28 @@ Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412
 	/// ... ACL rules after 
 ]
 ```
+
+Tailmox uses the Tailscale Services feature which allows one URL to access any of the tailmox hosts (via https://tailmox.MAGICDNS_NAME.ts.net):
+
+```
+"autoApprovers": {
+	"services": {
+		"svc:tailmox": ["tag:tailmox"],
+		"tag:tailmox": ["tag:tailmox"],
+	},
+},
+```
+
+The last step is to create a Tailscale service (via https://login.tailscale.com/admin/services):
+
+Under the "Advertised" section, click "Define Service". Then fill in the following details:
+
+ - Service name: tailmox
+ - Description: (this can be whatever you want)
+ - Ports: 443
+ - Service tags: (add the tag of 'tailmox')
+
+then submit.
 
 ---
 
@@ -112,7 +145,7 @@ This project has been tested to successfully join a cluster of three Proxmox v8 
 
 If planning to run `tailmox.sh` many times in a short period, it is recommended that staging is performed first. By supplying the "--staging" parameter, `tailmox.sh` will install Tailscale and retrieve the Tailscale certificate and then stop. The purpose of staging is to prevent many requests to Tailscale for the same certificate in rapid succession. If staging is not performed, it is possible that the step to setup the certificate will take a very long time, which is not optimal when running many tests centered around setting up the Proxmox cluster.
 
-`revert_test_vms.sh` is used to revert VMs installed with Proxmox to a state before the `tailmox.sh` script has been first run and erase any clustering processes and data within those VMs, to quickly restore to a state in which the `tailmox.sh` script can be tried again.
+To deploy fresh Proxmox hosts within an existing Proxmox environment and to perform quicker testing of Tailmox, [read more here](test-env/README.md).
 
 ---
 
@@ -121,104 +154,18 @@ If planning to run `tailmox.sh` many times in a short period, it is recommended 
 `tailmox.sh` -  this is the main script of the project
 - checks that the host is Proxmox v8 or v9, installs dependencies and Tailscale, then starts Tailscale
 - once Tailscale is running, the host will generate a certificate from Tailscale (to be used with the web interface/API)
-- it will then retrieve other Tailscale machines with tag of "tailmox", then check if it can reach them via ping (ICMP) and TCP 8006 (HTTPS for Proxmox); if these checks do not pass, the script will exit as these are required for Proxmox clustering
+- it will then retrieve other Tailscale machines with tag of "tailmox", then check if it can reach them via ping (ICMP), via TCP 443, and via TCP 8006; if these checks do not pass, the script will exit
 - after the checks pass, the host will check if it is in a cluster; if it is not, it will check the other Tailscale machines with the tag of "tailmox" to see if they are part of a cluster; when it finds a matching host in a cluster, it will then attempt to join to the cluster using it; if another host isn't found, then a new cluster will be prompted to be created
 
-`revert_test_vms.sh` - this is a testing script used to revert VMs being tested with
-- I currently have three Proxmox VMs with Proxmox installed inside of each
-- this script reverts each VM to a snapshot named "ready-for-testing" that was taken after dependencies are installed and the "tailmox" project was cloned into the VM, but right before the script has been run for the first time
-- this allows testing `tailmox.sh` easily by reverting the VMs before the clustering processes and data have been created
+There are further scripts related to testing in the "test-env" folder.
+
+---
+
+### 🏁 Afterword 🏁
+
+This project has been a fun experiment of mine after seeing many say that it could never work and I like a challenge myself. It's received much more attention that I had expected it to and I'm pleased to see it! It seems that others are also interested in the idea of geographically distanced hosts and the ability to move around virtual machines and containers with less effort!
 
 ---
 ---
 
-### 🗺️ The Guide 🗺️
-
-The [gist](https://gist.github.com/willjasen/df71ca4ec635211d83cdc18fe7f658ca) guide is now being procured below. The gist at its original location will no longer be updated.
-
----
----
-
-### 📝 Prologue 📝
-- This example uses "host1" and "host2" as example names for the hosts
-- This example uses "example-test.ts.net" as a Tailscale MagicDNS domain
-- The Tailscale IP for host1 is 100.64.1.1
-- The Tailscale IP for host2 is 100.64.2.2
-
----
-
-### 📋 Steps 📋
-1. Setup two Proxmox hosts
-2. Install Tailscale on the hosts:
-	```curl -fsSL https://tailscale.com/install.sh | sh;```
-3. Update /etc/hosts on all hosts with the proper host entries:
-	- ```100.64.1.1 host1.example-test.ts.net host1```
-	- ```100.64.2.2 host2.example-test.ts.net host2```
-  
-4. Since DNS queries will be served via Tailscale, ensure that your global DNS server via Tailscale can resolve host1 as 100.64.1.1 and host2 as 100.64.2.2
-5. If you need to allow for the traffic within your Tailscale ACL: allow TCP 22, TCP 443, TCP 8006, and UDP 5405 - 5412; example as follows:
-	```// allow Proxmox clustering
-	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host1:22"]},   // SSH
-	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host2:22"]},   // SSH
-	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host1:443"]}, // Proxmox web
-	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host2:443"]}, // Proxmox web
-	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host1:8006"]}, // Proxmox web
-	{"action": "accept", "proto": "tcp", "src": ["host1", "host2"], "dst": ["host2:8006"]}, // Proxmox web
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host1:5405"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host1:5406"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host1:5407"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host1:5408"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host1:5409"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host1:5410"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host1:5411"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host1:5412"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host2:5405"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host2:5406"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host2:5407"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host2:5408"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host2:5409"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host2:5410"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host2:5411"]}, // corosync
-	{"action": "accept", "proto": "udp", "src": ["host1", "host2"], "dst": ["host2:5412"]}, // corosync
-    ```
-6. Create the cluster using host1 (so that host2 has a cluster to join to)
-
-7. In order for clustering to initially succeed, all cluster members must only have a link0 within corosync associated with Tailscale (if any other links exists within corosync, they must be temporarily removed for this initial cluster member addition to succeed); to have host2 join the cluster of host1, then run from host2 (replacing "magic-dns" with your Magic DNS domain slug):
-	```pvecm add host1.magic-dns.ts.net --link0 100.64.2.2```
-8. You should SSH in from host1 to host2 and vice versa; if this isn't done, then tasks like migrations and replications may not work until performed:
-	- ```ssh host1```
-	- ```ssh host2```
-9. That should do it! Test, test, test!
-
-To add a third member to the cluster (and so on), repeat these similar steps.
-
----
-
-## 🔧 Troubleshooting 🔧
-
-### Adding to the Cluster
-
-Should clustering not be successful, you'll need to do two things:
-
-1. Remove the err'd member from host1 by running:
-	```pvecm delnode host2```
-2. Reset clustering on host2 by running:
-	```systemctl stop pve-cluster corosync; pmxcfs -l; rm -rf /etc/corosync/*; rm /etc/pve/corosync.conf; killall pmxcfs; systemctl start pve-cluster; pvecm updatecerts;```
-
-Then try again.
-
-### Maintaining Quorum
-
-You may find in a large cluster (5 or more members) that features like the web interface won't work properly between cluster members. This is likely because quorum via corosync hasn't been properly achieved. The file at `/etc/pve/.members` may show a node or nodes as `"online": 1` indicating that it is online and communicable to in some form, but the `ip` value never shows. In circumstances where one of the members has an underperforming network connection in relation to the other cluster members (particularly in reference to a high latency measured in 200-300 ms), then corosync should be stopped and disabled on that member temporarily. To do that, run `systemctl stop corosync; systemctl disable corosync;`. To enable and start it again, run `systemctl enable corosync; systemctl start corosync;`.
-
----
-*END OF GUIDE*
-
----
----
-
-### 🗣️ SOME THOUGHTS ON MODERATION 🗣️
-
-The [Reddit post](https://www.reddit.com/r/Proxmox/comments/1k3ykbu/introducing_tailmox_cluster_proxmox_via_tailscale/) I made on “r/Proxmox” to announce this project seems to have generated some interest in this idea, which I am very thankful for. I have received more activity and stars on this project in less than 24 hours than my now 2nd most starred project has that I began in 2014.
-
-Unfortunately, the post was locked after I was told by a moderator account to be respectful after replying civilly to another member who used an expletive twice in replying to me (leaving me at no fault, with the same said member poking fun at me in a separate post by another user from the previous day). By locking the post, those with genuine questions and comments are prevented from doing so. While I will state that locking the post is within their moderation powers to perform, it doesn’t make it palatable or correct, especially considering who is at fault, and being that this is within the open source community - and I fervently and firmly disagree with their decision.
+The original guide has been moved to [GUIDE.md](https://raw.githubusercontent.com/willjasen/tailmox/refs/heads/main/GUIDE.md)
