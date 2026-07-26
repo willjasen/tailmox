@@ -232,7 +232,9 @@ Results are stored in `/var/lib/tailmox/monitor.sqlite3`. The schema keeps
 runs, stable node identities, per-run node snapshots, individual network
 checks, and cluster samples in related tables. Raw Tailscale JSON and terminal
 output are not stored in the database. The `serve` dashboard shows the current
-allocated SQLite database size alongside the monitor health summary. Every host
+allocated SQLite database size alongside the monitor health summary. Select a
+bar under **Recent runs** to inspect that run's timestamp, mode, result,
+duration, node snapshot, and issue count. Every host
 has its own database and records only tests performed locally; Tailmox does not
 accept or upload monitor results between hosts.
 

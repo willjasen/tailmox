@@ -68,7 +68,7 @@
                         <small id="monitor-pass-rate">No history yet</small>
                     </div>
                     <div class="metric-card">
-                        <span class="summary-label">Nodes in latest run</span>
+                        <span class="summary-label">Nodes in selected run</span>
                         <strong id="monitor-node-count">0</strong>
                         <small id="monitor-online-count">No snapshot yet</small>
                     </div>
@@ -93,9 +93,10 @@
                     </div>
                     <div class="node-panel">
                         <div class="subheading-row">
-                            <h2>Latest node snapshot</h2>
+                            <h2 id="monitor-run-heading">Run details</h2>
                             <span id="monitor-issue-count">0 issues</span>
                         </div>
+                        <p class="run-detail-summary" id="monitor-run-summary"></p>
                         <div class="node-list" id="monitor-nodes">
                             Run <code>tailmox monitor</code> to begin collecting data.
                         </div>

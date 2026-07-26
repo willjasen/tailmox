@@ -21,8 +21,11 @@ const monitorNodes = document.querySelector("#monitor-nodes");
 const monitorOnlineCount = document.querySelector("#monitor-online-count");
 const monitorPassRate = document.querySelector("#monitor-pass-rate");
 const monitorRunCount = document.querySelector("#monitor-run-count");
+const monitorRunHeading = document.querySelector("#monitor-run-heading");
+const monitorRunSummary = document.querySelector("#monitor-run-summary");
 const monitorState = document.querySelector("#monitor-state");
 const monitorStateLabel = document.querySelector("#monitor-state-label");
+let selectedMonitorRunId = null;
 
 document.querySelector("#host-name").textContent = window.location.hostname;
 
@@ -69,25 +72,55 @@ function renderMonitorHistory(history) {
         return;
     }
 
+    if (!history.some((run) => run.id === selectedMonitorRunId)) {
+        selectedMonitorRunId = history.at(-1).id;
+    }
+
     const bars = history.map((run) => {
-        const bar = document.createElement("span");
+        const bar = document.createElement("button");
+        bar.type = "button";
         bar.className = `history-run is-${run.status}`;
+        bar.classList.toggle("is-selected", run.id === selectedMonitorRunId);
         bar.title = `${formatMonitorTimestamp(run.startedAt)} · ${run.status} · ${formatMonitorMode(run.mode)}`;
         bar.setAttribute("aria-label", bar.title);
+        bar.setAttribute("aria-pressed", String(run.id === selectedMonitorRunId));
+        bar.addEventListener("click", () => {
+            selectedMonitorRunId = run.id;
+            renderMonitorHistory(history);
+            renderMonitorNodes(run);
+        });
         return bar;
     });
     monitorHistory.replaceChildren(...bars);
 }
 
-function renderMonitorNodes(latest) {
-    const nodes = Array.isArray(latest.nodes) ? latest.nodes : [];
-    const issues = Array.isArray(latest.issues) ? latest.issues : [];
+function formatMonitorDuration(value) {
+    const milliseconds = Number(value);
+    if (!Number.isFinite(milliseconds) || milliseconds < 0) {
+        return "duration unavailable";
+    }
+    if (milliseconds < 1000) {
+        return `${milliseconds} ms`;
+    }
+    return `${(milliseconds / 1000).toFixed(1)} s`;
+}
+
+function renderMonitorNodes(run) {
+    const nodes = Array.isArray(run.nodes) ? run.nodes : [];
+    const issues = Array.isArray(run.issues) ? run.issues : [];
+    monitorRunHeading.textContent = "Run details";
+    monitorRunSummary.textContent = [
+        formatMonitorTimestamp(run.startedAt),
+        formatMonitorMode(run.mode),
+        run.status,
+        formatMonitorDuration(run.durationMs),
+    ].join(" · ");
     monitorNodeCount.textContent = String(nodes.length);
     monitorOnlineCount.textContent = `${nodes.filter((node) => node.online).length} online`;
     monitorIssueCount.textContent = `${issues.length} issue${issues.length === 1 ? "" : "s"}`;
 
     if (!nodes.length) {
-        monitorNodes.textContent = "No Tailmox nodes were present in the latest snapshot.";
+        monitorNodes.textContent = "No Tailmox nodes were present in this snapshot.";
         return;
     }
 
@@ -129,13 +162,14 @@ function renderMonitor(analytics) {
     const runs = Number(totals.runs) || 0;
     const passed = Number(totals.passed) || 0;
     const latest = analytics.latest;
+    const history = Array.isArray(analytics.history) ? analytics.history : [];
 
     monitorDatabaseSize.textContent = formatByteSize(analytics.databaseSizeBytes);
     monitorRunCount.textContent = String(runs);
     monitorPassRate.textContent = runs
         ? `${Math.round((passed / runs) * 100)}% passed · ${Number(totals.failed) || 0} failed`
         : "No history yet";
-    renderMonitorHistory(Array.isArray(analytics.history) ? analytics.history : []);
+    renderMonitorHistory(history);
 
     if (!latest) {
         monitorHealth.textContent = "Waiting";
@@ -147,6 +181,8 @@ function renderMonitor(analytics) {
         monitorNodeCount.textContent = "0";
         monitorOnlineCount.textContent = "No snapshot yet";
         monitorIssueCount.textContent = "0 issues";
+        monitorRunHeading.textContent = "Run details";
+        monitorRunSummary.textContent = "";
         return;
     }
 
@@ -165,7 +201,8 @@ function renderMonitor(analytics) {
     monitorDescription.textContent = latest.mode === "cluster"
         ? "Cluster-aware health, membership, quorum, and network history."
         : "Baseline Tailscale, ICMP, and Proxmox port health before clustering.";
-    renderMonitorNodes(latest);
+    const selectedRun = history.find((run) => run.id === selectedMonitorRunId) || latest;
+    renderMonitorNodes(selectedRun);
 }
 
 const monitorEvents = new EventSource("monitor/events");

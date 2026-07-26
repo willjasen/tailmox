@@ -649,41 +649,8 @@ def publish_analytics(
     output_path: pathlib.Path,
     broker: AnalyticsBroker,
 ) -> None:
-    page_count = connection.execute("PRAGMA page_count").fetchone()[0]
-    page_size = connection.execute("PRAGMA page_size").fetchone()[0]
-    latest = connection.execute(
-        """
-        SELECT id, started_at, finished_at, mode, hostname, cluster_name,
-               status, duration_ms
-        FROM monitor_runs
-        WHERE status != 'running'
-        ORDER BY id DESC
-        LIMIT 1
-        """
-    ).fetchone()
-    totals = connection.execute(
-        """
-        SELECT COUNT(*),
-               SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END),
-               SUM(CASE WHEN status = 'warning' THEN 1 ELSE 0 END),
-               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)
-        FROM monitor_runs
-        WHERE datetime(started_at) >= datetime('now', '-24 hours')
-        """
-    ).fetchone()
-    history_rows = connection.execute(
-        """
-        SELECT id, started_at, mode, status, duration_ms
-        FROM monitor_runs
-        WHERE status != 'running'
-        ORDER BY id DESC
-        LIMIT 60
-        """
-    ).fetchall()
-
-    latest_data = None
-    if latest:
-        run_id = latest[0]
+    def run_document(run: sqlite3.Row | tuple[object, ...]) -> dict[str, object]:
+        run_id = int(run[0])
         nodes = connection.execute(
             """
             SELECT n.hostname, n.dns_name, n.tailscale_ip, rn.is_local, rn.online
@@ -714,15 +681,15 @@ def publish_analytics(
             """,
             (run_id,),
         ).fetchone()
-        latest_data = {
+        return {
             "id": run_id,
-            "startedAt": latest[1],
-            "finishedAt": latest[2],
-            "mode": latest[3],
-            "hostname": latest[4],
-            "clusterName": latest[5],
-            "status": latest[6],
-            "durationMs": latest[7],
+            "startedAt": run[1],
+            "finishedAt": run[2],
+            "mode": run[3],
+            "hostname": run[4],
+            "clusterName": run[5],
+            "status": run[6],
+            "durationMs": run[7],
             "cluster": (
                 {
                     "quorate": (
@@ -763,6 +730,41 @@ def publish_analytics(
             ],
         }
 
+    page_count = connection.execute("PRAGMA page_count").fetchone()[0]
+    page_size = connection.execute("PRAGMA page_size").fetchone()[0]
+    latest = connection.execute(
+        """
+        SELECT id, started_at, finished_at, mode, hostname, cluster_name,
+               status, duration_ms
+        FROM monitor_runs
+        WHERE status != 'running'
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    totals = connection.execute(
+        """
+        SELECT COUNT(*),
+               SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN status = 'warning' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)
+        FROM monitor_runs
+        WHERE datetime(started_at) >= datetime('now', '-24 hours')
+        """
+    ).fetchone()
+    history_rows = connection.execute(
+        """
+        SELECT id, started_at, finished_at, mode, hostname, cluster_name,
+               status, duration_ms
+        FROM monitor_runs
+        WHERE status != 'running'
+        ORDER BY id DESC
+        LIMIT 60
+        """
+    ).fetchall()
+
+    latest_data = run_document(latest) if latest else None
+
     document = {
         "generatedAt": utc_now(),
         "databaseSizeBytes": page_count * page_size,
@@ -773,16 +775,7 @@ def publish_analytics(
             "warnings": totals[2] or 0,
             "failed": totals[3] or 0,
         },
-        "history": [
-            {
-                "id": row[0],
-                "startedAt": row[1],
-                "mode": row[2],
-                "status": row[3],
-                "durationMs": row[4],
-            }
-            for row in reversed(history_rows)
-        ],
+        "history": [run_document(row) for row in reversed(history_rows)],
     }
     broker.publish(document)
 

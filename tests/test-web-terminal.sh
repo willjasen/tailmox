@@ -166,6 +166,8 @@ if ! grep -Fq 'id="run-test"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="monitor-database-size"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'new EventSource("monitor/events")' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'analytics.databaseSizeBytes' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'bar.addEventListener("click"' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'id="monitor-run-summary"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'addEventListener("backups"' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     grep -Fq 'setInterval(loadBackups' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'terminal/?arg=test' "$TAILMOX_WEB_ROOT/tailmox.js" ||

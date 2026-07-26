@@ -97,6 +97,11 @@ assert analytics["databaseSizeBytes"] > 0, analytics
 assert analytics["last24Hours"]["failed"] == 1, analytics
 assert len(analytics["latest"]["nodes"]) == 2, analytics
 assert len(analytics["latest"]["issues"]) == 1, analytics
+assert analytics["history"][0]["id"] == analytics["latest"]["id"], analytics
+assert analytics["history"][0]["finishedAt"], analytics
+assert len(analytics["history"][0]["nodes"]) == 2, analytics
+assert len(analytics["history"][0]["issues"]) == 1, analytics
+assert analytics["history"][0]["cluster"]["quorate"] is True, analytics
 PY
 
 if grep -aFq '"BackendState"' "$DATABASE"; then
