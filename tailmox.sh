@@ -243,19 +243,28 @@ function install_tailscale() {
 # Bring up Tailscale
 function start_tailscale() {
     local auth_key="$1"
-    log_echo "${GREEN}Starting Tailscale...${RESET}"
-    
-    if [ -n "$auth_key" ]; then
-        # Use the provided auth key
-        tailscale up --auth-key="$auth_key"
+    local status_json
+
+    if status_json=$(tailscale status --json 2>/dev/null) &&
+        printf '%s\n' "$status_json" |
+            jq -e '.BackendState == "Running"' >/dev/null 2>&1; then
+        log_echo "${GREEN}Tailscale is already connected; preserving its existing login and tags.${RESET}"
     else
-        # Fall back to interactive authentication
-        tailscale up
-    fi
-    
-    if [ $? -ne 0 ]; then
-        log_echo "${RED}Failed to start Tailscale.${RESET}"
-        exit 1
+        log_echo "${GREEN}Tailscale is not connected. Starting login...${RESET}"
+
+        if [ -n "$auth_key" ]; then
+            # Use the provided auth key. Tags are managed by the key or API.
+            if ! tailscale up --auth-key="$auth_key"; then
+                log_echo "${RED}Failed to start Tailscale.${RESET}"
+                return 1
+            fi
+        else
+            # Fall back to interactive authentication.
+            if ! tailscale up; then
+                log_echo "${RED}Failed to start Tailscale.${RESET}"
+                return 1
+            fi
+        fi
     fi
 
     # Retrieve the assigned Tailscale IPv4 address
@@ -267,6 +276,13 @@ function start_tailscale() {
     done
 
     TAILSCALE_DNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')
+
+    if ! tailscale status --json |
+        jq -e '(.Self.Tags // []) | index("tag:tailmox") != null' >/dev/null 2>&1; then
+        log_echo "${RED}This device does not have the required tag:tailmox identity. Assign it with the Tailscale API, admin console, or auth key before running Tailmox.${RESET}"
+        return 1
+    fi
+
     log_echo "${GREEN}This host's Tailscale IPv4 address: $TAILSCALE_IP ${RESET}"
     log_echo "${GREEN}This host's Tailscale MagicDNS name: $TAILSCALE_DNS_NAME ${RESET}"
 }
