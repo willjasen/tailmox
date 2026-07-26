@@ -289,14 +289,41 @@ function require_hostnames_in_cluster() {
     done
 }
 
+# Require an explicit acknowledgement before continuing after an ICMP warning.
+function confirm_icmp_warning_override() {
+    local confirmation
+
+    if [[ ! -r /dev/tty ]]; then
+        log_echo "${RED}ICMP warnings require interactive confirmation, but no terminal is available. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    log_echo "${YELLOW}WARNING: One or more Tailmox peers did not answer every ICMP probe within 50 ms.${RESET}"
+    if ! read -r -p "Type 'PROCEED' to continue despite the ICMP warning: " confirmation < /dev/tty; then
+        log_echo "${RED}Unable to read interactive confirmation. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    if [[ "$confirmation" != "PROCEED" ]]; then
+        log_echo "${RED}ICMP warning was not explicitly accepted. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    log_echo "${YELLOW}ICMP warning explicitly accepted. Continuing at the user's request.${RESET}"
+    return 0
+}
+
 # Ping every other Tailmox peer by its Tailscale MagicDNS name in parallel.
-# Eleven probes at 0.5-second intervals span approximately five seconds.
+# Eleven probes at 0.5-second intervals span approximately five seconds. Each
+# reply gets a 50 ms window; slower or missing replies require confirmation.
 function ensure_ping_reachability() {
     log_echo "${YELLOW}Pinging all other Tailmox peers by Tailscale DNS name in parallel for approximately five seconds...${RESET}"
 
     local ping_count=11
     local ping_interval=0.5
     local ping_deadline=6
+    local reply_timeout=0.05
+    local latency_warning_ms=50
     local peer_count
     local result_dir
     local peer
@@ -304,8 +331,12 @@ function ensure_ping_reachability() {
     local peer_dns_name
     local result_file
     local avg_latency
+    local max_latency
     local packet_loss
+    local transmitted_count
+    local received_count
     local all_reachable=true
+    local override_required=false
     local index=0
     local -a peer_hostnames
     local -a peer_dns_names
@@ -345,7 +376,7 @@ function ensure_ping_reachability() {
         peer_dns_names[$index]="$peer_dns_name"
         result_files[$index]="$result_file"
 
-        ping -n -c "$ping_count" -i "$ping_interval" -W 1 -w "$ping_deadline" \
+        ping -n -c "$ping_count" -i "$ping_interval" -W "$reply_timeout" -w "$ping_deadline" \
             "$peer_dns_name" >"$result_file" 2>&1 &
         ping_pids[$index]=$!
         index=$((index + 1))
@@ -357,17 +388,37 @@ function ensure_ping_reachability() {
         peer_dns_name="${peer_dns_names[$index]}"
         result_file="${result_files[$index]}"
 
-        if wait "${ping_pids[$index]}"; then
-            avg_latency=$(awk -F'/' '/^(rtt|round-trip)/ {print $5}' "$result_file" | tail -1)
-            packet_loss=$(awk -F',' '/packet loss/ {
-                gsub(/^[ \t]+|[ \t]+$/, "", $3)
-                print $3
-            }' "$result_file" | tail -1)
+        wait "${ping_pids[$index]}" || true
 
-            log_echo "${GREEN} - $peer_hostname ($peer_dns_name): reachable; ${packet_loss:-packet loss unknown}; average latency ${avg_latency:-unknown} ms.${RESET}"
-        else
-            log_echo "${RED} - $peer_hostname ($peer_dns_name): ICMP check failed. No cluster changes will be made.${RESET}"
+        transmitted_count=$(awk -F',' '/packets transmitted/ {
+            gsub(/[^0-9]/, "", $1)
+            print $1
+        }' "$result_file" | tail -1)
+        received_count=$(awk -F',' '/packets transmitted/ {
+            gsub(/[^0-9]/, "", $2)
+            print $2
+        }' "$result_file" | tail -1)
+        packet_loss=$(awk -F',' '/packet loss/ {
+            gsub(/^[ \t]+|[ \t]+$/, "", $3)
+            print $3
+        }' "$result_file" | tail -1)
+        avg_latency=$(awk -F'/' '/^(rtt|round-trip)/ {print $5}' "$result_file" | tail -1)
+        max_latency=$(awk -F'/' '/^(rtt|round-trip)/ {print $6}' "$result_file" | tail -1)
+
+        if [[ -z "$transmitted_count" || -z "$received_count" ]]; then
+            log_echo "${RED} - $peer_hostname ($peer_dns_name): ICMP result could not be interpreted. No cluster changes will be made.${RESET}"
             all_reachable=false
+        elif [[ "$received_count" -lt "$transmitted_count" ]]; then
+            log_echo "${YELLOW} - WARNING: $peer_hostname ($peer_dns_name): only $received_count of $transmitted_count replies arrived within 50 ms; ${packet_loss:-packet loss unknown}; average latency ${avg_latency:-unknown} ms.${RESET}"
+            override_required=true
+        elif [[ -z "$max_latency" ]]; then
+            log_echo "${RED} - $peer_hostname ($peer_dns_name): latency result could not be interpreted. No cluster changes will be made.${RESET}"
+            all_reachable=false
+        elif awk -v latency="$max_latency" -v limit="$latency_warning_ms" 'BEGIN { exit !(latency > limit) }'; then
+            log_echo "${YELLOW} - WARNING: $peer_hostname ($peer_dns_name): maximum latency ${max_latency} ms exceeded 50 ms; ${packet_loss:-packet loss unknown}; average latency ${avg_latency:-unknown} ms.${RESET}"
+            override_required=true
+        else
+            log_echo "${GREEN} - $peer_hostname ($peer_dns_name): all replies arrived within 50 ms; ${packet_loss:-0% packet loss}; average latency ${avg_latency:-unknown} ms.${RESET}"
         fi
 
         index=$((index + 1))
@@ -376,6 +427,10 @@ function ensure_ping_reachability() {
     rm -r "$result_dir"
 
     if [ "$all_reachable" != true ]; then
+        return 1
+    fi
+
+    if [ "$override_required" = true ] && ! confirm_icmp_warning_override; then
         return 1
     fi
 

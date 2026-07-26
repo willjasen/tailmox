@@ -14,6 +14,11 @@ source "$TEST_ROOT/tailmox.sh"
 PING_TARGETS_FILE="$TEST_LOG_DIR/ping-targets"
 PING_ARGS_FILE="$TEST_LOG_DIR/ping-args"
 FAIL_PING_TARGET=""
+CONFIRM_OVERRIDE_RESULT=1
+
+function confirm_icmp_warning_override() {
+    return "$CONFIRM_OVERRIDE_RESULT"
+}
 
 function ping() {
     local target="${!#}"
@@ -77,7 +82,7 @@ if ! diff -u "$TEST_LOG_DIR/expected-targets" "$TEST_LOG_DIR/actual-targets"; th
     exit 1
 fi
 
-if [[ "$(grep -c -- '-c 11 -i 0.5 -W 1 -w 6' "$PING_ARGS_FILE")" -ne 3 ]]; then
+if [[ "$(grep -c -- '-c 11 -i 0.5 -W 0.05 -w 6' "$PING_ARGS_FILE")" -ne 3 ]]; then
     printf 'FAIL: peer pings did not use the five-second sampling options\n'
     exit 1
 fi
@@ -88,7 +93,7 @@ printf 'PASS: all peer pings use Tailscale DNS names and run in parallel\n'
 FAIL_PING_TARGET="pve2.example.ts.net"
 
 if ensure_ping_reachability >/dev/null 2>&1; then
-    printf 'FAIL: an unreachable peer did not fail the ICMP preflight\n'
+    printf 'FAIL: a missing 50 ms reply proceeded without confirmation\n'
     exit 1
 fi
 
@@ -97,4 +102,13 @@ if [[ "$(wc -l < "$PING_TARGETS_FILE" | tr -d ' ')" -ne 3 ]]; then
     exit 1
 fi
 
-printf 'PASS: an unreachable peer fails the preflight after all parallel probes run\n'
+printf 'PASS: a missing 50 ms reply blocks progress after all parallel probes run\n'
+
+CONFIRM_OVERRIDE_RESULT=0
+
+if ! ensure_ping_reachability >/dev/null 2>&1; then
+    printf 'FAIL: explicit confirmation did not override the ICMP warning\n'
+    exit 1
+fi
+
+printf 'PASS: explicit confirmation overrides the ICMP warning\n'
