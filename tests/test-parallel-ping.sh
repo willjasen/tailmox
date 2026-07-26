@@ -83,7 +83,7 @@ OTHER_PEERS='[
 ]'
 
 START_TIME=$(date +%s)
-if ! ensure_ping_reachability >/dev/null 2>&1; then
+if ! FIRST_CHECK_OUTPUT=$(ensure_ping_reachability 2>&1); then
     printf 'FAIL: parallel DNS ping check returned failure\n'
     exit 1
 fi
@@ -136,6 +136,14 @@ if [[ "$(grep -c -- '^ping --c 1 ' "$TAILSCALE_PING_ARGS_FILE")" -ne 3 ]]; then
     printf 'FAIL: Tailscale path checks did not use one default DISCO ping\n'
     exit 1
 fi
+
+for peer in pve1 pve2 pve3; do
+    if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -c -- "$peer .*64-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms")" -ne 1 ]] \
+        || [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -c -- "$peer .*1280-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms")" -ne 1 ]]; then
+        printf 'FAIL: peer ICMP results did not clearly report average and maximum latency by packet size\n'
+        exit 1
+    fi
+done
 
 printf 'PASS: all peers use Tailscale path checks and both ICMP packet sizes in parallel\n'
 
