@@ -36,6 +36,10 @@ ICMP_RESULT = re.compile(
     r"(?P<average>[0-9.]+|unknown) ms; maximum latency "
     r"(?P<maximum>[0-9.]+|unknown) ms;(?P<remainder>.*)"
 )
+ICMP_UNPARSEABLE_RESULT = re.compile(
+    r"(?P<size>\d+)-byte ICMP:\s+"
+    r"(?P<detail>(?:latency )?result could not be interpreted\..*)"
+)
 ICMP_REPLIES = re.compile(r"(?:only\s+)?(\d+)\s+of\s+(\d+)\s+replies")
 TCP_RESULT = re.compile(
     r"^\s*-\s+TCP port\s+(?P<port>\d+)\s+is\s+(?P<unavailable>not\s+)?available"
@@ -759,6 +763,21 @@ def parse_test_checks(
                     if icmp_match.group("maximum") != "unknown"
                     else None
                 ),
+            )
+            check_count += 1
+            continue
+
+        icmp_unparseable_match = ICMP_UNPARSEABLE_RESULT.search(line)
+        if icmp_unparseable_match:
+            add_check(
+                connection,
+                run_id,
+                current_node_id,
+                "icmp",
+                "latency",
+                "failed",
+                packet_size_bytes=int(icmp_unparseable_match.group("size")),
+                detail=icmp_unparseable_match.group("detail"),
             )
             check_count += 1
             continue

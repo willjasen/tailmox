@@ -185,7 +185,7 @@ if ! grep -Fq 'id="run-test"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'run.checks' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'hostChecks.map(createMeasurementRow)' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'latencyAverageMs' "$TAILMOX_WEB_ROOT/tailmox.js" ||
-    ! grep -Fq 'check.status === "passed" ? "Passed" : "Failed"' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'check.category === "tcp" || check.status === "failed"' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'renderLatencyChart(history)' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'class: `latency-line ${className}`' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'monitorRunDialog.showModal()' "$TAILMOX_WEB_ROOT/tailmox.js" ||

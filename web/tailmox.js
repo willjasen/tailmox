@@ -333,7 +333,7 @@ function openMonitorRunDialog(run) {
             && check.latencyAverageMs !== undefined
             && check.latencyMaximumMs !== null
             && check.latencyMaximumMs !== undefined;
-        const latency = check.category === "tcp"
+        const latency = check.category === "tcp" || check.status === "failed"
             ? (check.status === "passed" ? "Passed" : "Failed")
             : hasLatency
                 ? `avg ${Number(check.latencyAverageMs).toFixed(3)} ms · max ${Number(check.latencyMaximumMs).toFixed(3)} ms`
