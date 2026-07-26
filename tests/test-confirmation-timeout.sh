@@ -9,13 +9,16 @@ trap '[[ -n "$FIFO_WRITER_PID" ]] && kill "$FIFO_WRITER_PID" 2>/dev/null || true
 
 export TAILMOX_LIBRARY_MODE=true
 export TAILMOX_LOG_DIR="$TEST_LOG_DIR"
-export TAILMOX_CONFIRMATION_TIMEOUT_SECONDS=1
+export TAILMOX_CONFIRMATION_TIMEOUT_SECONDS=2
 
 source "$TEST_ROOT/tailmox.sh"
 
 CONFIRMATION_DEVICE="$TEST_LOG_DIR/confirmation-input"
+CONFIRMATION_OUTPUT_DEVICE="$TEST_LOG_DIR/confirmation-output"
 mkfifo "$CONFIRMATION_DEVICE"
+: > "$CONFIRMATION_OUTPUT_DEVICE"
 export TAILMOX_CONFIRMATION_DEVICE="$CONFIRMATION_DEVICE"
+export TAILMOX_CONFIRMATION_OUTPUT_DEVICE="$CONFIRMATION_OUTPUT_DEVICE"
 
 sleep 3 > "$CONFIRMATION_DEVICE" &
 FIFO_WRITER_PID=$!
@@ -36,12 +39,19 @@ if [[ "$ELAPSED_TIME" -ge 3 ]]; then
     exit 1
 fi
 
-if [[ "$CONFIRMATION_OUTPUT" != *"Confirmation timed out after 1 seconds. Setup cancelled"* ]]; then
+if [[ "$CONFIRMATION_OUTPUT" != *"Confirmation timed out after 2 seconds. Setup cancelled"* ]]; then
     printf 'FAIL: timeout did not clearly report that setup was cancelled\n'
     exit 1
 fi
 
+if ! grep -q "Time remaining: 2 seconds" "$CONFIRMATION_OUTPUT_DEVICE" \
+    || ! grep -q "Time remaining: 1 second" "$CONFIRMATION_OUTPUT_DEVICE"; then
+    printf 'FAIL: confirmation prompt did not show a countdown timer\n'
+    exit 1
+fi
+
 printf 'PASS: setup is cancelled when confirmation times out\n'
+printf 'PASS: confirmation prompt shows a countdown timer\n'
 
 rm "$CONFIRMATION_DEVICE"
 printf 'PROCEED\n' > "$CONFIRMATION_DEVICE"

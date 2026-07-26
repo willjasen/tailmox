@@ -429,18 +429,49 @@ function require_hostnames_in_cluster() {
 function confirm_icmp_warning_override() {
     local confirmation
     local confirmation_device="${TAILMOX_CONFIRMATION_DEVICE:-/dev/tty}"
+    local confirmation_output_device="${TAILMOX_CONFIRMATION_OUTPUT_DEVICE:-/dev/tty}"
     local confirmation_timeout="${TAILMOX_CONFIRMATION_TIMEOUT_SECONDS:-10}"
+    local countdown_pid
 
-    if [[ ! -r "$confirmation_device" ]]; then
+    if [[ ! -r "$confirmation_device" || ! -w "$confirmation_output_device" ]]; then
         log_echo "${RED}ICMP warnings require interactive confirmation, but no terminal is available. No cluster changes will be made.${RESET}"
         return 1
     fi
 
     log_echo "${YELLOW}WARNING: One or more Tailmox peers did not answer every ICMP probe within 50 ms.${RESET}"
-    if ! read -r -t "$confirmation_timeout" -p "Type 'PROCEED' within ${confirmation_timeout} seconds to continue despite the ICMP warning: " confirmation < "$confirmation_device"; then
+    (
+        local remaining="$confirmation_timeout"
+        local unit
+
+        while [[ "$remaining" -gt 0 ]]; do
+            unit="seconds"
+            if [[ "$remaining" -eq 1 ]]; then
+                unit="second"
+            fi
+
+            if [[ "$remaining" -eq "$confirmation_timeout" ]]; then
+                printf 'Time remaining: %s %s\n' "$remaining" "$unit"
+                printf "Type 'PROCEED' to continue despite the ICMP warning: "
+            else
+                printf '\0337\033[1A\r\033[2KTime remaining: %s %s\0338' "$remaining" "$unit"
+            fi
+
+            sleep 1
+            remaining=$((remaining - 1))
+        done
+    ) >> "$confirmation_output_device" &
+    countdown_pid=$!
+
+    if ! read -r -t "$confirmation_timeout" confirmation < "$confirmation_device"; then
+        kill "$countdown_pid" 2>/dev/null || true
+        wait "$countdown_pid" 2>/dev/null || true
+        printf '\n' >> "$confirmation_output_device"
         log_echo "${RED}Confirmation timed out after ${confirmation_timeout} seconds. Setup cancelled; no cluster changes will be made.${RESET}"
         return 1
     fi
+
+    kill "$countdown_pid" 2>/dev/null || true
+    wait "$countdown_pid" 2>/dev/null || true
 
     if [[ "$confirmation" != "PROCEED" ]]; then
         log_echo "${RED}ICMP warning was not explicitly accepted. No cluster changes will be made.${RESET}"
