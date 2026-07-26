@@ -142,6 +142,8 @@ The local `tailmox` command provides shortcuts for the main workflows:
 tailmox cluster             # Run the complete clustering workflow
 tailmox serve               # Start the dashboard and browser terminal
 tailmox stage               # Set up Tailscale and certificates only
+tailmox backups             # List configuration backups
+tailmox backups create      # Create a configuration backup now
 tailmox test                # Test setup without changing the host
 tailmox self-test           # Run the regression test suite
 tailmox help                # List available commands
@@ -154,6 +156,8 @@ Tailmox preserves an existing Tailscale login instead of authenticating again. T
 During the running of the script, if there are existing hosts within the tailmox cluster, it is likely to ask for the password of one of the remote hosts in order to properly join the Proxmox cluster.
 
 Immediately before Tailmox creates or joins a Proxmox cluster, it archives the local `/etc/pve`, `/etc/corosync`, and `/etc/hosts` state under `/var/backups/tailmox`. The cluster change is blocked if `/etc/pve` is unavailable or the archive cannot be completed. Backup archives are readable only by root.
+
+Run `tailmox backups` (or `tailmox backups list`) to list the Tailmox configuration backups on the host, including their type, size, integrity result, and full path. Run `tailmox backups create` to create the same private `/etc/pve`, `/etc/corosync`, and `/etc/hosts` archive on demand. These commands manage Tailmox configuration safeguards only; they do not back up or restore guests.
 
 The dashboard lists each Tailmox configuration backup's type, creation time,
 size, and basic integrity result. It publishes metadata only: backup contents

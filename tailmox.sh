@@ -28,11 +28,12 @@
 # Source color definitions
 source "$(dirname "${BASH_SOURCE[0]}")/.colors.sh"
 
-# Define log file. Dry runs must not create or rotate host log files.
+# Define log file. Read-only commands must not create or rotate host log files.
 TAILMOX_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TAILMOX_EARLY_DRY_RUN=false
 for tailmox_argument in "$@"; do
-    if [[ "$tailmox_argument" == "--dry-run" ]]; then
+    if [[ "$tailmox_argument" == "--dry-run" ||
+        "$tailmox_argument" == "--backups-list" ]]; then
         TAILMOX_EARLY_DRY_RUN=true
         break
     fi
@@ -588,6 +589,83 @@ function backup_proxmox_cluster_configuration() {
         log_echo "${YELLOW}The backup succeeded, but the dashboard inventory could not be refreshed.${RESET}"
     fi
     log_echo "${GREEN}Archived the current Proxmox cluster configuration at $backup_archive.${RESET}"
+    return 0
+}
+
+# List the private configuration backups created by Tailmox. Only regular
+# files with Tailmox-controlled backup names are included.
+function list_tailmox_configuration_backups() {
+    local backup_dir
+    local backup_path
+    local filename
+    local integrity
+    local previous_backup_dir=""
+    local size_bytes
+    local type
+    local -a backup_dirs=(
+        "$TAILMOX_CLUSTER_BACKUP_DIR"
+        "$TAILMOX_EXISTING_CLUSTER_BACKUP_DIR"
+    )
+    local -a backup_paths=()
+
+    shopt -s nullglob
+    for backup_dir in "${backup_dirs[@]}"; do
+        if [[ "$backup_dir" == "$previous_backup_dir" ]]; then
+            continue
+        fi
+        previous_backup_dir="$backup_dir"
+
+        if [[ ! -d "$backup_dir" ]]; then
+            continue
+        fi
+        if [[ ! -r "$backup_dir" ]]; then
+            shopt -u nullglob
+            printf 'Unable to read Tailmox backup directory: %s\n' "$backup_dir" >&2
+            return 1
+        fi
+
+        for backup_path in \
+            "$backup_dir"/proxmox-cluster-*.tar.gz \
+            "$backup_dir"/corosync-*.conf; do
+            if [[ -f "$backup_path" && ! -L "$backup_path" ]]; then
+                backup_paths+=("$backup_path")
+            fi
+        done
+    done
+    shopt -u nullglob
+
+    if [[ "${#backup_paths[@]}" -eq 0 ]]; then
+        printf 'No Tailmox configuration backups found.\n'
+        return 0
+    fi
+
+    printf '%-9s %12s %-9s %s\n' "TYPE" "SIZE (BYTES)" "INTEGRITY" "FILE"
+    while IFS= read -r backup_path; do
+        filename=$(basename "$backup_path")
+        if [[ "$filename" == proxmox-cluster-*.tar.gz ]]; then
+            type="cluster"
+            if tar -tzf "$backup_path" >/dev/null 2>&1; then
+                integrity="valid"
+            else
+                integrity="invalid"
+            fi
+        else
+            type="corosync"
+            if [[ -s "$backup_path" ]]; then
+                integrity="valid"
+            else
+                integrity="invalid"
+            fi
+        fi
+
+        if ! size_bytes=$(stat -c '%s' "$backup_path" 2>/dev/null); then
+            size_bytes=$(stat -f '%z' "$backup_path" 2>/dev/null) || size_bytes="unknown"
+        fi
+
+        printf '%-9s %12s %-9s %s\n' \
+            "$type" "$size_bytes" "$integrity" "$backup_path"
+    done < <(printf '%s\n' "${backup_paths[@]}" | sort)
+
     return 0
 }
 
@@ -1502,11 +1580,14 @@ function test_setup_safely() {
 TERMINAL_MODE=false
 STAGING=false
 DRY_RUN=false
+BACKUP_ACTION=""
 AUTH_KEY=""
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --staging) STAGING="true"; ;;
         --dry-run) DRY_RUN=true; ;;
+        --backups-list) BACKUP_ACTION="list"; ;;
+        --backup-create) BACKUP_ACTION="create"; ;;
         --auth-key)
             if [[ -z "${2:-}" ]]; then
                 printf '%s\n' "--auth-key requires a value." >&2
@@ -1525,6 +1606,14 @@ done
 # installer or making changes to a host.
 if [[ "${TAILMOX_LIBRARY_MODE:-false}" == "true" ]]; then
     return 0 2>/dev/null || exit 0
+fi
+
+if [[ "$BACKUP_ACTION" == "list" ]]; then
+    list_tailmox_configuration_backups
+    exit $?
+elif [[ "$BACKUP_ACTION" == "create" ]]; then
+    backup_proxmox_cluster_configuration
+    exit $?
 fi
 
 if [[ "$DRY_RUN" == "true" ]]; then

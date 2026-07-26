@@ -67,6 +67,8 @@ Usage:
   tailmox cluster [options]  Run the complete clustering workflow
   tailmox serve [options]    Start the dashboard and browser terminal
   tailmox stage [options]    Set up Tailscale and certificates only
+  tailmox backups [list]     List Tailmox configuration backups
+  tailmox backups create     Create a configuration backup now
   tailmox test               Safely test setup without changing the host
   tailmox self-test          Run the regression test suite
   tailmox help               Show this help
@@ -89,6 +91,34 @@ case "${1:-}" in
     stage)
         shift
         exec "$TAILMOX_ROOT/tailmox.sh" --terminal --staging "$@"
+        ;;
+    backups)
+        shift
+        case "${1:-list}" in
+            list)
+                if [[ "$#" -gt 0 ]]; then
+                    shift
+                fi
+                if [[ "$#" -ne 0 ]]; then
+                    printf 'tailmox backups list does not accept arguments.\n' >&2
+                    exit 2
+                fi
+                exec "$TAILMOX_ROOT/tailmox.sh" --backups-list
+                ;;
+            create)
+                shift
+                if [[ "$#" -ne 0 ]]; then
+                    printf 'tailmox backups create does not accept arguments.\n' >&2
+                    exit 2
+                fi
+                exec "$TAILMOX_ROOT/tailmox.sh" --backup-create
+                ;;
+            *)
+                printf 'Unknown backups action: %s\n' "$1" >&2
+                printf 'Usage: tailmox backups [list|create]\n' >&2
+                exit 2
+                ;;
+        esac
         ;;
     test)
         shift
