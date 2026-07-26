@@ -78,6 +78,18 @@ MOCK_TAILSCALE_STATUS='{
 }'
 run_case "all Tailmox peers online" 0
 
+ONLINE_OUTPUT=$(check_all_peers_online 2>&1)
+printf -v expected_check_line '%b' \
+    "${YELLOW}Checking if all Tailmox peers are online...${RESET}"
+if [[ "$(printf '%s\n' "$ONLINE_OUTPUT" | grep -Fxc -- "$expected_check_line")" -eq 1 ]] \
+    && ! printf '%s\n' "$ONLINE_OUTPUT" | grep -Fq -- "local host and"; then
+    printf 'PASS: online check heading refers only to Tailmox peers\n'
+    PASS_COUNT=$((PASS_COUNT + 1))
+else
+    printf 'FAIL: online check heading still refers to the local host\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+fi
+
 MOCK_TAILSCALE_STATUS='{
   "BackendState": "Running",
   "Self": {"Online": true, "Tags": ["tag:tailmox"]},

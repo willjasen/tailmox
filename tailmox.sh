@@ -457,7 +457,7 @@ function start_tailscale() {
 
 # Check if all peers with the "tailmox" tag are online
 function check_all_peers_online() {
-    log_echo "${YELLOW}Checking if the local host and all tailmox peers are online...${RESET}"
+    log_echo "${YELLOW}Checking if all Tailmox peers are online...${RESET}"
 
     local status_json
     local peers_data
