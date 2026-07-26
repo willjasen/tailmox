@@ -867,6 +867,9 @@ function sample_tailscale_ping_reachability() {
     local attempt_latency_ms
     local latency_average_ms
     local attempt_file
+    local started_at="${EPOCHREALTIME:-$(date +%s)}"
+    local finished_at
+    local duration_seconds
 
     for ((attempt = 0; attempt < ping_count; attempt++)); do
         attempt_file="${result_file}.attempt-${attempt}"
@@ -886,16 +889,20 @@ function sample_tailscale_ping_reachability() {
         fi
     done
 
+    finished_at="${EPOCHREALTIME:-$(date +%s)}"
+    duration_seconds=$(awk -v started_at="$started_at" -v finished_at="$finished_at" \
+        'BEGIN { printf "%d", (finished_at - started_at) + 0.5 }')
+
     if [[ "$latency_count" -gt 0 ]]; then
         latency_average_ms=$(awk \
             -v total="$latency_total_ms" -v count="$latency_count" \
             'BEGIN { printf "%.3f", total / count }')
-        printf '%s of %s Tailscale pings succeeded (80%% required); average latency %s ms; maximum latency %s ms' \
+        printf '%s of %s Tailscale pings succeeded (80%% required); average latency %s ms; maximum latency %s ms; duration %s s' \
             "$successful_count" "$ping_count" "$latency_average_ms" \
-            "$latency_maximum_ms" >"$result_file"
+            "$latency_maximum_ms" "$duration_seconds" >"$result_file"
     else
-        printf '%s of %s Tailscale pings succeeded (80%% required); average latency unknown ms; maximum latency unknown ms' \
-            "$successful_count" "$ping_count" >"$result_file"
+        printf '%s of %s Tailscale pings succeeded (80%% required); average latency unknown ms; maximum latency unknown ms; duration %s s' \
+            "$successful_count" "$ping_count" "$duration_seconds" >"$result_file"
     fi
 
     [[ "$successful_count" -ge "$required_count" ]]
@@ -933,6 +940,7 @@ function ensure_ping_reachability() {
     local check_type
     local command_succeeded
     local tailscale_result
+    local duration_seconds
     local all_reachable=true
     local override_required=false
     local index=0
@@ -945,6 +953,7 @@ function ensure_ping_reachability() {
     local -a packet_sizes
     local -a result_files
     local -a ping_pids
+    local -a check_started_at
 
     function emit_monitor_icmp_result() {
         local hostname="$1"
@@ -954,10 +963,11 @@ function ensure_ping_reachability() {
         local sent="$5"
         local average="$6"
         local maximum="$7"
+        local duration="$8"
 
         if [[ "${TAILMOX_MONITOR_OUTPUT:-false}" == "true" ]]; then
-            printf '__TAILMOX_MONITOR_ICMP__\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-                "$hostname" "$size" "$status" "$received" "$sent" "$average" "$maximum"
+            printf '__TAILMOX_MONITOR_ICMP__\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$hostname" "$size" "$status" "$received" "$sent" "$average" "$maximum" "$duration"
         fi
     }
 
@@ -1000,6 +1010,7 @@ function ensure_ping_reachability() {
             "$peer_dns_name" "$result_file" "$tailscale_ping_count" \
             "$tailscale_required_count" "$tailscale_ping_timeout" &
         ping_pids[$index]=$!
+        check_started_at[$index]="${EPOCHREALTIME:-$(date +%s)}"
         index=$((index + 1))
 
         for size_index in "${!ping_payload_sizes[@]}"; do
@@ -1016,6 +1027,7 @@ function ensure_ping_reachability() {
             ping -n -c "$ping_count" -i "$ping_interval" -W "$reply_timeout" -w "$ping_deadline" \
                 -s "$payload_size" "$peer_dns_name" >"$result_file" 2>&1 &
             ping_pids[$index]=$!
+            check_started_at[$index]="${EPOCHREALTIME:-$(date +%s)}"
             index=$((index + 1))
         done
     done < <(printf '%s\n' "$peers_to_check" | jq -c '.[]')
@@ -1034,6 +1046,10 @@ function ensure_ping_reachability() {
         else
             command_succeeded=false
         fi
+
+        duration_seconds=$(awk -v started_at="${check_started_at[$index]}" \
+            -v finished_at="${EPOCHREALTIME:-$(date +%s)}" \
+            'BEGIN { printf "%d", (finished_at - started_at) + 0.5 }')
 
         if [[ "$check_type" == "tailscale" ]]; then
             log_echo "${BLUE} - $peer_hostname ($peer_dns_name)${RESET}"
@@ -1065,23 +1081,23 @@ function ensure_ping_reachability() {
 
         if [[ -z "$transmitted_count" || -z "$received_count" ]]; then
             log_echo "${RED}   - ${packet_size}-byte ICMP: result could not be interpreted. No cluster changes will be made.${RESET}"
-            emit_monitor_icmp_result "$peer_hostname" "$packet_size" failed unknown unknown unknown unknown
+            emit_monitor_icmp_result "$peer_hostname" "$packet_size" failed unknown unknown unknown unknown "$duration_seconds"
             all_reachable=false
         elif [[ "$received_count" -lt "$transmitted_count" ]]; then
             log_echo "${YELLOW}   - WARNING: ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency:-unknown} ms; only $received_count of $transmitted_count replies arrived within 50 ms; ${packet_loss:-packet loss unknown}.${RESET}"
-            emit_monitor_icmp_result "$peer_hostname" "$packet_size" warning "$received_count" "$transmitted_count" "${avg_latency:-unknown}" "${max_latency:-unknown}"
+            emit_monitor_icmp_result "$peer_hostname" "$packet_size" warning "$received_count" "$transmitted_count" "${avg_latency:-unknown}" "${max_latency:-unknown}" "$duration_seconds"
             override_required=true
         elif [[ -z "$max_latency" ]]; then
             log_echo "${RED}   - ${packet_size}-byte ICMP: latency result could not be interpreted. No cluster changes will be made.${RESET}"
-            emit_monitor_icmp_result "$peer_hostname" "$packet_size" failed "$received_count" "$transmitted_count" "${avg_latency:-unknown}" unknown
+            emit_monitor_icmp_result "$peer_hostname" "$packet_size" failed "$received_count" "$transmitted_count" "${avg_latency:-unknown}" unknown "$duration_seconds"
             all_reachable=false
         elif awk -v latency="$max_latency" -v limit="$latency_warning_ms" 'BEGIN { exit !(latency > limit) }'; then
             log_echo "${YELLOW}   - WARNING: ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms exceeded 50 ms; $received_count of $transmitted_count replies arrived; ${packet_loss:-packet loss unknown}.${RESET}"
-            emit_monitor_icmp_result "$peer_hostname" "$packet_size" warning "$received_count" "$transmitted_count" "${avg_latency:-unknown}" "$max_latency"
+            emit_monitor_icmp_result "$peer_hostname" "$packet_size" warning "$received_count" "$transmitted_count" "${avg_latency:-unknown}" "$max_latency" "$duration_seconds"
             override_required=true
         else
             log_echo "${GREEN}   - ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms; $received_count of $transmitted_count replies arrived within 50 ms; ${packet_loss:-0% packet loss}.${RESET}"
-            emit_monitor_icmp_result "$peer_hostname" "$packet_size" passed "$received_count" "$transmitted_count" "${avg_latency:-unknown}" "$max_latency"
+            emit_monitor_icmp_result "$peer_hostname" "$packet_size" passed "$received_count" "$transmitted_count" "${avg_latency:-unknown}" "$max_latency" "$duration_seconds"
         fi
 
         index=$((index + 1))

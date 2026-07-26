@@ -30,6 +30,7 @@ TAILSCALE_PATH = re.compile(
     r"(?P<sent>\d+)\s+Tailscale pings succeeded"
     r"(?:.*?average latency (?P<average>[0-9.]+|unknown) ms;"
     r"\s+maximum latency (?P<maximum>[0-9.]+|unknown) ms)?"
+    r"(?:;\s+duration (?P<duration>\d+) s)?"
 )
 ICMP_RESULT = re.compile(
     r"(?P<size>\d+)-byte ICMP:.*?average latency "
@@ -49,7 +50,8 @@ MONITOR_ICMP_RESULT = re.compile(
     r"^__TAILMOX_MONITOR_ICMP__\t(?P<hostname>[^\t]+)\t"
     r"(?P<size>\d+)\t(?P<status>passed|warning|failed)\t"
     r"(?P<received>\d+|unknown)\t(?P<sent>\d+|unknown)\t"
-    r"(?P<average>[0-9.]+|unknown)\t(?P<maximum>[0-9.]+|unknown)$"
+    r"(?P<average>[0-9.]+|unknown)\t(?P<maximum>[0-9.]+|unknown)\t"
+    r"(?P<duration>\d+|unknown)$"
 )
 
 SCHEMA = """
@@ -123,6 +125,7 @@ CREATE TABLE IF NOT EXISTS monitor_checks (
     packet_size_bytes INTEGER,
     packets_sent INTEGER,
     packets_received INTEGER,
+    duration_seconds INTEGER,
     latency_average_ms REAL,
     latency_maximum_ms REAL,
     port INTEGER,
@@ -136,7 +139,7 @@ CREATE INDEX IF NOT EXISTS monitor_checks_status_run_id
 CREATE VIEW IF NOT EXISTS monitor_check_results AS
 SELECT c.id, c.run_id, c.node_id, cat.name AS category,
        d.name, s.name AS status, c.packet_size_bytes, c.packets_sent,
-       c.packets_received, c.latency_average_ms, c.latency_maximum_ms,
+       c.packets_received, c.duration_seconds, c.latency_average_ms, c.latency_maximum_ms,
        c.port, c.detail
 FROM monitor_checks c
 JOIN monitor_check_definitions d ON d.id = c.definition_id
@@ -191,6 +194,7 @@ CREATE TABLE monitor_checks (
     packet_size_bytes INTEGER,
     packets_sent INTEGER,
     packets_received INTEGER,
+    duration_seconds INTEGER,
     latency_average_ms REAL,
     latency_maximum_ms REAL,
     port INTEGER,
@@ -198,11 +202,11 @@ CREATE TABLE monitor_checks (
 );
 INSERT INTO monitor_checks (
     id, run_id, node_id, definition_id, status_id, packet_size_bytes,
-    packets_sent, packets_received, latency_average_ms, latency_maximum_ms,
+    packets_sent, packets_received, duration_seconds, latency_average_ms, latency_maximum_ms,
     port, detail
 )
 SELECT c.id, c.run_id, c.node_id, d.id, s.id, c.packet_size_bytes,
-       c.packets_sent, c.packets_received, c.latency_average_ms,
+       c.packets_sent, c.packets_received, NULL, c.latency_average_ms,
        c.latency_maximum_ms, c.port, c.detail
 FROM monitor_checks_legacy c
 JOIN monitor_check_categories cat ON cat.name = c.category
@@ -545,6 +549,13 @@ def initialize_database(database_path: pathlib.Path) -> sqlite3.Connection:
     if "category" in monitor_check_columns:
         connection.executescript(LEGACY_MONITOR_CHECKS_SCHEMA)
     connection.executescript(SCHEMA)
+    monitor_check_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(monitor_checks)")
+    }
+    if "duration_seconds" not in monitor_check_columns:
+        connection.execute("ALTER TABLE monitor_checks ADD COLUMN duration_seconds INTEGER")
+        connection.execute("DROP VIEW IF EXISTS monitor_check_results")
+        connection.executescript(SCHEMA)
     foreign_key_error = connection.execute("PRAGMA foreign_key_check").fetchone()
     if foreign_key_error is not None:
         connection.close()
@@ -677,10 +688,10 @@ def add_check(
         """
         INSERT INTO monitor_checks (
             run_id, node_id, definition_id, status_id, packet_size_bytes,
-            packets_sent, packets_received, latency_average_ms,
+            packets_sent, packets_received, duration_seconds, latency_average_ms,
             latency_maximum_ms, port, detail
         )
-        SELECT ?, ?, d.id, s.id, ?, ?, ?, ?, ?, ?, ?
+        SELECT ?, ?, d.id, s.id, ?, ?, ?, ?, ?, ?, ?, ?
         FROM monitor_check_definitions d
         JOIN monitor_check_categories cat ON cat.id = d.category_id
         JOIN monitor_check_statuses s ON s.name = ?
@@ -692,6 +703,7 @@ def add_check(
             values.get("packet_size_bytes"),
             values.get("packets_sent"),
             values.get("packets_received"),
+            values.get("duration_seconds"),
             values.get("latency_average_ms"),
             values.get("latency_maximum_ms"),
             values.get("port"),
@@ -724,6 +736,7 @@ def parse_test_checks(
             sent = monitor_icmp_match.group("sent")
             average = monitor_icmp_match.group("average")
             maximum = monitor_icmp_match.group("maximum")
+            duration = monitor_icmp_match.group("duration")
             add_check(
                 connection,
                 run_id,
@@ -734,6 +747,7 @@ def parse_test_checks(
                 packet_size_bytes=int(monitor_icmp_match.group("size")),
                 packets_received=int(received) if received != "unknown" else None,
                 packets_sent=int(sent) if sent != "unknown" else None,
+                duration_seconds=int(duration) if duration != "unknown" else None,
                 latency_average_ms=float(average) if average != "unknown" else None,
                 latency_maximum_ms=float(maximum) if maximum != "unknown" else None,
             )
@@ -751,6 +765,7 @@ def parse_test_checks(
             sent = int(tailscale_match.group("sent"))
             average = tailscale_match.group("average")
             maximum = tailscale_match.group("maximum")
+            duration = tailscale_match.group("duration")
             status = "passed" if "failed" not in line.lower() else "failed"
             add_check(
                 connection,
@@ -761,6 +776,7 @@ def parse_test_checks(
                 status,
                 packets_sent=sent,
                 packets_received=received,
+                duration_seconds=int(duration) if duration is not None else None,
                 latency_average_ms=(
                     float(average) if average not in (None, "unknown") else None
                 ),
@@ -857,7 +873,7 @@ def publish_analytics(
         failed_checks = connection.execute(
             """
             SELECT n.hostname, c.category, c.name, c.status, c.port,
-                   c.packet_size_bytes, c.latency_maximum_ms
+                   c.packet_size_bytes, c.latency_maximum_ms, c.duration_seconds
             FROM monitor_check_results c
             LEFT JOIN monitor_nodes n ON n.id = c.node_id
             WHERE c.run_id = ? AND c.status != 'passed'
@@ -869,7 +885,7 @@ def publish_analytics(
             """
             SELECT n.hostname, c.category, c.name, c.status, c.port,
                    c.packet_size_bytes, c.packets_sent, c.packets_received,
-                   c.latency_average_ms, c.latency_maximum_ms
+                   c.duration_seconds, c.latency_average_ms, c.latency_maximum_ms
             FROM monitor_check_results c
             LEFT JOIN monitor_nodes n ON n.id = c.node_id
             WHERE c.run_id = ?
@@ -878,10 +894,10 @@ def publish_analytics(
             (run_id,),
         ).fetchall()
         average_latencies = [
-            float(row[8]) for row in checks if row[8] is not None
+            float(row[9]) for row in checks if row[9] is not None
         ]
         maximum_latencies = [
-            float(row[9]) for row in checks if row[9] is not None
+            float(row[10]) for row in checks if row[10] is not None
         ]
         cluster_sample = connection.execute(
             """
@@ -981,6 +997,7 @@ def publish_analytics(
                     "port": row[4],
                     "packetSizeBytes": row[5],
                     "latencyMaximumMs": row[6],
+                    "durationSeconds": row[7],
                 }
                 for row in failed_checks
             ],
@@ -994,8 +1011,9 @@ def publish_analytics(
                     "packetSizeBytes": row[5],
                     "packetsSent": row[6],
                     "packetsReceived": row[7],
-                    "latencyAverageMs": row[8],
-                    "latencyMaximumMs": row[9],
+                    "durationSeconds": row[8],
+                    "latencyAverageMs": row[9],
+                    "latencyMaximumMs": row[10],
                 }
                 for row in checks
             ],

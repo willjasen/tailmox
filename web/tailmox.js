@@ -342,7 +342,10 @@ function openMonitorRunDialog(run) {
         const packets = check.packetsSent !== null && check.packetsSent !== undefined
             ? ` · ${check.packetsReceived}/${check.packetsSent} replies`
             : "";
-        value.textContent = `${latency}${packets}`;
+        const duration = check.durationSeconds !== null && check.durationSeconds !== undefined
+            ? ` over ${check.durationSeconds}s`
+            : "";
+        value.textContent = `${latency}${packets}${duration}`;
         row.append(label, value);
         return row;
     };

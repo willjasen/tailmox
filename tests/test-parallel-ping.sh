@@ -158,7 +158,7 @@ for peer in pve1 pve2 pve3; do
 done
 
 printf -v expected_tailscale_line '%b' \
-    "${GREEN}   - Tailscale path: 20 of 20 Tailscale pings succeeded (80% required); average latency 2.000 ms; maximum latency 2.000 ms.${RESET}"
+    "${GREEN}   - Tailscale path: 20 of 20 Tailscale pings succeeded (80% required); average latency 2.000 ms; maximum latency 2.000 ms; duration 0 s.${RESET}"
 if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_tailscale_line")" -ne 3 ]]; then
     printf 'FAIL: successful Tailscale path results did not include latency\n'
     exit 1

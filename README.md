@@ -248,7 +248,10 @@ queries and reporting. Raw Tailscale JSON and terminal output are not stored in
 the database. The `serve` dashboard shows the current
 allocated SQLite database size alongside the monitor health summary. Select a
 bar under **Recent runs** to inspect that run's timestamp, mode, result,
-duration, host-grouped Tailscale path, ICMP, and TCP latency measurements,
+duration, host-grouped Tailscale path, ICMP, and TCP latency measurements.
+Each recorded Tailscale-path and ICMP measurement includes its sampling duration
+as an integer number of seconds and, where applicable, sent and received reply
+counts,
 per-check issues, and run-level failure reasons such as a nonzero `tailmox
 test` exit. The **Recent latency** graph plots the mean of each run's recorded
 check averages alongside its highest recorded check maximum for up to 60 runs.
