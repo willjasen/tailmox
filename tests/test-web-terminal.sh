@@ -51,8 +51,8 @@ if [[ ! -f "$TAILMOX_SYSTEMD_DIR/tailmox-web.service" ]]; then
     exit 1
 fi
 
-if ! grep -Fq -- '--base-path /terminal' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
-    printf 'FAIL: ttyd was not configured for the dashboard terminal path\n'
+if grep -Fq -- '--base-path' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
+    printf 'FAIL: ttyd expected a path prefix that Tailscale Serve removes\n'
     exit 1
 fi
 
