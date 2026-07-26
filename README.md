@@ -149,6 +149,7 @@ tailmox backups create      # Create a configuration backup now
 tailmox test                # Test setup without changing the host
 tailmox monitor             # Record test analytics every minute
 tailmox monitor install     # Install and start the background monitor
+tailmox monitor restart     # Restart the installed background monitor
 tailmox monitor uninstall   # Stop and remove the background monitor
 tailmox self-test           # Run the regression test suite
 tailmox help                # List available commands
@@ -217,6 +218,15 @@ For continuous operation across reboots, install it as a system service:
 ```bash
 tailmox monitor install
 ```
+
+After updating Tailmox, restart the installed monitor so its long-running
+process loads the new code:
+
+```bash
+tailmox monitor restart
+```
+
+Restarting preserves the monitoring database and all historical analytics.
 
 To stop and remove that service later:
 

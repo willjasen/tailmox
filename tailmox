@@ -92,6 +92,28 @@ install_monitor_service() {
     printf 'Tailmox monitor installed and running once per minute.\n'
 }
 
+restart_monitor_service() {
+    local systemd_dir="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
+    local service_name="${TAILMOX_MONITOR_SERVICE:-tailmox-monitor.service}"
+    local service_target="$systemd_dir/$service_name"
+
+    if [[ ! -e "$service_target" ]]; then
+        printf 'Tailmox monitor is not installed.\n' >&2
+        return 1
+    fi
+    if ! grep -Fqx 'Description=Tailmox health monitor' "$service_target" ||
+        ! grep -Fq '/tailmox monitor ' "$service_target"; then
+        printf 'Refusing to restart unrelated service: %s\n' "$service_target" >&2
+        return 1
+    fi
+    if ! systemctl restart "$service_name"; then
+        printf 'Unable to restart %s.\n' "$service_name" >&2
+        return 1
+    fi
+
+    printf 'Tailmox monitor restarted. Monitoring history was preserved.\n'
+}
+
 uninstall_monitor_service() {
     local systemd_dir="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
     local service_name="${TAILMOX_MONITOR_SERVICE:-tailmox-monitor.service}"
@@ -137,6 +159,7 @@ Usage:
   tailmox test               Safely test setup without changing the host
   tailmox monitor [options]  Record test analytics every minute
   tailmox monitor install    Install and start the background monitor
+  tailmox monitor restart    Restart the installed background monitor
   tailmox monitor uninstall  Stop and remove the background monitor
   tailmox self-test          Run the regression test suite
   tailmox help               Show this help
@@ -229,6 +252,14 @@ case "${1:-}" in
                     exit 2
                 fi
                 install_monitor_service
+                ;;
+            restart)
+                shift
+                if [[ "$#" -ne 0 ]]; then
+                    printf 'tailmox monitor restart does not accept arguments.\n' >&2
+                    exit 2
+                fi
+                restart_monitor_service
                 ;;
             uninstall)
                 shift
