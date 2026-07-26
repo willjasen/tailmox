@@ -250,6 +250,106 @@ def parse_pvecm_status(output: str) -> tuple[str | None, dict[str, object] | Non
     return values.get("name") or None, sample
 
 
+def parse_corosync_nodes(configuration: str) -> dict[str, str] | None:
+    nodes: dict[str, str] = {}
+    in_node = False
+    node_name: str | None = None
+    ring_address: str | None = None
+
+    for line in configuration.splitlines():
+        stripped = line.strip()
+        if re.fullmatch(r"node\s*\{", stripped):
+            if in_node:
+                return None
+            in_node = True
+            node_name = None
+            ring_address = None
+            continue
+        if not in_node:
+            continue
+        if stripped.startswith("name:"):
+            node_name = stripped.split(":", 1)[1].strip() or None
+        elif stripped.startswith("ring0_addr:"):
+            ring_address = stripped.split(":", 1)[1].strip() or None
+        elif stripped == "}":
+            if not node_name or not ring_address or node_name in nodes:
+                return None
+            nodes[node_name] = ring_address
+            in_node = False
+
+    if in_node or not nodes:
+        return None
+    return nodes
+
+
+def read_tailscale_status() -> dict[str, object] | None:
+    tailscale = command_path("TAILMOX_MONITOR_TAILSCALE_COMMAND", "tailscale")
+    result = run_command([tailscale, "status", "--json"])
+    if result.returncode != 0:
+        return None
+    try:
+        status = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return status if isinstance(status, dict) else None
+
+
+def tailmox_cluster_is_prepared(configured_node_count: object) -> bool:
+    config_path = pathlib.Path(
+        os.environ.get(
+            "TAILMOX_MONITOR_COROSYNC_CONFIG", "/etc/pve/corosync.conf"
+        )
+    )
+    try:
+        configured_nodes = parse_corosync_nodes(
+            config_path.read_text(encoding="utf-8")
+        )
+    except OSError:
+        return False
+    if configured_nodes is None:
+        return False
+    if (
+        isinstance(configured_node_count, int)
+        and len(configured_nodes) != configured_node_count
+    ):
+        return False
+
+    status = read_tailscale_status()
+    if status is None:
+        return False
+
+    peers: list[object] = [status.get("Self")]
+    peer_mapping = status.get("Peer")
+    if isinstance(peer_mapping, dict):
+        peers.extend(peer_mapping.values())
+
+    tailscale_addresses: dict[str, list[str]] = {}
+    for peer in peers:
+        if (
+            not isinstance(peer, dict)
+            or not peer.get("Online")
+            or "tag:tailmox" not in (peer.get("Tags") or [])
+        ):
+            continue
+        hostname = peer.get("HostName")
+        addresses = peer.get("TailscaleIPs")
+        if (
+            not isinstance(hostname, str)
+            or not hostname
+            or not isinstance(addresses, list)
+            or not addresses
+            or not isinstance(addresses[0], str)
+        ):
+            continue
+        tailscale_addresses.setdefault(hostname, []).append(addresses[0])
+
+    for node_name, ring_address in configured_nodes.items():
+        matches = tailscale_addresses.get(node_name, [])
+        if len(matches) != 1 or ring_address != matches[0]:
+            return False
+    return True
+
+
 def detect_mode(requested_mode: str) -> tuple[str, str | None, dict[str, object] | None, str | None]:
     if requested_mode == "pre-cluster":
         return "pre-cluster", None, None, None
@@ -257,7 +357,11 @@ def detect_mode(requested_mode: str) -> tuple[str, str | None, dict[str, object]
     pvecm = command_path("TAILMOX_MONITOR_PVECM_COMMAND", "pvecm")
     result = run_command([pvecm, "status"])
     cluster_name, sample = parse_pvecm_status(result.stdout + result.stderr)
-    if sample is not None:
+    if sample is not None and requested_mode == "cluster":
+        return "cluster", cluster_name, sample, None
+    if sample is not None and tailmox_cluster_is_prepared(
+        sample["configured_nodes"]
+    ):
         return "cluster", cluster_name, sample, None
     if requested_mode == "cluster":
         return "cluster", None, None, "cluster_not_detected"
@@ -319,14 +423,8 @@ def upsert_node(
 def collect_tailscale_nodes(
     connection: sqlite3.Connection, run_id: int, observed_at: str
 ) -> dict[str, int]:
-    tailscale = command_path("TAILMOX_MONITOR_TAILSCALE_COMMAND", "tailscale")
-    result = run_command([tailscale, "status", "--json"])
-    if result.returncode != 0:
-        return {}
-
-    try:
-        status = json.loads(result.stdout)
-    except (json.JSONDecodeError, TypeError):
+    status = read_tailscale_status()
+    if status is None:
         return {}
 
     node_ids: dict[str, int] = {}
@@ -749,7 +847,10 @@ def parse_arguments() -> argparse.Namespace:
         "--mode",
         choices=("auto", "pre-cluster", "cluster"),
         default="auto",
-        help="monitoring mode; auto changes to cluster mode when membership is detected",
+        help=(
+            "monitoring mode; auto changes to cluster mode only after every "
+            "Corosync member uses its Tailscale address"
+        ),
     )
     parser.add_argument(
         "--once",

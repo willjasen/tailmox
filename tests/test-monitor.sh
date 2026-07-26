@@ -135,16 +135,69 @@ PY
 
 printf 'PASS: pre-cluster mode omits cluster-only collection\n'
 
+COROSYNC_CONFIG="$TEST_TMP/corosync.conf"
+printf '%s\n' \
+    'nodelist {' \
+    '  node {' \
+    '    name: pve-local' \
+    '    ring0_addr: 192.0.2.1' \
+    '  }' \
+    '  node {' \
+    '    name: pve-remote' \
+    '    ring0_addr: 192.0.2.2' \
+    '  }' \
+    '}' > "$COROSYNC_CONFIG"
+
 AUTO_DATABASE="$TEST_TMP/auto.sqlite3"
 TAILMOX_MONITOR_DB="$AUTO_DATABASE" \
 TAILMOX_MONITOR_WEB_OUTPUT="$TEST_TMP/web/auto.json" \
 TAILMOX_MONITOR_TEST_COMMAND="$MOCK_TAILMOX" \
 TAILMOX_MONITOR_TAILSCALE_COMMAND="$MOCK_TAILSCALE" \
 TAILMOX_MONITOR_PVECM_COMMAND="$MOCK_PVECM" \
+TAILMOX_MONITOR_COROSYNC_CONFIG="$COROSYNC_CONFIG" \
 TAILMOX_MONITOR_SSE_ENABLED=false \
     "$TEST_ROOT/tailmox-monitor" --mode auto --once >/dev/null
 
 python3 - "$AUTO_DATABASE" <<'PY'
+import sqlite3
+import sys
+
+connection = sqlite3.connect(sys.argv[1])
+requested_mode, mode, cluster_name = connection.execute(
+    "SELECT requested_mode, mode, cluster_name FROM monitor_runs"
+).fetchone()
+assert (requested_mode, mode, cluster_name) == (
+    "auto",
+    "pre-cluster",
+    None,
+), (requested_mode, mode, cluster_name)
+PY
+
+printf 'PASS: auto mode keeps an ordinary Proxmox cluster in pre-cluster mode\n'
+
+printf '%s\n' \
+    'nodelist {' \
+    '  node {' \
+    '    name: pve-local' \
+    '    ring0_addr: 100.64.0.1' \
+    '  }' \
+    '  node {' \
+    '    name: pve-remote' \
+    '    ring0_addr: 100.64.0.2' \
+    '  }' \
+    '}' > "$COROSYNC_CONFIG"
+
+PREPARED_DATABASE="$TEST_TMP/prepared.sqlite3"
+TAILMOX_MONITOR_DB="$PREPARED_DATABASE" \
+TAILMOX_MONITOR_WEB_OUTPUT="$TEST_TMP/web/prepared.json" \
+TAILMOX_MONITOR_TEST_COMMAND="$MOCK_TAILMOX" \
+TAILMOX_MONITOR_TAILSCALE_COMMAND="$MOCK_TAILSCALE" \
+TAILMOX_MONITOR_PVECM_COMMAND="$MOCK_PVECM" \
+TAILMOX_MONITOR_COROSYNC_CONFIG="$COROSYNC_CONFIG" \
+TAILMOX_MONITOR_SSE_ENABLED=false \
+    "$TEST_ROOT/tailmox-monitor" --mode auto --once >/dev/null
+
+python3 - "$PREPARED_DATABASE" <<'PY'
 import sqlite3
 import sys
 
@@ -159,4 +212,4 @@ assert (requested_mode, mode, cluster_name) == (
 ), (requested_mode, mode, cluster_name)
 PY
 
-printf 'PASS: auto mode activates cluster collection after membership detection\n'
+printf 'PASS: auto mode activates cluster collection after Tailmox preparation\n'

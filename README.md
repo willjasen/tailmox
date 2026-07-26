@@ -199,10 +199,11 @@ tailmox monitor
 ```
 
 The monitor runs `tailmox test` immediately and then once per minute. It uses
-`auto` mode by default: a host that is not yet clustered records
-`pre-cluster` network health, and a host with detected Proxmox cluster
-membership records `cluster` mode plus the available quorum, votes, ring, and
-membership data. A mode can also be selected explicitly:
+`auto` mode by default: a host records `pre-cluster` network health until every
+configured Corosync member uses its matching Tailscale address. Only then does
+it record `cluster` mode plus the available quorum, votes, ring, and membership
+data. Ordinary Proxmox cluster membership by itself does not activate cluster
+mode. A mode can also be selected explicitly:
 
 ```bash
 tailmox monitor --mode pre-cluster
