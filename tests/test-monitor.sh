@@ -93,6 +93,7 @@ with open(web_output, encoding="utf-8") as source:
 assert analytics["latest"]["mode"] == "cluster", analytics
 assert analytics["latest"]["clusterName"] == "lab-cluster", analytics
 assert analytics["latest"]["cluster"]["quorate"] is True, analytics
+assert analytics["databaseSizeBytes"] > 0, analytics
 assert analytics["last24Hours"]["failed"] == 1, analytics
 assert len(analytics["latest"]["nodes"]) == 2, analytics
 assert len(analytics["latest"]["issues"]) == 1, analytics

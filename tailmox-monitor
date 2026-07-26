@@ -115,6 +115,7 @@ class AnalyticsBroker:
         self.condition = threading.Condition()
         self.analytics_document: dict[str, object] = {
             "generatedAt": utc_now(),
+            "databaseSizeBytes": 0,
             "latest": None,
             "last24Hours": {"runs": 0, "passed": 0, "warnings": 0, "failed": 0},
             "history": [],
@@ -648,6 +649,8 @@ def publish_analytics(
     output_path: pathlib.Path,
     broker: AnalyticsBroker,
 ) -> None:
+    page_count = connection.execute("PRAGMA page_count").fetchone()[0]
+    page_size = connection.execute("PRAGMA page_size").fetchone()[0]
     latest = connection.execute(
         """
         SELECT id, started_at, finished_at, mode, hostname, cluster_name,
@@ -762,6 +765,7 @@ def publish_analytics(
 
     document = {
         "generatedAt": utc_now(),
+        "databaseSizeBytes": page_count * page_size,
         "latest": latest_data,
         "last24Hours": {
             "runs": totals[0] or 0,

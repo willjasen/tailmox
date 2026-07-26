@@ -9,6 +9,7 @@ const runTestButton = document.querySelector("#run-test");
 const terminal = document.querySelector("#terminal");
 const backupTemplate = document.querySelector("#backup-template");
 const monitorCluster = document.querySelector("#monitor-cluster");
+const monitorDatabaseSize = document.querySelector("#monitor-database-size");
 const monitorDescription = document.querySelector("#monitor-description");
 const monitorHealth = document.querySelector("#monitor-health");
 const monitorHistory = document.querySelector("#monitor-history");
@@ -38,6 +39,25 @@ function formatMonitorTimestamp(value) {
 
 function formatMonitorMode(mode) {
     return mode === "cluster" ? "Cluster" : "Pre-cluster";
+}
+
+function formatByteSize(value) {
+    const bytes = Number(value);
+    if (!Number.isFinite(bytes) || bytes < 0) {
+        return "Unavailable";
+    }
+    if (bytes < 1024) {
+        return `${bytes} B`;
+    }
+
+    const units = ["KB", "MB", "GB", "TB"];
+    let size = bytes / 1024;
+    let unit = units[0];
+    for (let index = 1; index < units.length && size >= 1024; index += 1) {
+        size /= 1024;
+        unit = units[index];
+    }
+    return `${size.toFixed(size >= 10 ? 1 : 2)} ${unit}`;
 }
 
 function renderMonitorHistory(history) {
@@ -110,6 +130,7 @@ function renderMonitor(analytics) {
     const passed = Number(totals.passed) || 0;
     const latest = analytics.latest;
 
+    monitorDatabaseSize.textContent = formatByteSize(analytics.databaseSizeBytes);
     monitorRunCount.textContent = String(runs);
     monitorPassRate.textContent = runs
         ? `${Math.round((passed / runs) * 100)}% passed · ${Number(totals.failed) || 0} failed`
