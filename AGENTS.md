@@ -111,6 +111,20 @@ tailmox help
 Keep changes focused on the requested behavior. Preserve unrelated user edits
 and avoid broad formatting rewrites.
 
+## Git authorization
+
+When the user asks to save or commit work to Git, that request pre-authorizes
+staging the files in scope and creating the local commit without a separate
+confirmation. Review the staged diff first, preserve unrelated user changes,
+and never include credentials or generated secrets.
+
+Create a separate commit for each individual task. Stage only the files and
+hunks produced for that task, and always leave unrelated working-tree changes
+unstaged. Never commit the repository's entire set of pending changes together.
+
+Do not push commits or otherwise modify a remote unless the user explicitly
+requests it. The user may push local commits manually.
+
 Before completing a change:
 
 1. Run the relevant focused tests.
