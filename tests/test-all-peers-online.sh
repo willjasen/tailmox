@@ -70,7 +70,7 @@ function run_case() {
 MOCK_TAILSCALE_EXIT=0
 MOCK_TAILSCALE_STATUS='{
   "BackendState": "Running",
-  "Self": {"Online": true},
+  "Self": {"Online": true, "Tags": ["tag:tailmox"]},
   "Peer": {
     "node-1": {"HostName": "pve1", "Tags": ["tag:tailmox"], "Online": true},
     "node-2": {"HostName": "pve2", "Tags": ["tag:tailmox"], "Online": true}
@@ -80,7 +80,7 @@ run_case "all Tailmox peers online" 0
 
 MOCK_TAILSCALE_STATUS='{
   "BackendState": "Running",
-  "Self": {"Online": true},
+  "Self": {"Online": true, "Tags": ["tag:tailmox"]},
   "Peer": {
     "node-1": {"HostName": "pve1", "Tags": ["tag:tailmox"], "Online": true},
     "node-2": {"HostName": "pve2", "Tags": ["tag:tailmox"], "Online": false}
@@ -90,7 +90,7 @@ run_case "one Tailmox peer offline fails closed" 1
 
 MOCK_TAILSCALE_STATUS='{
   "BackendState": "Running",
-  "Self": {"Online": true},
+  "Self": {"Online": true, "Tags": ["tag:tailmox"]},
   "Peer": {
     "node-1": {"HostName": "pve1", "Tags": ["tag:tailmox"], "Online": true},
     "node-2": {"HostName": "lab1", "Tags": ["tag:tailmox-test"], "Online": false}
@@ -100,30 +100,37 @@ run_case "similarly named tag is not included" 0
 
 MOCK_TAILSCALE_STATUS='{
   "BackendState": "Running",
-  "Self": {"Online": true},
+  "Self": {"Online": true, "Tags": ["tag:tailmox"]},
   "Peer": {}
 }'
 run_case "no existing Tailmox peers allows bootstrap" 0
 
 MOCK_TAILSCALE_STATUS='{
   "BackendState": "Running",
-  "Self": {"Online": true},
+  "Self": {"Online": true, "Tags": ["tag:tailmox"]},
   "Peer": {"node-1": {"Tags": ["tag:tailmox"], "Online": true}}
 }'
 run_case "incomplete peer data fails closed" 1
 
 MOCK_TAILSCALE_STATUS='{
   "BackendState": "Running",
-  "Self": {"Online": true}
+  "Self": {"Online": true, "Tags": ["tag:tailmox"]}
 }'
 run_case "missing peer object fails closed" 1
 
 MOCK_TAILSCALE_STATUS='{
   "BackendState": "Stopped",
-  "Self": {"Online": false},
+  "Self": {"Online": false, "Tags": ["tag:tailmox"]},
   "Peer": {}
 }'
 run_case "local Tailscale not online fails closed" 1
+
+MOCK_TAILSCALE_STATUS='{
+  "BackendState": "Running",
+  "Self": {"Online": true},
+  "Peer": {}
+}'
+run_case "local host without tag:tailmox fails closed" 1
 
 MOCK_TAILSCALE_STATUS='not-json'
 run_case "malformed status fails closed" 1
@@ -135,7 +142,7 @@ run_case "tailscale status failure fails closed" 1
 MOCK_TAILSCALE_EXIT=0
 MOCK_TAILSCALE_STATUS='{
   "BackendState": "Running",
-  "Self": {"Online": true},
+  "Self": {"Online": true, "Tags": ["tag:tailmox"]},
   "Peer": {
     "node-1": {"HostName": "pve1", "Tags": ["tag:tailmox"], "Online": true},
     "node-2": {"HostName": "pve2", "Tags": ["tag:tailmox"], "Online": false}
@@ -155,7 +162,7 @@ fi
 
 MOCK_TAILSCALE_STATUS='{
   "BackendState": "Running",
-  "Self": {"Online": true},
+  "Self": {"Online": true, "Tags": ["tag:tailmox"]},
   "Peer": {
     "node-1": {"HostName": "pve1", "Tags": ["tag:tailmox"], "Online": true},
     "node-2": {"HostName": "pve2", "Tags": ["tag:tailmox"], "Online": true}

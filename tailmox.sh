@@ -457,7 +457,7 @@ function start_tailscale() {
 
 # Check if all peers with the "tailmox" tag are online
 function check_all_peers_online() {
-    log_echo "${YELLOW}Checking if all tailmox peers are online...${RESET}"
+    log_echo "${YELLOW}Checking if the local host and all tailmox peers are online...${RESET}"
 
     local status_json
     local peers_data
@@ -475,9 +475,10 @@ function check_all_peers_online() {
         (.BackendState == "Running")
         and ((.Self | type) == "object")
         and (.Self.Online == true)
+        and ((.Self.Tags // []) | index("tag:tailmox") != null)
         and ((.Peer | type) == "object")
     ' >/dev/null 2>&1; then
-        log_echo "${RED}Tailscale is not fully online or returned incomplete peer status. No cluster changes will be made.${RESET}"
+        log_echo "${RED}The local Tailscale host is not online with the exact tag:tailmox identity, or status data is incomplete. No cluster changes will be made.${RESET}"
         return 1
     fi
 
@@ -803,7 +804,10 @@ function sample_tailscale_ping_reachability() {
 }
 
 function ensure_ping_reachability() {
-    log_echo "${YELLOW}Checking all other Tailmox peers with Tailscale path pings and 64-byte and 1280-byte ICMP packets in parallel for approximately five seconds...${RESET}"
+    local peers_to_check="${1:-$OTHER_PEERS}"
+    local check_description="${2:-all other Tailmox peers}"
+
+    log_echo "${YELLOW}Checking $check_description with Tailscale path pings and 64-byte and 1280-byte ICMP packets in parallel for approximately five seconds...${RESET}"
 
     local ping_count=11
     local ping_interval=0.5
@@ -843,7 +847,7 @@ function ensure_ping_reachability() {
     local -a result_files
     local -a ping_pids
 
-    if ! printf '%s\n' "$OTHER_PEERS" | jq -e '
+    if ! printf '%s\n' "$peers_to_check" | jq -e '
         (type == "array")
         and all(.[];
             ((.hostname | type) == "string")
@@ -856,7 +860,7 @@ function ensure_ping_reachability() {
         return 1
     fi
 
-    peer_count=$(printf '%s\n' "$OTHER_PEERS" | jq -r 'length')
+    peer_count=$(printf '%s\n' "$peers_to_check" | jq -r 'length')
     if [ "$peer_count" -eq 0 ]; then
         log_echo "${YELLOW}No other Tailmox peers require an ICMP check.${RESET}"
         return 0
@@ -900,7 +904,7 @@ function ensure_ping_reachability() {
             ping_pids[$index]=$!
             index=$((index + 1))
         done
-    done < <(printf '%s\n' "$OTHER_PEERS" | jq -c '.[]')
+    done < <(printf '%s\n' "$peers_to_check" | jq -c '.[]')
 
     check_count=$index
     index=0
@@ -978,12 +982,17 @@ function ensure_ping_reachability() {
 
 # Check if TCP port 8006 is available on all nodes
 function are_hosts_tcp_port_8006_reachable() {
-    log_echo "${YELLOW}Checking if TCP port 8006 is available on all nodes...${RESET}"
+    local peers_to_check="${1:-$ALL_PEERS}"
+    local check_description="${2:-all nodes}"
+
+    log_echo "${YELLOW}Checking if TCP port 8006 is available on $check_description...${RESET}"
 
     # Iterate through all peers
-    echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
-        local peer_ip=$(echo "$peer" | jq -r '.ip')
-        local peer_hostname=$(echo "$peer" | jq -r '.hostname')
+    printf '%s\n' "$peers_to_check" | jq -c '.[]' | while read -r peer; do
+        local peer_ip
+        local peer_hostname
+        peer_ip=$(printf '%s\n' "$peer" | jq -r '.ip')
+        peer_hostname=$(printf '%s\n' "$peer" | jq -r '.hostname')
 
         log_echo "${BLUE} - Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
         if ! nc -z -w 2 "$peer_ip" 8006 &>/dev/null; then
@@ -997,12 +1006,17 @@ function are_hosts_tcp_port_8006_reachable() {
 
 # Check if TCP port 443 is available on all nodes
 function are_hosts_tcp_port_443_reachable() {
-    log_echo "${YELLOW}Checking if TCP port 443 is available on all nodes...${RESET}"
+    local peers_to_check="${1:-$ALL_PEERS}"
+    local check_description="${2:-all nodes}"
+
+    log_echo "${YELLOW}Checking if TCP port 443 is available on $check_description...${RESET}"
 
     # Iterate through all peers
-    echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
-        local peer_ip=$(echo "$peer" | jq -r '.ip')
-        local peer_hostname=$(echo "$peer" | jq -r '.hostname')
+    printf '%s\n' "$peers_to_check" | jq -c '.[]' | while read -r peer; do
+        local peer_ip
+        local peer_hostname
+        peer_ip=$(printf '%s\n' "$peer" | jq -r '.ip')
+        peer_hostname=$(printf '%s\n' "$peer" | jq -r '.hostname')
 
         log_echo "${BLUE} - Checking TCP port 443 on $peer_hostname ($peer_ip)...${RESET}"
         if ! nc -z -w 2 "$peer_ip" 443 &>/dev/null; then
@@ -1555,9 +1569,10 @@ function test_setup_safely() {
             (.BackendState == "Running")
             and ((.Self | type) == "object")
             and (.Self.Online == true)
+            and ((.Self.Tags // []) | index("tag:tailmox") != null)
             and ((.Peer | type) == "object")
         ' >/dev/null 2>&1; then
-        log_echo "${RED}Tailscale is not online or returned incomplete status.${RESET}"
+        log_echo "${RED}This host is not online with the exact tag:tailmox identity, or Tailscale returned incomplete status.${RESET}"
         log_echo "${YELLOW}Normal setup would install or start Tailscale; the test did neither.${RESET}"
         return 1
     fi
@@ -1590,11 +1605,17 @@ function test_setup_safely() {
         }]')
     ALL_PEERS=$(printf '%s\n' "$OTHER_PEERS" |
         jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]')
+    LOCAL_PEERS=$(jq -n --argjson localPeer "$LOCAL_PEER" '[$localPeer]')
+
+    log_echo "${YELLOW}Testing the local Proxmox host first over its Tailscale address...${RESET}"
+    ensure_ping_reachability "$LOCAL_PEERS" "the local Proxmox host" || return 1
+    are_hosts_tcp_port_8006_reachable "$LOCAL_PEERS" "the local Proxmox host" || return 1
+    are_hosts_tcp_port_443_reachable "$LOCAL_PEERS" "the local Proxmox host" || return 1
 
     check_all_peers_online || return 1
     ensure_ping_reachability || return 1
-    are_hosts_tcp_port_8006_reachable || return 1
-    are_hosts_tcp_port_443_reachable || return 1
+    are_hosts_tcp_port_8006_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
+    are_hosts_tcp_port_443_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
 
     log_echo "${YELLOW}Reading current Proxmox cluster state...${RESET}"
     check_local_node_cluster_status || true
@@ -1702,7 +1723,10 @@ install_dependencies
 install_tailscale
 
 # Start Tailscale; use auth key if supplied
-start_tailscale "$AUTH_KEY"
+if ! start_tailscale "$AUTH_KEY"; then
+    log_echo "${RED}The local Tailscale self-check failed. No cluster changes will be made.${RESET}"
+    exit 1
+fi
 
 ### Now that Tailscale is running...
 
@@ -1727,6 +1751,16 @@ OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[]
     | select((.Tags // []) | index("tag:tailmox"))
     | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
 ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
+LOCAL_PEERS=$(jq -n --argjson localPeer "$LOCAL_PEER" '[$localPeer]');
+
+# Test this Proxmox host over Tailscale before relying on any remote peer.
+log_echo "${YELLOW}Testing the local Proxmox host first over its Tailscale address...${RESET}"
+if ! ensure_ping_reachability "$LOCAL_PEERS" "the local Proxmox host" ||
+    ! are_hosts_tcp_port_8006_reachable "$LOCAL_PEERS" "the local Proxmox host" ||
+    ! are_hosts_tcp_port_443_reachable "$LOCAL_PEERS" "the local Proxmox host"; then
+    log_echo "${RED}The local Proxmox host failed its Tailscale self-test. Exiting...${RESET}"
+    exit 1
+fi
 
 # Check that all Tailmox peers are online
 if ! check_all_peers_online; then
@@ -1743,7 +1777,7 @@ else
 fi
 
 # Ensure that all peers are reachable via TCP port 8006
-if ! are_hosts_tcp_port_8006_reachable; then
+if ! are_hosts_tcp_port_8006_reachable "$OTHER_PEERS" "all other Tailmox peers"; then
     log_echo "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
     exit 1
 else
@@ -1751,7 +1785,7 @@ else
 fi
 
 # Ensure that all peers are reachable via TCP port 443
-if ! are_hosts_tcp_port_443_reachable; then
+if ! are_hosts_tcp_port_443_reachable "$OTHER_PEERS" "all other Tailmox peers"; then
     log_echo "${RED}Some peers have TCP port 443 unavailable. Please check the network configuration.${RESET}"
     exit 1
 else
