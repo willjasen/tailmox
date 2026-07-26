@@ -339,7 +339,7 @@ button {
 }
 
 .run-dialog {
-    width: min(680px, calc(100vw - 32px));
+    width: min(900px, calc(100vw - 32px));
     max-height: calc(100vh - 48px);
     padding: 20px;
     border: 1px solid var(--border);
@@ -382,8 +382,7 @@ button {
     font-size: 0.82rem;
 }
 
-.issue-list,
-.measurement-list {
+.issue-list {
     display: grid;
     gap: 7px;
     margin-top: 10px;
@@ -391,14 +390,12 @@ button {
     font-size: 0.72rem;
 }
 
-.issue-row,
-.measurement-row {
+.issue-row {
     padding-top: 7px;
     border-top: 1px solid rgba(43, 60, 55, 0.7);
 }
 
-.issue-row:first-child,
-.measurement-row:first-child {
+.issue-row:first-child {
     padding-top: 0;
     border-top: 0;
 }
@@ -407,11 +404,83 @@ button {
     color: var(--red);
 }
 
-.measurement-row.is-failed {
+.host-check-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.host-check-card {
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: rgba(8, 16, 15, 0.45);
+}
+
+.host-check-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+.host-check-heading h4,
+.host-check-heading small {
+    display: block;
+}
+
+.host-check-heading h4 {
+    font-size: 0.78rem;
+}
+
+.host-check-heading small {
+    overflow: hidden;
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.62rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.host-measurements {
+    display: grid;
+    padding: 4px 12px;
+    color: var(--muted);
+    font-size: 0.67rem;
+}
+
+.measurement-row {
+    display: grid;
+    grid-template-columns: minmax(105px, 0.7fr) minmax(0, 1.3fr);
+    gap: 10px;
+    padding: 7px 0;
+    border-top: 1px solid rgba(43, 60, 55, 0.55);
+}
+
+.measurement-row:first-child {
+    border-top: 0;
+}
+
+.measurement-row strong {
+    color: var(--text);
+    font-size: inherit;
+}
+
+.measurement-row span {
+    text-align: right;
+}
+
+.measurement-row.is-failed strong,
+.measurement-row.is-failed span {
     color: var(--red);
 }
 
-.measurement-row.is-warning {
+.measurement-row.is-warning strong,
+.measurement-row.is-warning span {
     color: var(--amber);
 }
 
@@ -492,6 +561,10 @@ button {
     }
 
     .monitor-details {
+        grid-template-columns: 1fr;
+    }
+
+    .host-check-list {
         grid-template-columns: 1fr;
     }
 }

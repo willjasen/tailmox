@@ -25,12 +25,10 @@ const monitorRunHeading = document.querySelector("#monitor-run-heading");
 const monitorRunSummary = document.querySelector("#monitor-run-summary");
 const monitorRunDialog = document.querySelector("#monitor-run-dialog");
 const monitorDialogClose = document.querySelector("#monitor-dialog-close");
-const monitorDialogCheckCount = document.querySelector("#monitor-dialog-check-count");
-const monitorDialogChecks = document.querySelector("#monitor-dialog-checks");
+const monitorDialogHostCount = document.querySelector("#monitor-dialog-host-count");
+const monitorDialogHosts = document.querySelector("#monitor-dialog-hosts");
 const monitorDialogIssueCount = document.querySelector("#monitor-dialog-issue-count");
 const monitorDialogIssues = document.querySelector("#monitor-dialog-issues");
-const monitorDialogNodeCount = document.querySelector("#monitor-dialog-node-count");
-const monitorDialogNodes = document.querySelector("#monitor-dialog-nodes");
 const monitorDialogSummary = document.querySelector("#monitor-dialog-summary");
 const monitorState = document.querySelector("#monitor-state");
 const monitorStateLabel = document.querySelector("#monitor-state-label");
@@ -174,27 +172,22 @@ function openMonitorRunDialog(run) {
         run.status,
         formatMonitorDuration(run.durationMs),
     ].join(" · ");
-    monitorDialogNodeCount.textContent = `${nodes.length} node${nodes.length === 1 ? "" : "s"}`;
-    monitorDialogCheckCount.textContent = `${checks.length} check${checks.length === 1 ? "" : "s"}`;
+    monitorDialogHostCount.textContent = `${nodes.length} host${nodes.length === 1 ? "" : "s"} · ${checks.length} check${checks.length === 1 ? "" : "s"}`;
     monitorDialogIssueCount.textContent = `${issueCount} issue${issueCount === 1 ? "" : "s"}`;
 
-    const nodeRows = createMonitorNodeRows(run);
-    monitorDialogNodes.replaceChildren(...nodeRows);
-    if (!nodeRows.length) {
-        monitorDialogNodes.textContent = "No Tailmox nodes were present in this snapshot.";
-    }
-
-    const measurementRows = checks.map((check) => {
+    const createMeasurementRow = (check) => {
         const row = document.createElement("div");
         row.className = `measurement-row is-${check.status}`;
-        const target = check.hostname || "Host-wide check";
-        let label = check.category;
+        const label = document.createElement("strong");
+        const value = document.createElement("span");
         if (check.category === "tcp" && check.port) {
-            label = `TCP ${check.port}`;
+            label.textContent = `TCP ${check.port}`;
         } else if (check.category === "icmp" && check.packetSizeBytes) {
-            label = `ICMP ${check.packetSizeBytes}-byte`;
+            label.textContent = `ICMP ${check.packetSizeBytes}-byte`;
         } else if (check.category === "tailscale") {
-            label = "Tailscale path";
+            label.textContent = "Tailscale path";
+        } else {
+            label.textContent = check.category;
         }
         const hasLatency = check.latencyAverageMs !== null
             && check.latencyAverageMs !== undefined
@@ -206,12 +199,53 @@ function openMonitorRunDialog(run) {
         const packets = check.packetsSent !== null && check.packetsSent !== undefined
             ? ` · ${check.packetsReceived}/${check.packetsSent} replies`
             : "";
-        row.textContent = `${target} · ${label} · ${latency}${packets}`;
+        value.textContent = `${latency}${packets}`;
+        row.append(label, value);
         return row;
+    };
+
+    const issueHosts = new Set(issues.map((issue) => issue.hostname).filter(Boolean));
+    const hostCards = nodes.map((node) => {
+        const card = document.createElement("section");
+        card.className = "host-check-card";
+        const heading = document.createElement("div");
+        heading.className = "host-check-heading";
+        const identity = document.createElement("div");
+        const name = document.createElement("h4");
+        const address = document.createElement("small");
+        name.textContent = node.hostname;
+        address.textContent = node.dnsName || node.tailscaleIp || "Address unavailable";
+        identity.append(name, address);
+
+        const badges = document.createElement("div");
+        badges.className = "node-badges";
+        if (node.local) {
+            const localBadge = document.createElement("span");
+            localBadge.className = "node-badge";
+            localBadge.textContent = "Local";
+            badges.append(localBadge);
+        }
+        const status = document.createElement("span");
+        status.className = `node-badge ${node.online && !issueHosts.has(node.hostname) ? "is-online" : "is-issue"}`;
+        status.textContent = !node.online
+            ? "Offline"
+            : issueHosts.has(node.hostname) ? "Issue" : "Healthy";
+        badges.append(status);
+        heading.append(identity, badges);
+
+        const hostMeasurements = document.createElement("div");
+        hostMeasurements.className = "host-measurements";
+        const hostChecks = checks.filter((check) => check.hostname === node.hostname);
+        hostMeasurements.replaceChildren(...hostChecks.map(createMeasurementRow));
+        if (!hostChecks.length) {
+            hostMeasurements.textContent = "No network checks recorded.";
+        }
+        card.append(heading, hostMeasurements);
+        return card;
     });
-    monitorDialogChecks.replaceChildren(...measurementRows);
-    if (!measurementRows.length) {
-        monitorDialogChecks.textContent = "No network measurements were recorded for this run.";
+    monitorDialogHosts.replaceChildren(...hostCards);
+    if (!hostCards.length) {
+        monitorDialogHosts.textContent = "No Tailmox hosts were present in this snapshot.";
     }
 
     const failureRows = failureReasons.map((reason) => {

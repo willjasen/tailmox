@@ -169,8 +169,9 @@ if ! grep -Fq 'id="run-test"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'bar.addEventListener("click"' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'id="monitor-run-summary"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="monitor-run-dialog"' "$TAILMOX_WEB_ROOT/index.html" ||
-    ! grep -Fq 'id="monitor-dialog-checks"' "$TAILMOX_WEB_ROOT/index.html" ||
+    ! grep -Fq 'id="monitor-dialog-hosts"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'run.checks' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'hostChecks.map(createMeasurementRow)' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'latencyAverageMs' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'monitorRunDialog.showModal()' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'monitorRunDialog.close()' "$TAILMOX_WEB_ROOT/tailmox.js" ||
