@@ -153,6 +153,8 @@ Tailmox preserves an existing Tailscale login instead of authenticating again. T
 
 During the running of the script, if there are existing hosts within the tailmox cluster, it is likely to ask for the password of one of the remote hosts in order to properly join the Proxmox cluster.
 
+Immediately before Tailmox creates or joins a Proxmox cluster, it archives the local `/etc/pve`, `/etc/corosync`, and `/etc/hosts` state under `/var/backups/tailmox`. The cluster change is blocked if `/etc/pve` is unavailable or the archive cannot be completed. Backup archives are readable only by root.
+
 ---
 
 ### 🧪 Testing 🧪
@@ -186,6 +188,7 @@ To deploy fresh Proxmox hosts within an existing Proxmox environment and to perf
 - once Tailscale is running, the host will generate a certificate from Tailscale (to be used with the web interface/API)
 - it will then retrieve other Tailscale machines with the tag of "tailmox", check all of their Tailscale DNS names in parallel for approximately five seconds using a Tailscale path ping plus both 64-byte and 1280-byte ICMP packets, and check TCP 443 and TCP 8006; ICMP replies that are missing or take longer than 50 ms produce a warning with a visible countdown and require the user to type `PROCEED` within 10 seconds, otherwise setup is cancelled, while a failed Tailscale path check or other failed check stops the script
 - after the checks pass, the host will check if it is in a cluster; if it is not, it will check the other Tailscale machines with the tag of "tailmox" to see if they are part of a cluster; when it finds a matching host in a cluster, it will then attempt to join to the cluster using it; if another host isn't found, then a new cluster will be prompted to be created
+- immediately before `pvecm create` or `pvecm add`, it archives the local Proxmox and Corosync configuration and `/etc/hosts`; the cluster operation fails closed if the backup cannot be made
 
 There are further scripts related to testing in the "test-env" folder.
 

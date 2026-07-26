@@ -51,6 +51,10 @@ TAILMOX_WEB_PORT="${TAILMOX_WEB_PORT:-8669}"
 TAILMOX_WEB_BACKEND_PORT="${TAILMOX_WEB_BACKEND_PORT:-8670}"
 TAILMOX_WEB_SERVICE="${TAILMOX_WEB_SERVICE:-tailmox-web.service}"
 TAILMOX_SYSTEMD_DIR="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
+TAILMOX_CLUSTER_BACKUP_DIR="${TAILMOX_CLUSTER_BACKUP_DIR:-/var/backups/tailmox}"
+TAILMOX_PVE_CONFIG_DIR="${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}"
+TAILMOX_COROSYNC_CONFIG_DIR="${TAILMOX_COROSYNC_CONFIG_DIR:-/etc/corosync}"
+TAILMOX_HOSTS_FILE="${TAILMOX_HOSTS_FILE:-/etc/hosts}"
 
 # Create and rotate logs only during real setup.
 if [[ "$TAILMOX_EARLY_DRY_RUN" != "true" ]]; then
@@ -378,6 +382,60 @@ function require_all_peers_online_before_cluster_change() {
         return 1
     fi
 
+    return 0
+}
+
+# Archive the local files that Proxmox cluster creation and joining can modify.
+# The archive must be complete before Tailmox invokes a mutating pvecm command.
+function backup_proxmox_cluster_configuration() {
+    local backup_timestamp
+    local backup_archive
+    local backup_suffix=0
+    local temporary_archive
+    local source_path
+    local -a backup_sources=()
+
+    for source_path in \
+        "$TAILMOX_PVE_CONFIG_DIR" \
+        "$TAILMOX_COROSYNC_CONFIG_DIR" \
+        "$TAILMOX_HOSTS_FILE"; do
+        if [[ -e "$source_path" ]]; then
+            backup_sources+=("$source_path")
+        fi
+    done
+
+    if [[ ! -d "$TAILMOX_PVE_CONFIG_DIR" ]]; then
+        log_echo "${RED}Proxmox configuration directory $TAILMOX_PVE_CONFIG_DIR is unavailable. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    if ! mkdir -p -m 0700 "$TAILMOX_CLUSTER_BACKUP_DIR"; then
+        log_echo "${RED}Unable to create cluster backup directory $TAILMOX_CLUSTER_BACKUP_DIR. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    backup_timestamp=$(date -u '+%Y%m%dT%H%M%SZ')
+    backup_archive="$TAILMOX_CLUSTER_BACKUP_DIR/proxmox-cluster-${backup_timestamp}-$$.tar.gz"
+    while [[ -e "$backup_archive" || -e "${backup_archive}.tmp" ]]; do
+        backup_suffix=$((backup_suffix + 1))
+        backup_archive="$TAILMOX_CLUSTER_BACKUP_DIR/proxmox-cluster-${backup_timestamp}-$$-${backup_suffix}.tar.gz"
+    done
+    temporary_archive="${backup_archive}.tmp"
+
+    if ! (umask 077; tar -czf "$temporary_archive" "${backup_sources[@]}"); then
+        rm -f "$temporary_archive"
+        log_echo "${RED}Unable to archive the current Proxmox cluster configuration. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    if ! chmod 0600 "$temporary_archive" || ! mv "$temporary_archive" "$backup_archive"; then
+        rm -f "$temporary_archive"
+        log_echo "${RED}Unable to finalize the Proxmox cluster configuration archive. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    TAILMOX_LAST_CLUSTER_BACKUP="$backup_archive"
+    log_echo "${GREEN}Archived the current Proxmox cluster configuration at $backup_archive.${RESET}"
     return 0
 }
 
@@ -870,9 +928,13 @@ function create_cluster() {
         return 1
     fi
 
+    if ! backup_proxmox_cluster_configuration; then
+        return 1
+    fi
+
     local TAILSCALE_IP=$(tailscale ip -4)
     log_echo "${YELLOW}Creating a new Proxmox cluster named 'tailmox'...${RESET}"
-    pvecm create tailmox --link0 address=$TAILSCALE_IP
+    pvecm create tailmox --link0 "address=$TAILSCALE_IP"
 }
 
 # Add this local node into a cluster if it exists
@@ -910,6 +972,11 @@ function add_local_node_to_cluster() {
 
                 if ! require_all_peers_online_before_cluster_change; then
                     log_echo "${RED}Cluster join cancelled before pvecm add.${RESET}"
+                    exit 1
+                fi
+
+                if ! backup_proxmox_cluster_configuration; then
+                    log_echo "${RED}Cluster join cancelled because the current Proxmox configuration could not be archived.${RESET}"
                     exit 1
                 fi
 

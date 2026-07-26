@@ -8,6 +8,15 @@ trap 'rm -rf "$TEST_LOG_DIR"' EXIT
 
 export TAILMOX_LIBRARY_MODE=true
 export TAILMOX_LOG_DIR="$TEST_LOG_DIR"
+export TAILMOX_CLUSTER_BACKUP_DIR="$TEST_LOG_DIR/backups"
+export TAILMOX_PVE_CONFIG_DIR="$TEST_LOG_DIR/etc/pve"
+export TAILMOX_COROSYNC_CONFIG_DIR="$TEST_LOG_DIR/etc/corosync"
+export TAILMOX_HOSTS_FILE="$TEST_LOG_DIR/etc/hosts"
+
+mkdir -p "$TAILMOX_PVE_CONFIG_DIR" "$TAILMOX_COROSYNC_CONFIG_DIR"
+printf '%s\n' 'mock pve configuration' > "$TAILMOX_PVE_CONFIG_DIR/storage.cfg"
+printf '%s\n' 'mock corosync configuration' > "$TAILMOX_COROSYNC_CONFIG_DIR/corosync.conf"
+printf '%s\n' '127.0.0.1 localhost' > "$TAILMOX_HOSTS_FILE"
 
 source "$TEST_ROOT/tailmox.sh"
 
