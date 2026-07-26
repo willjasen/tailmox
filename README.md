@@ -155,6 +155,14 @@ During the running of the script, if there are existing hosts within the tailmox
 
 Immediately before Tailmox creates or joins a Proxmox cluster, it archives the local `/etc/pve`, `/etc/corosync`, and `/etc/hosts` state under `/var/backups/tailmox`. The cluster change is blocked if `/etc/pve` is unavailable or the archive cannot be completed. Backup archives are readable only by root.
 
+If Tailmox is run on a host that is already a member of a Proxmox cluster, it preserves the existing cluster name, membership, guests, storage configuration, and other cluster settings. Before a new host can join over Tailscale, every existing Corosync member must also be signed in to the same tailnet, online, and carry the exact `tag:tailmox` tag. Run `tailmox stage` on each existing member first.
+
+After every member is visible, run `tailmox cluster` on one existing member. Tailmox requires the cluster to be quorate, verifies a unique online Tailscale address for every configured member, creates a private timestamped backup of the shared Corosync configuration under `/var/backups/tailmox`, and asks you to type `MIGRATE` before changing every Corosync link-0 address together. Proxmox applies this shared configuration cluster-wide. Membership is not recreated, but Corosync may briefly lose quorum while the members move to the Tailscale network. If the cluster already uses those Tailscale addresses, Tailmox makes no Corosync change and exits successfully.
+
+Tailmox refuses a partial migration. Preparing only one member of a multi-node cluster is not enough because every Corosync member must be able to communicate with every other member. Once the existing cluster is prepared successfully, a brand-new, empty Proxmox host can run `tailmox cluster`, find one of those tagged members, and join the preserved cluster.
+
+Before invoking `pvecm add`, the new host also verifies that the remote cluster reports the expected Tailscale Corosync address for every existing member. It refuses the join if the remote cluster is only partially prepared.
+
 ---
 
 ### 🧪 Testing 🧪
@@ -187,7 +195,8 @@ To deploy fresh Proxmox hosts within an existing Proxmox environment and to perf
 - checks that the host is Proxmox v8 or v9, installs dependencies and Tailscale, then starts Tailscale
 - once Tailscale is running, the host will generate a certificate from Tailscale (to be used with the web interface/API)
 - it will then retrieve other Tailscale machines with the tag of "tailmox", check all of their Tailscale DNS names in parallel for approximately five seconds using a Tailscale path ping plus both 64-byte and 1280-byte ICMP packets, and check TCP 443 and TCP 8006; ICMP replies that are missing or take longer than 50 ms produce a warning with a visible countdown and require the user to type `PROCEED` within 10 seconds, otherwise setup is cancelled, while a failed Tailscale path check or other failed check stops the script
-- after the checks pass, the host will check if it is in a cluster; if it is not, it will check the other Tailscale machines with the tag of "tailmox" to see if they are part of a cluster; when it finds a matching host in a cluster, it will then attempt to join to the cluster using it; if another host isn't found, then a new cluster will be prompted to be created
+- after the checks pass, the host will check if it is in a cluster; an existing cluster is preserved and, after explicit confirmation, its complete Corosync link-0 network is migrated to the verified Tailscale addresses of all current members
+- if the host is not clustered, it will check the other Tailscale machines with the tag of "tailmox" to see if they are part of a cluster; when it finds a matching host in a cluster, it will then attempt to join to the cluster using it; if another host isn't found, then a new cluster will be prompted to be created
 - immediately before `pvecm create` or `pvecm add`, it archives the local Proxmox and Corosync configuration and `/etc/hosts`; the cluster operation fails closed if the backup cannot be made
 
 There are further scripts related to testing in the "test-env" folder.

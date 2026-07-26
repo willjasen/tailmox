@@ -812,6 +812,195 @@ function check_local_node_cluster_status() {
     fi
 }
 
+# Prepare an existing Proxmox cluster for Tailmox without changing its
+# membership. Corosync is a full-mesh protocol, so moving only the local node
+# to Tailscale would isolate it from the other members. Require an online,
+# exact Tailmox peer for every configured node and update all ring0 addresses
+# in one shared corosync.conf change.
+function prepare_existing_cluster_for_tailmox() {
+    local cluster_status
+    local configured_nodes
+    local node_name
+    local current_address
+    local tailscale_address
+    local migration_required=false
+    local confirmation
+    local confirmation_device="${TAILMOX_EXISTING_CLUSTER_CONFIRMATION_DEVICE:-/dev/tty}"
+    local new_config="${TAILMOX_COROSYNC_CONFIG}.new"
+    local peer_map
+
+    TAILMOX_COROSYNC_CONFIG="${TAILMOX_COROSYNC_CONFIG:-/etc/pve/corosync.conf}"
+
+    if ! cluster_status=$(pvecm status 2>&1) ||
+        ! printf '%s\n' "$cluster_status" | grep -q "Cluster information"; then
+        log_echo "${RED}Unable to read the existing Proxmox cluster state. No Corosync changes will be made.${RESET}"
+        return 1
+    fi
+
+    if ! printf '%s\n' "$cluster_status" | grep -Eq 'Quorate:[[:space:]]+Yes'; then
+        log_echo "${RED}The existing cluster is not quorate. Tailmox will not change its Corosync network.${RESET}"
+        return 1
+    fi
+
+    if [[ ! -f "$TAILMOX_COROSYNC_CONFIG" || ! -r "$TAILMOX_COROSYNC_CONFIG" ||
+        ! -w "$TAILMOX_COROSYNC_CONFIG" ]]; then
+        log_echo "${RED}The shared Corosync configuration is unavailable or not writable: $TAILMOX_COROSYNC_CONFIG${RESET}"
+        return 1
+    fi
+
+    if ! configured_nodes=$(awk '
+        /^[[:space:]]*node[[:space:]]*\{/ { in_node=1; name=""; address=""; next }
+        in_node && /^[[:space:]]*name:[[:space:]]*/ {
+            name=$0
+            sub(/^[[:space:]]*name:[[:space:]]*/, "", name)
+        }
+        in_node && /^[[:space:]]*ring0_addr:[[:space:]]*/ {
+            address=$0
+            sub(/^[[:space:]]*ring0_addr:[[:space:]]*/, "", address)
+        }
+        in_node && /^[[:space:]]*\}/ {
+            if (name == "" || address == "") {
+                exit 2
+            }
+            print name "\t" address
+            in_node=0
+        }
+        END {
+            if (in_node) {
+                exit 2
+            }
+        }
+    ' "$TAILMOX_COROSYNC_CONFIG") || [[ -z "$configured_nodes" ]]; then
+        log_echo "${RED}The Corosync node list is incomplete or could not be parsed. No changes will be made.${RESET}"
+        return 1
+    fi
+
+    while IFS=$'\t' read -r node_name current_address; do
+        tailscale_address=$(printf '%s\n' "$ALL_PEERS" | jq -r \
+            --arg node "$node_name" \
+            '[.[] | select(.hostname == $node and .online == true) | .ip]
+             | if length == 1 then .[0] else empty end')
+
+        if [[ -z "$tailscale_address" ]]; then
+            log_echo "${RED}Cluster member $node_name does not have one unique, online tag:tailmox peer.${RESET}"
+            log_echo "${RED}Run Tailmox staging on every existing member before adopting this cluster. No Corosync changes will be made.${RESET}"
+            return 1
+        fi
+
+        if [[ "$current_address" != "$tailscale_address" ]]; then
+            migration_required=true
+        fi
+    done <<< "$configured_nodes"
+
+    if [[ "$migration_required" != "true" ]]; then
+        log_echo "${GREEN}The existing cluster already uses Tailscale for every Corosync link-0 address.${RESET}"
+        log_echo "${GREEN}Cluster membership was preserved and this cluster is ready for new Tailmox hosts.${RESET}"
+        return 0
+    fi
+
+    log_echo "${YELLOW}Tailmox found an existing quorate cluster whose Corosync link 0 is not fully on Tailscale.${RESET}"
+    log_echo "${YELLOW}Cluster membership will be preserved, but Corosync may briefly lose quorum while every member changes networks.${RESET}"
+    log_echo "${YELLOW}Type MIGRATE to update every existing member together, or anything else to leave the cluster unchanged.${RESET}"
+
+    if [[ -r "$confirmation_device" ]]; then
+        read -r confirmation < "$confirmation_device" || confirmation=""
+    else
+        confirmation=""
+    fi
+
+    if [[ "$confirmation" != "MIGRATE" ]]; then
+        log_echo "${RED}Existing-cluster migration was not explicitly confirmed. No Corosync changes were made.${RESET}"
+        return 1
+    fi
+
+    if [[ -e "$new_config" ]]; then
+        log_echo "${RED}A pending Corosync configuration already exists at $new_config. Tailmox will not overwrite it.${RESET}"
+        return 1
+    fi
+
+    if ! require_all_peers_online_before_cluster_change; then
+        log_echo "${RED}Existing-cluster migration cancelled before changing Corosync.${RESET}"
+        return 1
+    fi
+
+    if ! backup_proxmox_cluster_configuration; then
+        log_echo "${RED}Existing-cluster migration cancelled because the current configuration could not be archived.${RESET}"
+        return 1
+    fi
+
+    peer_map=$(mktemp "${TMPDIR:-/tmp}/tailmox-corosync-peers.XXXXXX") || return 1
+    if ! printf '%s\n' "$ALL_PEERS" | jq -r \
+        '.[] | select(.online == true) | [.hostname, .ip] | @tsv' > "$peer_map"; then
+        rm -f "$peer_map"
+        return 1
+    fi
+
+    if ! awk -v peer_map="$peer_map" '
+        BEGIN {
+            while ((getline line < peer_map) > 0) {
+                split(line, fields, "\t")
+                address[fields[1]]=fields[2]
+            }
+            close(peer_map)
+        }
+        /^[[:space:]]*node[[:space:]]*\{/ {
+            in_node=1
+            block=$0 ORS
+            node_name=""
+            next
+        }
+        in_node {
+            block=block $0 ORS
+            if ($0 ~ /^[[:space:]]*name:[[:space:]]*/) {
+                node_name=$0
+                sub(/^[[:space:]]*name:[[:space:]]*/, "", node_name)
+            }
+            if ($0 ~ /^[[:space:]]*\}/) {
+                if (node_name == "" || !(node_name in address)) {
+                    exit 2
+                }
+                replacement=block
+                sub(/ring0_addr:[[:space:]]*[^[:space:]]+/, "ring0_addr: " address[node_name], replacement)
+                printf "%s", replacement
+                in_node=0
+                block=""
+            }
+            next
+        }
+        /^[[:space:]]*config_version:[[:space:]]*[0-9]+/ {
+            prefix=$0
+            sub(/[0-9]+[[:space:]]*$/, "", prefix)
+            version=$0
+            sub(/^.*config_version:[[:space:]]*/, "", version)
+            sub(/[[:space:]]*$/, "", version)
+            print prefix (version + 1)
+            version_seen=1
+            next
+        }
+        { print }
+        END {
+            if (in_node || !version_seen) {
+                exit 2
+            }
+        }
+    ' "$TAILMOX_COROSYNC_CONFIG" > "$new_config"; then
+        rm -f "$peer_map" "$new_config"
+        log_echo "${RED}Unable to build a complete Tailmox Corosync configuration. The cluster was not changed.${RESET}"
+        return 1
+    fi
+    rm -f "$peer_map"
+
+    if ! mv "$new_config" "$TAILMOX_COROSYNC_CONFIG"; then
+        log_echo "${RED}Unable to activate the Tailmox Corosync configuration. The original is archived at $TAILMOX_LAST_CLUSTER_BACKUP.${RESET}"
+        return 1
+    fi
+
+    log_echo "${GREEN}Existing cluster membership was preserved.${RESET}"
+    log_echo "${GREEN}All Corosync link-0 addresses now use Tailscale; the previous configuration is archived at $TAILMOX_LAST_CLUSTER_BACKUP.${RESET}"
+    log_echo "${GREEN}This cluster is ready for a brand-new host to join by running Tailmox.${RESET}"
+    return 0
+}
+
 # Check if a remote node is already part of a Proxmox cluster
 # Returns true/false ?
 function check_remote_node_cluster_status_via_ssh() {
@@ -849,6 +1038,8 @@ function check_remote_node_cluster_status_via_api() {
     local node_hostname=$1
     local username=${2:-"root@pam"}  # Default to root@pam if not provided
     local password=$3
+
+    REMOTE_CLUSTER_STATUS_JSON=""
     
     log_echo "${YELLOW}Checking if remote node $node_hostname is part of a Proxmox cluster via API...${RESET}"
     
@@ -891,6 +1082,7 @@ function check_remote_node_cluster_status_via_api() {
         # Extract cluster name from the first cluster entry
         local cluster_name=$(echo "$cluster_response" | jq -r '.data[] | select(.type == "cluster") | .name // empty' | head -1)
         if [ -n "$cluster_name" ] && [ "$cluster_name" != "null" ]; then
+            REMOTE_CLUSTER_STATUS_JSON="$cluster_response"
             log_echo "${GREEN}Remote node $node_hostname is part of cluster named: $cluster_name${RESET}"
             return 0
         else
@@ -898,6 +1090,38 @@ function check_remote_node_cluster_status_via_api() {
             return 1
         fi
     fi
+}
+
+# Refuse to join a cluster whose current Corosync node addresses are not the
+# verified Tailscale addresses known to this host. Finding one tagged member is
+# not sufficient: a new Corosync member must be able to reach the full mesh.
+function remote_cluster_is_ready_for_tailmox_join() {
+    if [[ -z "${REMOTE_CLUSTER_STATUS_JSON:-}" ]]; then
+        log_echo "${RED}Remote cluster status is unavailable. The join will not be attempted.${RESET}"
+        return 1
+    fi
+
+    if ! jq -n -e \
+        --argjson status "$REMOTE_CLUSTER_STATUS_JSON" \
+        --argjson peers "$ALL_PEERS" '
+        ($status.data | map(select(.type == "node"))) as $nodes
+        | ($nodes | length) > 0
+        and all($nodes[];
+            . as $node
+            | ([$peers[]
+                | select(
+                    .online == true
+                    and .hostname == $node.name
+                    and .ip == $node.ip
+                )] | length) == 1
+        )
+    ' >/dev/null 2>&1; then
+        log_echo "${RED}The remote cluster does not advertise a verified Tailscale Corosync address for every member.${RESET}"
+        log_echo "${RED}Run Tailmox on the existing cluster and complete its migration before joining this host.${RESET}"
+        return 1
+    fi
+
+    return 0
 }
 
 # Get the certificate fingerprint for a Proxmox node
@@ -959,7 +1183,12 @@ function add_local_node_to_cluster() {
             # Try API-based check first, fall back to SSH if it fails
             local cluster_exists=false
             if check_remote_node_cluster_status_via_api "$TARGET_HOSTNAME" "root@pam" "$ROOT_PASSWORD"; then
-                cluster_exists=true
+                if remote_cluster_is_ready_for_tailmox_join; then
+                    cluster_exists=true
+                else
+                    log_echo "${RED}Cluster join through $TARGET_HOSTNAME was rejected because the existing cluster is not Tailmox-ready.${RESET}"
+                    continue
+                fi
             # elif check_remote_node_cluster_status_via_ssh "$TARGET_HOSTNAME"; then
             #    cluster_exists=true
             fi
@@ -1221,7 +1450,9 @@ fi
 TAILSCALE_IP=$(tailscale ip -4)
 MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//');
 LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dnsName "$HOSTNAME.$MAGICDNS_DOMAIN_NAME" --arg online "true" '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: ($online == "true")}');
-OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
+OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[]
+    | select((.Tags // []) | index("tag:tailmox"))
+    | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
 ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
 
 # Check that all Tailmox peers are online
@@ -1260,11 +1491,15 @@ if ! check_local_node_cluster_status; then
     # Add this local node to a cluster if it exists
     add_local_node_to_cluster
 else
-    log_echo "${GREEN}This node is already part of a cluster, nothing further to do.${RESET}"
+    log_echo "${GREEN}This node is already part of a cluster. Preparing that cluster for Tailmox...${RESET}"
+    if ! prepare_existing_cluster_for_tailmox; then
+        log_echo "${RED}The existing cluster was preserved but is not yet ready for a new Tailmox host.${RESET}"
+        exit 1
+    fi
     log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
-    exit 1
+    exit 0
 fi
 
 # If local node is now in the cluster...
