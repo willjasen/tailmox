@@ -66,7 +66,7 @@ checks = connection.execute(
     """
     SELECT category, status, port, packet_size_bytes,
            latency_average_ms, latency_maximum_ms
-    FROM monitor_checks
+    FROM monitor_check_results
     ORDER BY id
     """
 ).fetchall()
@@ -86,10 +86,30 @@ assert cluster == (1, 2, 2, 2, 2, "1.2a"), cluster
 
 columns = {
     row[1]
-    for table in ("monitor_runs", "monitor_nodes", "monitor_checks", "monitor_cluster_samples")
+    for table in (
+        "monitor_runs",
+        "monitor_nodes",
+        "monitor_checks",
+        "monitor_cluster_samples",
+    )
     for row in connection.execute(f"PRAGMA table_info({table})")
 }
 assert not {"json", "payload", "raw_output"} & columns, columns
+check_columns = {
+    row[1] for row in connection.execute("PRAGMA table_info(monitor_checks)")
+}
+assert {"definition_id", "status_id"} <= check_columns, check_columns
+assert not {"category", "name", "status"} & check_columns, check_columns
+assert connection.execute(
+    "SELECT COUNT(*) FROM monitor_check_categories"
+).fetchone()[0] == 4
+assert connection.execute(
+    "SELECT COUNT(*) FROM monitor_check_definitions"
+).fetchone()[0] == 4
+assert connection.execute(
+    "SELECT COUNT(*) FROM monitor_check_statuses"
+).fetchone()[0] == 3
+assert connection.execute("PRAGMA foreign_key_check").fetchall() == []
 
 with open(web_output, encoding="utf-8") as source:
     analytics = json.load(source)
@@ -132,6 +152,88 @@ if grep -aFq '"BackendState"' "$DATABASE"; then
     printf 'FAIL: raw Tailscale JSON was stored in SQLite\n'
     exit 1
 fi
+
+LEGACY_DATABASE="$TEST_TMP/legacy.sqlite3"
+python3 - "$TEST_ROOT/tailmox-monitor" "$LEGACY_DATABASE" <<'PY'
+import runpy
+import sqlite3
+import sys
+
+monitor_path, database = sys.argv[1:]
+connection = sqlite3.connect(database)
+connection.executescript(
+    """
+    CREATE TABLE monitor_runs (
+        id INTEGER PRIMARY KEY,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        duration_ms INTEGER,
+        requested_mode TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        hostname TEXT NOT NULL,
+        cluster_name TEXT,
+        test_exit_code INTEGER,
+        status TEXT NOT NULL,
+        error_code TEXT
+    );
+    CREATE TABLE monitor_nodes (
+        id INTEGER PRIMARY KEY,
+        identity TEXT NOT NULL UNIQUE,
+        hostname TEXT NOT NULL,
+        dns_name TEXT,
+        tailscale_ip TEXT,
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL
+    );
+    CREATE TABLE monitor_checks (
+        id INTEGER PRIMARY KEY,
+        run_id INTEGER NOT NULL REFERENCES monitor_runs(id) ON DELETE CASCADE,
+        node_id INTEGER REFERENCES monitor_nodes(id),
+        category TEXT NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        packet_size_bytes INTEGER,
+        packets_sent INTEGER,
+        packets_received INTEGER,
+        latency_average_ms REAL,
+        latency_maximum_ms REAL,
+        port INTEGER,
+        detail TEXT
+    );
+    INSERT INTO monitor_runs (
+        id, started_at, requested_mode, mode, hostname, status
+    ) VALUES (1, '2026-07-26T00:00:00Z', 'pre-cluster',
+              'pre-cluster', 'legacy-host', 'passed');
+    INSERT INTO monitor_checks (
+        id, run_id, category, name, status, detail
+    ) VALUES (1, 1, 'tailmox', 'test', 'passed', 'Legacy result.');
+    """
+)
+connection.commit()
+connection.close()
+
+migrated = runpy.run_path(monitor_path)["initialize_database"](
+    __import__("pathlib").Path(database)
+)
+try:
+    row = migrated.execute(
+        """
+        SELECT id, run_id, category, name, status, detail
+        FROM monitor_check_results
+        """
+    ).fetchone()
+    assert row == (1, 1, "tailmox", "test", "passed", "Legacy result."), row
+    columns = {
+        item[1] for item in migrated.execute("PRAGMA table_info(monitor_checks)")
+    }
+    assert {"definition_id", "status_id"} <= columns, columns
+    assert not {"category", "name", "status"} & columns, columns
+    assert migrated.execute("PRAGMA foreign_key_check").fetchall() == []
+finally:
+    migrated.close()
+PY
+
+printf 'PASS: monitor migrates legacy check labels to related tables\n'
 
 if ! grep -Fq '"Content-Type", "text/event-stream"' "$TEST_ROOT/tailmox-monitor" ||
     ! grep -Fq 'event: backups' "$TEST_ROOT/tailmox-monitor" ||

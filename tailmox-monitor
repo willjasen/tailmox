@@ -84,13 +84,32 @@ CREATE TABLE IF NOT EXISTS monitor_run_nodes (
     PRIMARY KEY (run_id, node_id)
 );
 
+CREATE TABLE IF NOT EXISTS monitor_check_categories (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS monitor_check_definitions (
+    id INTEGER PRIMARY KEY,
+    category_id INTEGER NOT NULL REFERENCES monitor_check_categories(id),
+    name TEXT NOT NULL,
+    UNIQUE (category_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS monitor_check_statuses (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+        CHECK (name IN ('passed', 'warning', 'failed'))
+);
+INSERT OR IGNORE INTO monitor_check_statuses (name)
+VALUES ('passed'), ('warning'), ('failed');
+
 CREATE TABLE IF NOT EXISTS monitor_checks (
     id INTEGER PRIMARY KEY,
     run_id INTEGER NOT NULL REFERENCES monitor_runs(id) ON DELETE CASCADE,
     node_id INTEGER REFERENCES monitor_nodes(id),
-    category TEXT NOT NULL,
-    name TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('passed', 'warning', 'failed')),
+    definition_id INTEGER NOT NULL REFERENCES monitor_check_definitions(id),
+    status_id INTEGER NOT NULL REFERENCES monitor_check_statuses(id),
     packet_size_bytes INTEGER,
     packets_sent INTEGER,
     packets_received INTEGER,
@@ -102,7 +121,17 @@ CREATE TABLE IF NOT EXISTS monitor_checks (
 CREATE INDEX IF NOT EXISTS monitor_checks_run_id
     ON monitor_checks(run_id);
 CREATE INDEX IF NOT EXISTS monitor_checks_status_run_id
-    ON monitor_checks(status, run_id);
+    ON monitor_checks(status_id, run_id);
+
+CREATE VIEW IF NOT EXISTS monitor_check_results AS
+SELECT c.id, c.run_id, c.node_id, cat.name AS category,
+       d.name, s.name AS status, c.packet_size_bytes, c.packets_sent,
+       c.packets_received, c.latency_average_ms, c.latency_maximum_ms,
+       c.port, c.detail
+FROM monitor_checks c
+JOIN monitor_check_definitions d ON d.id = c.definition_id
+JOIN monitor_check_categories cat ON cat.id = d.category_id
+JOIN monitor_check_statuses s ON s.id = c.status_id;
 
 CREATE TABLE IF NOT EXISTS monitor_cluster_samples (
     run_id INTEGER PRIMARY KEY REFERENCES monitor_runs(id) ON DELETE CASCADE,
@@ -113,6 +142,66 @@ CREATE TABLE IF NOT EXISTS monitor_cluster_samples (
     quorum INTEGER,
     ring_id TEXT
 );
+"""
+
+LEGACY_MONITOR_CHECKS_SCHEMA = """
+PRAGMA foreign_keys = OFF;
+BEGIN;
+CREATE TABLE IF NOT EXISTS monitor_check_categories (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+CREATE TABLE IF NOT EXISTS monitor_check_definitions (
+    id INTEGER PRIMARY KEY,
+    category_id INTEGER NOT NULL REFERENCES monitor_check_categories(id),
+    name TEXT NOT NULL,
+    UNIQUE (category_id, name)
+);
+CREATE TABLE IF NOT EXISTS monitor_check_statuses (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+        CHECK (name IN ('passed', 'warning', 'failed'))
+);
+INSERT OR IGNORE INTO monitor_check_statuses (name)
+VALUES ('passed'), ('warning'), ('failed');
+INSERT OR IGNORE INTO monitor_check_categories (name)
+SELECT DISTINCT category FROM monitor_checks;
+INSERT OR IGNORE INTO monitor_check_definitions (category_id, name)
+SELECT cat.id, c.name
+FROM monitor_checks c
+JOIN monitor_check_categories cat ON cat.name = c.category
+GROUP BY cat.id, c.name;
+ALTER TABLE monitor_checks RENAME TO monitor_checks_legacy;
+CREATE TABLE monitor_checks (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL REFERENCES monitor_runs(id) ON DELETE CASCADE,
+    node_id INTEGER REFERENCES monitor_nodes(id),
+    definition_id INTEGER NOT NULL REFERENCES monitor_check_definitions(id),
+    status_id INTEGER NOT NULL REFERENCES monitor_check_statuses(id),
+    packet_size_bytes INTEGER,
+    packets_sent INTEGER,
+    packets_received INTEGER,
+    latency_average_ms REAL,
+    latency_maximum_ms REAL,
+    port INTEGER,
+    detail TEXT
+);
+INSERT INTO monitor_checks (
+    id, run_id, node_id, definition_id, status_id, packet_size_bytes,
+    packets_sent, packets_received, latency_average_ms, latency_maximum_ms,
+    port, detail
+)
+SELECT c.id, c.run_id, c.node_id, d.id, s.id, c.packet_size_bytes,
+       c.packets_sent, c.packets_received, c.latency_average_ms,
+       c.latency_maximum_ms, c.port, c.detail
+FROM monitor_checks_legacy c
+JOIN monitor_check_categories cat ON cat.name = c.category
+JOIN monitor_check_definitions d
+  ON d.category_id = cat.id AND d.name = c.name
+JOIN monitor_check_statuses s ON s.name = c.status;
+DROP TABLE monitor_checks_legacy;
+COMMIT;
+PRAGMA foreign_keys = ON;
 """
 
 
@@ -437,7 +526,18 @@ def detect_mode(requested_mode: str) -> tuple[str, str | None, dict[str, object]
 def initialize_database(database_path: pathlib.Path) -> sqlite3.Connection:
     database_path.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
     connection = sqlite3.connect(database_path, timeout=30)
+    monitor_check_columns = {
+        row[1] for row in connection.execute("PRAGMA table_info(monitor_checks)")
+    }
+    if "category" in monitor_check_columns:
+        connection.executescript(LEGACY_MONITOR_CHECKS_SCHEMA)
     connection.executescript(SCHEMA)
+    foreign_key_error = connection.execute("PRAGMA foreign_key_check").fetchone()
+    if foreign_key_error is not None:
+        connection.close()
+        raise RuntimeError(
+            f"Monitor database migration failed foreign-key validation: {foreign_key_error}"
+        )
     connection.execute("PRAGMA journal_mode = WAL")
     connection.execute("PRAGMA synchronous = NORMAL")
     connection.execute("PRAGMA foreign_keys = ON")
@@ -550,19 +650,32 @@ def add_check(
     **values: object,
 ) -> None:
     connection.execute(
+        "INSERT OR IGNORE INTO monitor_check_categories (name) VALUES (?)",
+        (category,),
+    )
+    connection.execute(
+        """
+        INSERT OR IGNORE INTO monitor_check_definitions (category_id, name)
+        SELECT id, ? FROM monitor_check_categories WHERE name = ?
+        """,
+        (name, category),
+    )
+    cursor = connection.execute(
         """
         INSERT INTO monitor_checks (
-            run_id, node_id, category, name, status, packet_size_bytes,
+            run_id, node_id, definition_id, status_id, packet_size_bytes,
             packets_sent, packets_received, latency_average_ms,
             latency_maximum_ms, port, detail
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        )
+        SELECT ?, ?, d.id, s.id, ?, ?, ?, ?, ?, ?, ?
+        FROM monitor_check_definitions d
+        JOIN monitor_check_categories cat ON cat.id = d.category_id
+        JOIN monitor_check_statuses s ON s.name = ?
+        WHERE cat.name = ? AND d.name = ?
         """,
         (
             run_id,
             node_id,
-            category,
-            name,
-            status,
             values.get("packet_size_bytes"),
             values.get("packets_sent"),
             values.get("packets_received"),
@@ -570,8 +683,15 @@ def add_check(
             values.get("latency_maximum_ms"),
             values.get("port"),
             values.get("detail"),
+            status,
+            category,
+            name,
         ),
     )
+    if cursor.rowcount != 1:
+        raise ValueError(
+            f"Unknown monitor check definition or status: {category}/{name} ({status})"
+        )
 
 
 def parse_test_checks(
@@ -687,7 +807,7 @@ def publish_analytics(
             """
             SELECT n.hostname, c.category, c.name, c.status, c.port,
                    c.packet_size_bytes, c.latency_maximum_ms
-            FROM monitor_checks c
+            FROM monitor_check_results c
             LEFT JOIN monitor_nodes n ON n.id = c.node_id
             WHERE c.run_id = ? AND c.status != 'passed'
             ORDER BY c.status DESC, n.hostname, c.category
@@ -699,7 +819,7 @@ def publish_analytics(
             SELECT n.hostname, c.category, c.name, c.status, c.port,
                    c.packet_size_bytes, c.packets_sent, c.packets_received,
                    c.latency_average_ms, c.latency_maximum_ms
-            FROM monitor_checks c
+            FROM monitor_check_results c
             LEFT JOIN monitor_nodes n ON n.id = c.node_id
             WHERE c.run_id = ?
             ORDER BY n.hostname, c.category, c.port, c.packet_size_bytes
@@ -953,7 +1073,8 @@ def monitor_once(
     check_statuses = {
         row[0]
         for row in connection.execute(
-            "SELECT DISTINCT status FROM monitor_checks WHERE run_id = ?", (run_id,)
+            "SELECT DISTINCT status FROM monitor_check_results WHERE run_id = ?",
+            (run_id,),
         )
     }
     if mode_error or test_result.returncode != 0 or "failed" in check_statuses:
