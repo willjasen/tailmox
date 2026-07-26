@@ -172,7 +172,7 @@ function install_ttyd() {
 # Start the persistent localhost terminal and expose it only through Tailscale.
 function start_web_terminal() {
     local script_dir
-    local magicdns_domain
+    local dns_name
     local service_source
     local service_target="$TAILMOX_SYSTEMD_DIR/$TAILMOX_WEB_SERVICE"
 
@@ -195,22 +195,22 @@ function start_web_terminal() {
         return 1
     fi
 
-    if ! tailscale serve --service=svc:tailmox --bg --yes --https="$TAILMOX_WEB_PORT" \
+    if ! tailscale serve --bg --yes --https="$TAILMOX_WEB_PORT" \
         "http://127.0.0.1:$TAILMOX_WEB_BACKEND_PORT" >>"$LOG_FILE" 2>&1; then
         log_echo "${RED}Unable to expose the Tailmox web terminal through Tailscale Serve.${RESET}"
         return 1
     fi
 
-    magicdns_domain=$(tailscale status --json |
+    dns_name=$(tailscale status --json |
         jq -r '.Self.DNSName // empty' |
-        sed -E 's/^[^.]+\.//; s/\.$//')
-    if [[ -z "$magicdns_domain" ]]; then
-        log_echo "${RED}Unable to determine this tailnet's MagicDNS domain.${RESET}"
+        sed 's/\.$//')
+    if [[ -z "$dns_name" ]]; then
+        log_echo "${RED}Unable to determine this host's Tailscale MagicDNS name.${RESET}"
         return 1
     fi
 
     printf 'Tailmox web server started.\n'
-    printf 'https://tailmox.%s:%s/\n' "$magicdns_domain" "$TAILMOX_WEB_PORT"
+    printf 'https://%s:%s/\n' "$dns_name" "$TAILMOX_WEB_PORT"
 }
 
 # Install Tailscale if it is not already installed
@@ -243,14 +243,14 @@ function install_tailscale() {
 # Bring up Tailscale
 function start_tailscale() {
     local auth_key="$1"
-    log_echo "${GREEN}Starting Tailscale with --advertise-tags 'tag:tailmox'...${RESET}"
+    log_echo "${GREEN}Starting Tailscale...${RESET}"
     
     if [ -n "$auth_key" ]; then
         # Use the provided auth key
-        tailscale up --auth-key="$auth_key" --advertise-tags "tag:tailmox"
+        tailscale up --auth-key="$auth_key"
     else
         # Fall back to interactive authentication
-        tailscale up --advertise-tags "tag:tailmox"
+        tailscale up
     fi
     
     if [ $? -ne 0 ]; then

@@ -29,7 +29,7 @@ function tailscale() {
 }
 
 OUTPUT=$(start_web_terminal)
-EXPECTED_OUTPUT=$'Tailmox web server started.\nhttps://tailmox.risk-mermaid.ts.net:8669/'
+EXPECTED_OUTPUT=$'Tailmox web server started.\nhttps://prox1.risk-mermaid.ts.net:8669/'
 
 if [[ "$OUTPUT" != "$EXPECTED_OUTPUT" ]]; then
     printf 'FAIL: launcher output did not contain only the status and service URL\n'
@@ -48,9 +48,9 @@ if ! grep -Fxq 'enable --now tailmox-web.service' "$SYSTEMCTL_CALLS"; then
 fi
 
 if ! grep -Fxq \
-    'serve --service=svc:tailmox --bg --yes --https=8669 http://127.0.0.1:8670' \
+    'serve --bg --yes --https=8669 http://127.0.0.1:8670' \
     "$TAILSCALE_CALLS"; then
-    printf 'FAIL: web terminal was not exposed through the Tailmox Tailscale service\n'
+    printf 'FAIL: web terminal was not exposed through the host Tailscale name\n'
     exit 1
 fi
 

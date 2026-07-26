@@ -114,7 +114,7 @@ Under the "Advertised" section, click "Define Service". Then fill in the followi
 
  - Service name: tailmox
  - Description: (this can be whatever you want)
- - Ports: 443 and 8669
+ - Ports: 443
  - Service tags: (add the tag of 'tailmox')
 
 then submit.
@@ -134,7 +134,7 @@ then submit.
 
 ### 🖥️ Usage 🖥️
 
-`tailmox.sh` starts a persistent browser terminal on TCP 8669 and prints its tailnet-only HTTPS URL. The terminal service listens only on localhost; Tailscale Serve provides HTTPS and access over the tailnet. Opening the URL starts the interactive Tailmox installer.
+`tailmox.sh` starts a persistent browser terminal on TCP 8669 and prints its tailnet-only HTTPS URL using the current Proxmox host's Tailscale MagicDNS name. The terminal service listens only on localhost; Tailscale Serve provides HTTPS and access over the tailnet. Opening the URL starts the interactive Tailmox installer.
 
 The local `tailmox` command provides shortcuts for the main workflows:
 
