@@ -184,7 +184,7 @@ To deploy fresh Proxmox hosts within an existing Proxmox environment and to perf
 `tailmox.sh` -  this is the main script of the project
 - checks that the host is Proxmox v8 or v9, installs dependencies and Tailscale, then starts Tailscale
 - once Tailscale is running, the host will generate a certificate from Tailscale (to be used with the web interface/API)
-- it will then retrieve other Tailscale machines with the tag of "tailmox", ping all of their Tailscale DNS names in parallel for approximately five seconds, and check TCP 443 and TCP 8006; ICMP replies that are missing or take longer than 50 ms produce a warning and require the user to type `PROCEED`, while other failed checks stop the script
+- it will then retrieve other Tailscale machines with the tag of "tailmox", check all of their Tailscale DNS names in parallel for approximately five seconds using a Tailscale path ping plus both 64-byte and 1280-byte ICMP packets, and check TCP 443 and TCP 8006; ICMP replies that are missing or take longer than 50 ms produce a warning and require the user to type `PROCEED`, while a failed Tailscale path check or other failed check stops the script
 - after the checks pass, the host will check if it is in a cluster; if it is not, it will check the other Tailscale machines with the tag of "tailmox" to see if they are part of a cluster; when it finds a matching host in a cluster, it will then attempt to join to the cluster using it; if another host isn't found, then a new cluster will be prompted to be created
 
 There are further scripts related to testing in the "test-env" folder.

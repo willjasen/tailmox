@@ -450,10 +450,12 @@ function confirm_icmp_warning_override() {
 }
 
 # Ping every other Tailmox peer by its Tailscale MagicDNS name in parallel.
-# Eleven probes at 0.5-second intervals span approximately five seconds. Each
+# Use Tailscale's default DISCO ping to verify a Tailscale path, then test both a
+# conventional 64-byte ICMP packet and a large 1280-byte ICMP packet. Eleven
+# ICMP probes at 0.5-second intervals span approximately five seconds. Each
 # reply gets a 50 ms window; slower or missing replies require confirmation.
 function ensure_ping_reachability() {
-    log_echo "${YELLOW}Pinging all other Tailmox peers by Tailscale DNS name in parallel for approximately five seconds...${RESET}"
+    log_echo "${YELLOW}Checking all other Tailmox peers with Tailscale path pings and 64-byte and 1280-byte ICMP packets in parallel for approximately five seconds...${RESET}"
 
     local ping_count=11
     local ping_interval=0.5
@@ -461,21 +463,32 @@ function ensure_ping_reachability() {
     local reply_timeout=0.05
     local latency_warning_ms=50
     local peer_count
+    local check_count
     local result_dir
     local peer
     local peer_hostname
     local peer_dns_name
+    local payload_size
+    local packet_size
     local result_file
     local avg_latency
     local max_latency
     local packet_loss
     local transmitted_count
     local received_count
+    local check_type
+    local command_succeeded
+    local tailscale_result
     local all_reachable=true
     local override_required=false
     local index=0
+    local size_index
+    local -a ping_payload_sizes=(56 1272)
+    local -a icmp_packet_sizes=(64 1280)
     local -a peer_hostnames
     local -a peer_dns_names
+    local -a check_types
+    local -a packet_sizes
     local -a result_files
     local -a ping_pids
 
@@ -506,25 +519,62 @@ function ensure_ping_reachability() {
     while IFS= read -r peer; do
         peer_hostname=$(printf '%s\n' "$peer" | jq -r '.hostname')
         peer_dns_name=$(printf '%s\n' "$peer" | jq -r '.dnsName' | sed 's/\.$//')
-        result_file="$result_dir/$index"
 
+        result_file="$result_dir/$index"
         peer_hostnames[$index]="$peer_hostname"
         peer_dns_names[$index]="$peer_dns_name"
+        check_types[$index]="tailscale"
+        packet_sizes[$index]=""
         result_files[$index]="$result_file"
 
-        ping -n -c "$ping_count" -i "$ping_interval" -W "$reply_timeout" -w "$ping_deadline" \
-            "$peer_dns_name" >"$result_file" 2>&1 &
+        tailscale ping --c 1 "$peer_dns_name" >"$result_file" 2>&1 &
         ping_pids[$index]=$!
         index=$((index + 1))
+
+        for size_index in "${!ping_payload_sizes[@]}"; do
+            payload_size="${ping_payload_sizes[$size_index]}"
+            packet_size="${icmp_packet_sizes[$size_index]}"
+            result_file="$result_dir/$index"
+
+            peer_hostnames[$index]="$peer_hostname"
+            peer_dns_names[$index]="$peer_dns_name"
+            check_types[$index]="icmp"
+            packet_sizes[$index]="$packet_size"
+            result_files[$index]="$result_file"
+
+            ping -n -c "$ping_count" -i "$ping_interval" -W "$reply_timeout" -w "$ping_deadline" \
+                -s "$payload_size" "$peer_dns_name" >"$result_file" 2>&1 &
+            ping_pids[$index]=$!
+            index=$((index + 1))
+        done
     done < <(printf '%s\n' "$OTHER_PEERS" | jq -c '.[]')
 
+    check_count=$index
     index=0
-    while [ "$index" -lt "$peer_count" ]; do
+    while [ "$index" -lt "$check_count" ]; do
         peer_hostname="${peer_hostnames[$index]}"
         peer_dns_name="${peer_dns_names[$index]}"
+        check_type="${check_types[$index]}"
+        packet_size="${packet_sizes[$index]}"
         result_file="${result_files[$index]}"
 
-        wait "${ping_pids[$index]}" || true
+        if wait "${ping_pids[$index]}"; then
+            command_succeeded=true
+        else
+            command_succeeded=false
+        fi
+
+        if [[ "$check_type" == "tailscale" ]]; then
+            tailscale_result=$(tail -1 "$result_file")
+            if [[ "$command_succeeded" == true ]]; then
+                log_echo "${GREEN} - $peer_hostname ($peer_dns_name), Tailscale path: ${tailscale_result:-reachable}.${RESET}"
+            else
+                log_echo "${RED} - $peer_hostname ($peer_dns_name), Tailscale path check failed: ${tailscale_result:-no result}. No cluster changes will be made.${RESET}"
+                all_reachable=false
+            fi
+            index=$((index + 1))
+            continue
+        fi
 
         transmitted_count=$(awk -F',' '/packets transmitted/ {
             gsub(/[^0-9]/, "", $1)
@@ -542,19 +592,19 @@ function ensure_ping_reachability() {
         max_latency=$(awk -F'/' '/^(rtt|round-trip)/ {print $6}' "$result_file" | tail -1)
 
         if [[ -z "$transmitted_count" || -z "$received_count" ]]; then
-            log_echo "${RED} - $peer_hostname ($peer_dns_name): ICMP result could not be interpreted. No cluster changes will be made.${RESET}"
+            log_echo "${RED} - $peer_hostname ($peer_dns_name), ${packet_size}-byte ICMP: result could not be interpreted. No cluster changes will be made.${RESET}"
             all_reachable=false
         elif [[ "$received_count" -lt "$transmitted_count" ]]; then
-            log_echo "${YELLOW} - WARNING: $peer_hostname ($peer_dns_name): only $received_count of $transmitted_count replies arrived within 50 ms; ${packet_loss:-packet loss unknown}; average latency ${avg_latency:-unknown} ms.${RESET}"
+            log_echo "${YELLOW} - WARNING: $peer_hostname ($peer_dns_name), ${packet_size}-byte ICMP: only $received_count of $transmitted_count replies arrived within 50 ms; ${packet_loss:-packet loss unknown}; average latency ${avg_latency:-unknown} ms.${RESET}"
             override_required=true
         elif [[ -z "$max_latency" ]]; then
-            log_echo "${RED} - $peer_hostname ($peer_dns_name): latency result could not be interpreted. No cluster changes will be made.${RESET}"
+            log_echo "${RED} - $peer_hostname ($peer_dns_name), ${packet_size}-byte ICMP: latency result could not be interpreted. No cluster changes will be made.${RESET}"
             all_reachable=false
         elif awk -v latency="$max_latency" -v limit="$latency_warning_ms" 'BEGIN { exit !(latency > limit) }'; then
-            log_echo "${YELLOW} - WARNING: $peer_hostname ($peer_dns_name): maximum latency ${max_latency} ms exceeded 50 ms; ${packet_loss:-packet loss unknown}; average latency ${avg_latency:-unknown} ms.${RESET}"
+            log_echo "${YELLOW} - WARNING: $peer_hostname ($peer_dns_name), ${packet_size}-byte ICMP: maximum latency ${max_latency} ms exceeded 50 ms; ${packet_loss:-packet loss unknown}; average latency ${avg_latency:-unknown} ms.${RESET}"
             override_required=true
         else
-            log_echo "${GREEN} - $peer_hostname ($peer_dns_name): all replies arrived within 50 ms; ${packet_loss:-0% packet loss}; average latency ${avg_latency:-unknown} ms.${RESET}"
+            log_echo "${GREEN} - $peer_hostname ($peer_dns_name), ${packet_size}-byte ICMP: all replies arrived within 50 ms; ${packet_loss:-0% packet loss}; average latency ${avg_latency:-unknown} ms.${RESET}"
         fi
 
         index=$((index + 1))
