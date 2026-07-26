@@ -191,6 +191,7 @@ if ! grep -Fq 'id="run-test"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'monitorRunDialog.showModal()' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'monitorRunDialog.close()' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'run.failureReasons' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'monitorDialogIssues.replaceChildren(...failureRows)' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'addEventListener("backups"' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     grep -Fq 'setInterval(loadBackups' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'terminal/?arg=test' "$TAILMOX_WEB_ROOT/tailmox.js" ||

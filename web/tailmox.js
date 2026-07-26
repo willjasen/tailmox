@@ -305,7 +305,7 @@ function openMonitorRunDialog(run) {
     const issues = Array.isArray(run.issues) ? run.issues : [];
     const checks = Array.isArray(run.checks) ? run.checks : [];
     const failureReasons = Array.isArray(run.failureReasons) ? run.failureReasons : [];
-    const issueCount = issues.length + failureReasons.length;
+    const issueCount = failureReasons.length;
     monitorDialogSummary.textContent = [
         formatMonitorTimestamp(run.startedAt),
         formatMonitorMode(run.mode),
@@ -396,19 +396,9 @@ function openMonitorRunDialog(run) {
         row.textContent = reason.detail || `${reason.category} · ${reason.name}`;
         return row;
     });
-    const issueRows = issues.map((issue) => {
-        const row = document.createElement("div");
-        row.className = "issue-row";
-        const target = issue.hostname || "Host-wide check";
-        const detail = issue.port
-            ? `port ${issue.port}`
-            : issue.packetSizeBytes ? `${issue.packetSizeBytes}-byte packet` : issue.name;
-        row.textContent = `${target} · ${issue.category} · ${detail} · ${issue.status}`;
-        return row;
-    });
-    monitorDialogIssues.replaceChildren(...failureRows, ...issueRows);
+    monitorDialogIssues.replaceChildren(...failureRows);
     if (!issueCount) {
-        monitorDialogIssues.textContent = "No issues were recorded for this run.";
+        monitorDialogIssues.textContent = "No run-level issues were recorded for this run.";
     }
     monitorRunDialog.showModal();
 }
