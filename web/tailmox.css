@@ -305,14 +305,12 @@ button {
 }
 
 .history-run:hover,
-.history-run:focus-visible,
-.history-run.is-selected {
+.history-run:focus-visible {
     opacity: 1;
     transform: translateY(-2px);
 }
 
-.history-run:focus-visible,
-.history-run.is-selected {
+.history-run:focus-visible {
     outline: 2px solid var(--text);
     outline-offset: 2px;
 }
@@ -338,6 +336,68 @@ button {
     margin-top: 6px;
     color: var(--muted);
     font-size: 0.66rem;
+}
+
+.run-dialog {
+    width: min(680px, calc(100vw - 32px));
+    max-height: calc(100vh - 48px);
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    color: var(--text);
+    background: var(--panel);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+.run-dialog::backdrop {
+    background: rgba(2, 8, 7, 0.76);
+    backdrop-filter: blur(3px);
+}
+
+.run-dialog-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.run-dialog-heading h2 {
+    margin-top: 3px;
+    font-size: 1.15rem;
+}
+
+.run-dialog-summary {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 0.76rem;
+}
+
+.run-dialog-section {
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+
+.run-dialog-section h3 {
+    font-size: 0.82rem;
+}
+
+.issue-list {
+    display: grid;
+    gap: 7px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 0.72rem;
+}
+
+.issue-row {
+    padding-top: 7px;
+    border-top: 1px solid rgba(43, 60, 55, 0.7);
+}
+
+.issue-row:first-child {
+    padding-top: 0;
+    border-top: 0;
 }
 
 .node-list {

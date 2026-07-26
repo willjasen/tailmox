@@ -68,7 +68,7 @@
                         <small id="monitor-pass-rate">No history yet</small>
                     </div>
                     <div class="metric-card">
-                        <span class="summary-label">Nodes in selected run</span>
+                        <span class="summary-label">Nodes in latest run</span>
                         <strong id="monitor-node-count">0</strong>
                         <small id="monitor-online-count">No snapshot yet</small>
                     </div>
@@ -103,6 +103,36 @@
                     </div>
                 </div>
             </section>
+
+            <dialog class="run-dialog" id="monitor-run-dialog" aria-labelledby="monitor-dialog-title">
+                <div class="run-dialog-heading">
+                    <div>
+                        <p class="eyebrow">Monitor history</p>
+                        <h2 id="monitor-dialog-title">Run details</h2>
+                    </div>
+                    <button
+                        class="icon-button"
+                        id="monitor-dialog-close"
+                        type="button"
+                        aria-label="Close run details"
+                    >×</button>
+                </div>
+                <p class="run-dialog-summary" id="monitor-dialog-summary"></p>
+                <div class="run-dialog-section">
+                    <div class="subheading-row">
+                        <h3>Node snapshot</h3>
+                        <span id="monitor-dialog-node-count">0 nodes</span>
+                    </div>
+                    <div class="node-list" id="monitor-dialog-nodes"></div>
+                </div>
+                <div class="run-dialog-section">
+                    <div class="subheading-row">
+                        <h3>Issues</h3>
+                        <span id="monitor-dialog-issue-count">0 issues</span>
+                    </div>
+                    <div class="issue-list" id="monitor-dialog-issues"></div>
+                </div>
+            </dialog>
 
             <section class="terminal-panel" aria-labelledby="terminal-heading">
                 <div class="panel-heading terminal-heading">

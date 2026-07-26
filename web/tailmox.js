@@ -23,9 +23,15 @@ const monitorPassRate = document.querySelector("#monitor-pass-rate");
 const monitorRunCount = document.querySelector("#monitor-run-count");
 const monitorRunHeading = document.querySelector("#monitor-run-heading");
 const monitorRunSummary = document.querySelector("#monitor-run-summary");
+const monitorRunDialog = document.querySelector("#monitor-run-dialog");
+const monitorDialogClose = document.querySelector("#monitor-dialog-close");
+const monitorDialogIssueCount = document.querySelector("#monitor-dialog-issue-count");
+const monitorDialogIssues = document.querySelector("#monitor-dialog-issues");
+const monitorDialogNodeCount = document.querySelector("#monitor-dialog-node-count");
+const monitorDialogNodes = document.querySelector("#monitor-dialog-nodes");
+const monitorDialogSummary = document.querySelector("#monitor-dialog-summary");
 const monitorState = document.querySelector("#monitor-state");
 const monitorStateLabel = document.querySelector("#monitor-state-label");
-let selectedMonitorRunId = null;
 
 document.querySelector("#host-name").textContent = window.location.hostname;
 
@@ -72,22 +78,14 @@ function renderMonitorHistory(history) {
         return;
     }
 
-    if (!history.some((run) => run.id === selectedMonitorRunId)) {
-        selectedMonitorRunId = history.at(-1).id;
-    }
-
     const bars = history.map((run) => {
         const bar = document.createElement("button");
         bar.type = "button";
         bar.className = `history-run is-${run.status}`;
-        bar.classList.toggle("is-selected", run.id === selectedMonitorRunId);
         bar.title = `${formatMonitorTimestamp(run.startedAt)} · ${run.status} · ${formatMonitorMode(run.mode)}`;
         bar.setAttribute("aria-label", bar.title);
-        bar.setAttribute("aria-pressed", String(run.id === selectedMonitorRunId));
         bar.addEventListener("click", () => {
-            selectedMonitorRunId = run.id;
-            renderMonitorHistory(history);
-            renderMonitorNodes(run);
+            openMonitorRunDialog(run);
         });
         return bar;
     });
@@ -105,27 +103,11 @@ function formatMonitorDuration(value) {
     return `${(milliseconds / 1000).toFixed(1)} s`;
 }
 
-function renderMonitorNodes(run) {
+function createMonitorNodeRows(run) {
     const nodes = Array.isArray(run.nodes) ? run.nodes : [];
     const issues = Array.isArray(run.issues) ? run.issues : [];
-    monitorRunHeading.textContent = "Run details";
-    monitorRunSummary.textContent = [
-        formatMonitorTimestamp(run.startedAt),
-        formatMonitorMode(run.mode),
-        run.status,
-        formatMonitorDuration(run.durationMs),
-    ].join(" · ");
-    monitorNodeCount.textContent = String(nodes.length);
-    monitorOnlineCount.textContent = `${nodes.filter((node) => node.online).length} online`;
-    monitorIssueCount.textContent = `${issues.length} issue${issues.length === 1 ? "" : "s"}`;
-
-    if (!nodes.length) {
-        monitorNodes.textContent = "No Tailmox nodes were present in this snapshot.";
-        return;
-    }
-
     const issueHosts = new Set(issues.map((issue) => issue.hostname).filter(Boolean));
-    const rows = nodes.map((node) => {
+    return nodes.map((node) => {
         const row = document.createElement("div");
         row.className = "node-row";
 
@@ -154,8 +136,71 @@ function renderMonitorNodes(run) {
         row.append(identity, badges);
         return row;
     });
+}
+
+function renderMonitorNodes(run) {
+    const nodes = Array.isArray(run.nodes) ? run.nodes : [];
+    const issues = Array.isArray(run.issues) ? run.issues : [];
+    monitorRunHeading.textContent = "Run details";
+    monitorRunSummary.textContent = [
+        formatMonitorTimestamp(run.startedAt),
+        formatMonitorMode(run.mode),
+        run.status,
+        formatMonitorDuration(run.durationMs),
+    ].join(" · ");
+    monitorNodeCount.textContent = String(nodes.length);
+    monitorOnlineCount.textContent = `${nodes.filter((node) => node.online).length} online`;
+    monitorIssueCount.textContent = `${issues.length} issue${issues.length === 1 ? "" : "s"}`;
+
+    const rows = createMonitorNodeRows(run);
+    if (!rows.length) {
+        monitorNodes.textContent = "No Tailmox nodes were present in this snapshot.";
+        return;
+    }
     monitorNodes.replaceChildren(...rows);
 }
+
+function openMonitorRunDialog(run) {
+    const nodes = Array.isArray(run.nodes) ? run.nodes : [];
+    const issues = Array.isArray(run.issues) ? run.issues : [];
+    monitorDialogSummary.textContent = [
+        formatMonitorTimestamp(run.startedAt),
+        formatMonitorMode(run.mode),
+        run.status,
+        formatMonitorDuration(run.durationMs),
+    ].join(" · ");
+    monitorDialogNodeCount.textContent = `${nodes.length} node${nodes.length === 1 ? "" : "s"}`;
+    monitorDialogIssueCount.textContent = `${issues.length} issue${issues.length === 1 ? "" : "s"}`;
+
+    const nodeRows = createMonitorNodeRows(run);
+    monitorDialogNodes.replaceChildren(...nodeRows);
+    if (!nodeRows.length) {
+        monitorDialogNodes.textContent = "No Tailmox nodes were present in this snapshot.";
+    }
+
+    const issueRows = issues.map((issue) => {
+        const row = document.createElement("div");
+        row.className = "issue-row";
+        const target = issue.hostname || "Host-wide check";
+        const detail = issue.port
+            ? `port ${issue.port}`
+            : issue.packetSizeBytes ? `${issue.packetSizeBytes}-byte packet` : issue.name;
+        row.textContent = `${target} · ${issue.category} · ${detail} · ${issue.status}`;
+        return row;
+    });
+    monitorDialogIssues.replaceChildren(...issueRows);
+    if (!issueRows.length) {
+        monitorDialogIssues.textContent = "No issues were recorded for this run.";
+    }
+    monitorRunDialog.showModal();
+}
+
+monitorDialogClose.addEventListener("click", () => monitorRunDialog.close());
+monitorRunDialog.addEventListener("click", (event) => {
+    if (event.target === monitorRunDialog) {
+        monitorRunDialog.close();
+    }
+});
 
 function renderMonitor(analytics) {
     const totals = analytics.last24Hours || {};
@@ -201,8 +246,7 @@ function renderMonitor(analytics) {
     monitorDescription.textContent = latest.mode === "cluster"
         ? "Cluster-aware health, membership, quorum, and network history."
         : "Baseline Tailscale, ICMP, and Proxmox port health before clustering.";
-    const selectedRun = history.find((run) => run.id === selectedMonitorRunId) || latest;
-    renderMonitorNodes(selectedRun);
+    renderMonitorNodes(latest);
 }
 
 const monitorEvents = new EventSource("monitor/events");
