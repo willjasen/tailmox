@@ -715,6 +715,7 @@ def parse_test_checks(
 ) -> int:
     current_node_id: int | None = None
     check_count = 0
+    has_structured_icmp = "__TAILMOX_MONITOR_ICMP__\t" in output
     for raw_line in output.splitlines():
         line = ANSI_ESCAPE.sub("", raw_line)
         monitor_icmp_match = MONITOR_ICMP_RESULT.fullmatch(line)
@@ -771,7 +772,7 @@ def parse_test_checks(
             continue
 
         icmp_match = ICMP_RESULT.search(line)
-        if icmp_match:
+        if icmp_match and not has_structured_icmp:
             replies = ICMP_REPLIES.search(icmp_match.group("remainder"))
             status = "warning" if "warning" in line.lower() else "passed"
             add_check(
@@ -799,7 +800,7 @@ def parse_test_checks(
             continue
 
         icmp_unparseable_match = ICMP_UNPARSEABLE_RESULT.search(line)
-        if icmp_unparseable_match:
+        if icmp_unparseable_match and not has_structured_icmp:
             add_check(
                 connection,
                 run_id,

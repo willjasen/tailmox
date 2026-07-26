@@ -18,11 +18,13 @@ printf '%s\n' \
     'printf "%s\n" " - pve-local (pve-local.example.ts.net)"' \
     'printf "%s\n" "   - Tailscale path: 20 of 20 Tailscale pings succeeded (80% required); average latency 4.25 ms; maximum latency 7.50 ms."' \
     'printf "%s\n" "   - 64-byte ICMP: average latency 1.25 ms; maximum latency 2.50 ms; 11 of 11 replies arrived within 50 ms; 0% packet loss."' \
+    'printf "__TAILMOX_MONITOR_ICMP__\tpve-local\t64\tpassed\t11\t11\t1.25\t2.50\n"' \
     'printf "%s\n" "Checking if TCP port 8006 is available on the local Proxmox host..."' \
     'printf "%s\n" "   - TCP port 8006 is available; latency 3.75 ms."' \
     'printf "%s\n" " - pve-remote (100.64.0.2)"' \
     'printf "%s\n" "Checking if TCP port 443 is available on all other Tailmox peers..."' \
     'printf "%s\n" "   - 64-byte ICMP: result could not be interpreted. No cluster changes will be made."' \
+    'printf "__TAILMOX_MONITOR_ICMP__\tpve-remote\t64\tfailed\tunknown\tunknown\tunknown\tunknown\n"' \
     'printf "__TAILMOX_MONITOR_ICMP__\tpve-remote\t1280\tpassed\t11\t11\t1.50\t2.75\n"' \
     'printf "%s\n" "   - TCP port 443 is not available; latency 2001.25 ms."' \
     'exit 1' > "$MOCK_TAILMOX"
