@@ -1631,8 +1631,6 @@ function test_setup_safely() {
 
     log_echo ""
     log_echo "${GREEN}━━━ RESULT: Setup test passed ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
-    printf '%s\n' "Skipped all mutating steps: package installation, Tailscale up/serve,"
-    printf '%s\n' "systemd changes, certificate changes, and Proxmox cluster create/join."
 }
 
 ####

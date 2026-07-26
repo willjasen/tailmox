@@ -103,6 +103,14 @@ else
     FAIL_COUNT=$((FAIL_COUNT + 1))
 fi
 
+if [[ "$SETUP_OUTPUT" == *"Skipped all mutating steps"* ]]; then
+    printf 'FAIL: setup test omits the redundant skipped-steps summary\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+else
+    printf 'PASS: setup test omits the redundant skipped-steps summary\n'
+    PASS_COUNT=$((PASS_COUNT + 1))
+fi
+
 MOCK_MISSING_DEPENDENCY="ttyd"
 if SETUP_OUTPUT=$(test_setup_safely 2>&1); then
     printf 'FAIL: missing dependency fails the self-test\n'
