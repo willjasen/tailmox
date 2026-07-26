@@ -871,6 +871,8 @@ function sample_tailscale_ping_reachability() {
     local started_at="${EPOCHREALTIME:-$(date +%s)}"
     local finished_at
     local duration_seconds
+    local next_attempt_at
+    local remaining_delay
 
     for ((attempt = 0; attempt < ping_count; attempt++)); do
         attempt_file="${result_file}.attempt-${attempt}"
@@ -889,7 +891,15 @@ function sample_tailscale_ping_reachability() {
             fi
         fi
         if [[ "$attempt" -lt $((ping_count - 1)) ]]; then
-            sleep "$interval"
+            next_attempt_at=$(awk -v started_at="$started_at" -v interval="$interval" \
+                -v next_attempt="$((attempt + 1))" \
+                'BEGIN { printf "%.6f", started_at + (interval * next_attempt) }')
+            remaining_delay=$(awk -v next_attempt_at="$next_attempt_at" \
+                -v current_at="${EPOCHREALTIME:-$(date +%s)}" \
+                'BEGIN { printf "%.6f", next_attempt_at - current_at }')
+            if awk -v delay="$remaining_delay" 'BEGIN { exit !(delay > 0) }'; then
+                sleep "$remaining_delay"
+            fi
         fi
     done
 
