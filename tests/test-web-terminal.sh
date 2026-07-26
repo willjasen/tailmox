@@ -75,15 +75,16 @@ fi
 
 WEB_SERVICE_ACTIVE=true
 SYSTEMCTL_CALL_COUNT=$(wc -l < "$SYSTEMCTL_CALLS")
-TAILSCALE_CALL_COUNT=$(wc -l < "$TAILSCALE_CALLS")
+TAILSCALE_SERVE_CALL_COUNT=$(grep -c '^serve ' "$TAILSCALE_CALLS")
 OUTPUT=$(start_web_terminal)
+EXPECTED_OUTPUT=$'Tailmox web server is already running.\nhttps://prox1.risk-mermaid.ts.net:8669/'
 
-if [[ "$OUTPUT" != 'Tailmox web server is already running.' ]]; then
-    printf 'FAIL: start did not report that the web server was already running\n'
+if [[ "$OUTPUT" != "$EXPECTED_OUTPUT" ]]; then
+    printf 'FAIL: start did not report the URL of the already-running web server\n'
     exit 1
 fi
 if [[ "$(wc -l < "$SYSTEMCTL_CALLS")" -ne $((SYSTEMCTL_CALL_COUNT + 1)) ||
-    "$(wc -l < "$TAILSCALE_CALLS")" -ne "$TAILSCALE_CALL_COUNT" ]]; then
+    "$(grep -c '^serve ' "$TAILSCALE_CALLS")" -ne "$TAILSCALE_SERVE_CALL_COUNT" ]]; then
     printf 'FAIL: starting an already-running web server changed its state\n'
     exit 1
 fi

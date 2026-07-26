@@ -358,7 +358,16 @@ function start_web_terminal() {
         grep -Fqx 'Description=Tailmox web terminal' "$service_target" &&
         grep -Fq '/tailmox-web-terminal' "$service_target" &&
         systemctl is-active --quiet "$TAILMOX_WEB_SERVICE" >>"$LOG_FILE" 2>&1; then
+        dns_name=$(tailscale status --json |
+            jq -r '.Self.DNSName // empty' |
+            sed 's/\.$//')
+        if [[ -z "$dns_name" ]]; then
+            log_echo "${RED}The Tailmox web server is running, but its Tailscale MagicDNS name could not be determined.${RESET}"
+            return 1
+        fi
+
         printf 'Tailmox web server is already running.\n'
+        printf 'https://%s:%s/\n' "$dns_name" "$TAILMOX_WEB_PORT"
         return 0
     fi
 
