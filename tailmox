@@ -128,7 +128,9 @@ show_usage() {
     cat <<'EOF'
 Usage:
   tailmox cluster [options]  Run the complete clustering workflow
-  tailmox serve [options]    Start the dashboard and browser terminal
+  tailmox serve start [options]
+                             Start the dashboard and browser terminal
+  tailmox serve stop         Stop the dashboard and browser terminal
   tailmox stage [options]    Set up Tailscale and certificates only
   tailmox backups [list]     List Tailmox configuration backups
   tailmox backups create     Create a configuration backup now
@@ -152,7 +154,27 @@ case "${1:-}" in
         ;;
     serve)
         shift
-        exec "$TAILMOX_ROOT/tailmox.sh" "$@"
+        case "${1:-}" in
+            start)
+                shift
+                exec "$TAILMOX_ROOT/tailmox.sh" "$@"
+                ;;
+            stop)
+                shift
+                if [[ "$#" -ne 0 ]]; then
+                    printf 'tailmox serve stop does not accept arguments.\n' >&2
+                    exit 2
+                fi
+                exec "$TAILMOX_ROOT/tailmox.sh" --web-stop
+                ;;
+            *)
+                if [[ -n "${1:-}" ]]; then
+                    printf 'Unknown serve action: %s\n' "$1" >&2
+                fi
+                printf 'Usage: tailmox serve <start|stop>\n' >&2
+                exit 2
+                ;;
+        esac
         ;;
     stage)
         shift

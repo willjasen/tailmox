@@ -127,7 +127,7 @@ then submit.
 2. Pull this repo: `git clone https://github.com/willjasen/tailmox`
 2. Change into the install directory: `cd tailmox`
 3. Make sure that the script is executable: `chmod +x tailmox.sh`
-4. Bootstrap the `tailmox` command and start the installer: `./tailmox serve`
+4. Bootstrap the `tailmox` command and start the installer: `./tailmox serve start`
 5. Open the HTTPS URL printed by the script from an administrator's device on your tailnet. The dashboard includes an idle terminal, explicit buttons for `tailmox test`, `tailmox backups create`, and `tailmox cluster`, and a read-only configuration-backup inventory.
 
 ---
@@ -140,7 +140,8 @@ The local `tailmox` command provides shortcuts for the main workflows:
 
 ```bash
 tailmox cluster             # Run the complete clustering workflow
-tailmox serve               # Start the dashboard and browser terminal
+tailmox serve start         # Start the dashboard and browser terminal
+tailmox serve stop          # Stop the dashboard and browser terminal
 tailmox stage               # Set up Tailscale and certificates only
 tailmox backups             # List configuration backups
 tailmox backups create      # Create a configuration backup now
@@ -233,7 +234,7 @@ records only tests performed locally; Tailmox does not accept or upload monitor
 results between hosts.
 
 While the monitor is running, it exposes a read-only Server-Sent Events
-endpoint on localhost TCP 8671. `tailmox serve` publishes that endpoint beneath
+endpoint on localhost TCP 8671. `tailmox serve start` publishes that endpoint beneath
 `/monitor` through the existing tailnet-only HTTPS listener, and the dashboard
 updates immediately after a run without polling. The endpoint accepts no
 uploads or monitoring results. The database remains outside the web root; the

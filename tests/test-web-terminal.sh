@@ -76,6 +76,42 @@ if ! grep -Fxq \
     exit 1
 fi
 
+printf '%s\n' \
+    '[Unit]' \
+    'Description=Tailmox web terminal' \
+    'ExecStart=/opt/tailmox/tailmox-web-terminal' \
+    > "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"
+OUTPUT=$(stop_web_terminal)
+
+if [[ "$OUTPUT" != 'Tailmox web server stopped.' ]]; then
+    printf 'FAIL: stop did not report success\n'
+    exit 1
+fi
+
+if ! grep -Fxq 'serve --https=8669 off' "$TAILSCALE_CALLS" ||
+    ! grep -Fxq 'disable --now tailmox-web.service' "$SYSTEMCTL_CALLS"; then
+    printf 'FAIL: stop did not remove the listener and disable the service\n'
+    exit 1
+fi
+
+printf '%s\n' \
+    '[Unit]' \
+    'Description=Unrelated service' \
+    'ExecStart=/usr/local/bin/unrelated' \
+    > "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"
+TAILSCALE_CALL_COUNT=$(wc -l < "$TAILSCALE_CALLS")
+SYSTEMCTL_CALL_COUNT=$(wc -l < "$SYSTEMCTL_CALLS")
+
+if stop_web_terminal >/dev/null 2>&1; then
+    printf 'FAIL: stop accepted an unrelated same-named service\n'
+    exit 1
+fi
+if [[ "$(wc -l < "$TAILSCALE_CALLS")" -ne "$TAILSCALE_CALL_COUNT" ||
+    "$(wc -l < "$SYSTEMCTL_CALLS")" -ne "$SYSTEMCTL_CALL_COUNT" ]]; then
+    printf 'FAIL: guarded stop changed service or listener state\n'
+    exit 1
+fi
+
 if ! grep -Fxq \
     'serve --bg --yes --https=8669 --set-path=/terminal http://127.0.0.1:8670' \
     "$TAILSCALE_CALLS"; then

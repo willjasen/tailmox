@@ -394,6 +394,31 @@ function start_web_terminal() {
     printf 'https://%s:%s/\n' "$dns_name" "$TAILMOX_WEB_PORT"
 }
 
+# Stop only the Tailmox-owned web service and its dedicated Tailscale listener.
+function stop_web_terminal() {
+    local service_target="$TAILMOX_SYSTEMD_DIR/$TAILMOX_WEB_SERVICE"
+
+    if [[ -e "$service_target" ]] &&
+        { ! grep -Fqx 'Description=Tailmox web terminal' "$service_target" ||
+          ! grep -Fq '/tailmox-web-terminal' "$service_target"; }; then
+        printf 'Refusing to stop unrelated service: %s\n' "$service_target" >&2
+        return 1
+    fi
+
+    if ! tailscale serve --https="$TAILMOX_WEB_PORT" off >>"$LOG_FILE" 2>&1; then
+        printf 'Unable to stop the Tailmox Tailscale Serve listener.\n' >&2
+        return 1
+    fi
+
+    if [[ -e "$service_target" ]] &&
+        ! systemctl disable --now "$TAILMOX_WEB_SERVICE" >>"$LOG_FILE" 2>&1; then
+        printf 'The Tailmox listener stopped, but the web terminal service did not.\n' >&2
+        return 1
+    fi
+
+    printf 'Tailmox web server stopped.\n'
+}
+
 # Install Tailscale if it is not already installed
 function install_tailscale() {
     if ! command -v tailscale &>/dev/null; then
@@ -1646,6 +1671,7 @@ TERMINAL_MODE=false
 STAGING=false
 DRY_RUN=false
 BACKUP_ACTION=""
+WEB_ACTION=""
 AUTH_KEY=""
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -1653,6 +1679,7 @@ while [[ "$#" -gt 0 ]]; do
         --dry-run) DRY_RUN=true; ;;
         --backups-list) BACKUP_ACTION="list"; ;;
         --backup-create) BACKUP_ACTION="create"; ;;
+        --web-stop) WEB_ACTION="stop"; ;;
         --auth-key)
             if [[ -z "${2:-}" ]]; then
                 printf '%s\n' "--auth-key requires a value." >&2
@@ -1678,6 +1705,11 @@ if [[ "$BACKUP_ACTION" == "list" ]]; then
     exit $?
 elif [[ "$BACKUP_ACTION" == "create" ]]; then
     backup_proxmox_cluster_configuration
+    exit $?
+fi
+
+if [[ "$WEB_ACTION" == "stop" ]]; then
+    stop_web_terminal
     exit $?
 fi
 
