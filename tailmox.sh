@@ -924,7 +924,7 @@ function ensure_ping_reachability() {
         if [[ "$check_type" == "tailscale" ]]; then
             tailscale_result=$(tail -1 "$result_file")
             if [[ "$command_succeeded" == true ]]; then
-                log_echo "${GREEN} - $peer_hostname ($peer_dns_name), Tailscale path: ${tailscale_result:-reachable}.${RESET}"
+                log_echo "${BLUE} - $peer_hostname ($peer_dns_name), Tailscale path: ${tailscale_result:-reachable}.${RESET}"
             else
                 log_echo "${RED} - $peer_hostname ($peer_dns_name), Tailscale path check failed: ${tailscale_result:-no result}. No cluster changes will be made.${RESET}"
                 all_reachable=false

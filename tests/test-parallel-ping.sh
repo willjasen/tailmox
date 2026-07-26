@@ -148,6 +148,13 @@ if [[ "$(grep -c -- '^ping --c 1 --timeout=200ms ' "$TAILSCALE_PING_ARGS_FILE")"
 fi
 
 for peer in pve1 pve2 pve3; do
+    printf -v expected_tailscale_line '%b' \
+        "${BLUE} - $peer ($peer.example.ts.net), Tailscale path: 20 of 20 Tailscale pings succeeded (80% required).${RESET}"
+    if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_tailscale_line")" -ne 1 ]]; then
+        printf 'FAIL: successful Tailscale path result for %s was not blue\n' "$peer"
+        exit 1
+    fi
+
     if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -c -- "$peer .*64-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms")" -ne 1 ]] \
         || [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -c -- "$peer .*1280-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms")" -ne 1 ]]; then
         printf 'FAIL: peer ICMP results did not clearly report average and maximum latency by packet size\n'
