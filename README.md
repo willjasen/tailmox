@@ -127,7 +127,7 @@ then submit.
 2. Pull this repo: `git clone https://github.com/willjasen/tailmox`
 2. Change into the install directory: `cd tailmox`
 3. Make sure that the script is executable: `chmod +x tailmox.sh`
-4. Run the script: `./tailmox.sh`
+4. Bootstrap the `tailmox` command and start the installer: `./tailmox serve`
 5. Open the HTTPS URL printed by the script from a device on your tailnet. The installer runs interactively in the browser terminal.
 
 ---

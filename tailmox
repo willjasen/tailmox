@@ -3,6 +3,9 @@
 set -Eeuo pipefail
 
 TAILMOX_COMMAND=${BASH_SOURCE[0]}
+if [[ "$TAILMOX_COMMAND" != /* ]]; then
+    TAILMOX_COMMAND="$(pwd)/$TAILMOX_COMMAND"
+fi
 while [[ -L "$TAILMOX_COMMAND" ]]; do
     TAILMOX_COMMAND_DIR=$(cd "$(dirname "$TAILMOX_COMMAND")" && pwd)
     TAILMOX_COMMAND=$(readlink "$TAILMOX_COMMAND")
@@ -11,6 +14,29 @@ while [[ -L "$TAILMOX_COMMAND" ]]; do
     fi
 done
 TAILMOX_ROOT=$(cd "$(dirname "$TAILMOX_COMMAND")" && pwd)
+TAILMOX_COMMAND="$TAILMOX_ROOT/$(basename "$TAILMOX_COMMAND")"
+
+bootstrap_command() {
+    local bin_dir="${TAILMOX_BIN_DIR:-/usr/local/bin}"
+    local command_link="$bin_dir/tailmox"
+
+    # Project development does not require a global installation. Production
+    # setup runs as root; tests can opt into a temporary bin directory.
+    if [[ -z "${TAILMOX_BIN_DIR:-}" && "$EUID" -ne 0 ]]; then
+        return 0
+    fi
+
+    if [[ -e "$command_link" && ! -L "$command_link" ]]; then
+        printf 'Cannot install tailmox: %s already exists and is not a symbolic link.\n' \
+            "$command_link" >&2
+        return 1
+    fi
+
+    if ! mkdir -p "$bin_dir" || ! ln -sfn "$TAILMOX_COMMAND" "$command_link"; then
+        printf 'Unable to install the tailmox command at %s.\n' "$command_link" >&2
+        return 1
+    fi
+}
 
 run_tests() {
     local test_file
@@ -47,6 +73,8 @@ Usage:
 Options such as --auth-key are passed through to tailmox.sh.
 EOF
 }
+
+bootstrap_command
 
 case "${1:-}" in
     cluster)
