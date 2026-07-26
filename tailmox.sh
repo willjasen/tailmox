@@ -1616,9 +1616,6 @@ function test_setup_safely() {
     are_hosts_tcp_port_8006_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
     are_hosts_tcp_port_443_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
 
-    log_echo "${YELLOW}Reading current Proxmox cluster state...${RESET}"
-    check_local_node_cluster_status || true
-
     printf '\n%s\n' "Setup test passed."
     printf '%s\n' "Skipped all mutating steps: package installation, Tailscale up/serve,"
     printf '%s\n' "systemd changes, certificate changes, and Proxmox cluster create/join."
