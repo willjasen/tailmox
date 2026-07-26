@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+TAILMOX_COMMAND=${BASH_SOURCE[0]}
+while [[ -L "$TAILMOX_COMMAND" ]]; do
+    TAILMOX_COMMAND_DIR=$(cd "$(dirname "$TAILMOX_COMMAND")" && pwd)
+    TAILMOX_COMMAND=$(readlink "$TAILMOX_COMMAND")
+    if [[ "$TAILMOX_COMMAND" != /* ]]; then
+        TAILMOX_COMMAND="$TAILMOX_COMMAND_DIR/$TAILMOX_COMMAND"
+    fi
+done
+TAILMOX_ROOT=$(cd "$(dirname "$TAILMOX_COMMAND")" && pwd)
+
+run_tests() {
+    local test_file
+    local passed=0
+    local -a test_files=()
+
+    while IFS= read -r test_file; do
+        test_files+=("$test_file")
+    done < <(find "$TAILMOX_ROOT/tests" -maxdepth 1 -type f -name 'test-*.sh' | sort)
+
+    if [[ "${#test_files[@]}" -eq 0 ]]; then
+        printf 'No tests found.\n' >&2
+        return 1
+    fi
+
+    for test_file in "${test_files[@]}"; do
+        printf '\n==> %s\n' "${test_file#"$TAILMOX_ROOT/"}"
+        bash "$test_file"
+        passed=$((passed + 1))
+    done
+
+    printf '\nAll %d test files passed.\n' "$passed"
+}
+
+show_usage() {
+    cat <<'EOF'
+Usage:
+  tailmox cluster [options]  Run the complete clustering workflow
+  tailmox serve [options]    Start the browser-terminal launcher
+  tailmox stage [options]    Set up Tailscale and certificates only
+  tailmox test               Run the test suite
+  tailmox help               Show this help
+
+Options such as --auth-key are passed through to tailmox.sh.
+EOF
+}
+
+case "${1:-}" in
+    cluster)
+        shift
+        exec "$TAILMOX_ROOT/tailmox.sh" --terminal "$@"
+        ;;
+    serve)
+        shift
+        exec "$TAILMOX_ROOT/tailmox.sh" "$@"
+        ;;
+    stage)
+        shift
+        exec "$TAILMOX_ROOT/tailmox.sh" --terminal --staging "$@"
+        ;;
+    test)
+        shift
+        if [[ "$#" -ne 0 ]]; then
+            printf 'tailmox test does not accept arguments.\n' >&2
+            exit 2
+        fi
+        run_tests
+        ;;
+    ""|help|-h|--help)
+        show_usage
+        ;;
+    *)
+        printf 'Unknown command: %s\n\n' "$1" >&2
+        show_usage >&2
+        exit 2
+        ;;
+esac

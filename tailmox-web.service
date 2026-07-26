@@ -1,0 +1,13 @@
+[Unit]
+Description=Tailmox web terminal
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ttyd --interface 127.0.0.1 --port 8670 --writable --check-origin --client-option titleFixed=Tailmox /bin/bash /opt/tailmox/tailmox.sh --terminal
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -8,9 +8,33 @@ To faciliate in quick testing, I have developed a way to create a testing enviro
 
 ### ✏️ Preparation ✏️
 
-The `create-vm-template.sh` script will download the preconfigured image from an IPFS gateway and set it up as a template named "tailmox-template" in Proxmox. Then, you'll create linked clones of the template (I typically will create three).
+The `create-vm-template.sh` script downloads the preconfigured image from an IPFS gateway, verifies it, and sets it up as a template named `tailmox-template` in Proxmox. It can also create linked clones of the template:
 
-In ensure that the linked clones can get online, review the network adapter settings within each VM. The network adapter is set for "vmbr0" with no VLAN by default, but your environment may be different.
+```bash
+./create-vm-template.sh \
+  --storage local-zfs \
+  --bridge vmbr0 \
+  --clone-count 3
+```
+
+Run this command as root on a Proxmox node. If `--storage` is omitted, the script chooses the first enabled, active storage that supports VM images. It validates the selected storage and bridge before creating anything.
+
+To create the linked clones remotely through the Proxmox API, first create the template on a Proxmox node, then run:
+
+```bash
+export PVE_API_TOKEN_ID='USER@REALM!TOKEN_ID'
+export PVE_API_TOKEN_SECRET='TOKEN_SECRET'
+
+./deploy-vms-api.sh \
+  --api-url https://pve4.example.ts.net \
+  --node pve4 \
+  --template tailmox-template \
+  --count 3
+```
+
+The API helper prompts for any credentials that are not supplied through the environment. It creates stopped linked clones named `tailmox1`, `tailmox2`, and `tailmox3` by default. Use `--full` for full clones, `--start` to start the clones, and `--storage` or `--bridge` to override the inherited template settings.
+
+To ensure that the linked clones can get online, review the network adapter settings within each VM. The network adapter uses `vmbr0` with no VLAN by default, but your environment may be different.
 
 Boot up each linked clone VM (the default credentials are "root" and "tailmox-test"), then make the following changes:
 
@@ -28,9 +52,11 @@ Be sure to include the "--auth-key" parameter as well.
 
 ### 🤓 The Scripts 🤓
 
-`test-env/create-vm-template.sh` - used to create a VM template using the downloaded template image
+`test-env/create-vm-template.sh` - creates a VM template from the downloaded image and can create local linked clones
 
 `test-env/download-template.sh` - used to download the disk image of a previously configured Proxmox host that is ready for testing with Tailmox
+
+`test-env/deploy-vms-api.sh` - creates linked clones of an existing template through the Proxmox API
 
 `test-env/revert-test-vms.sh` - used to revert VMs being tested with
 

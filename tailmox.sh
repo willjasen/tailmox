@@ -16,8 +16,8 @@
 #   --auth-key <key>    Use the provided Tailscale auth key for login
 #
 # Description:
-#   This script installs dependencies, sets up Tailscale, configures certificates,
-#   checks peer connectivity, and helps create or join a Proxmox cluster over Tailscale.
+#   By default, this script starts a tailnet-only web terminal. The installer
+#   itself runs inside that terminal.
 #
 # Requirements:
 #   - Must be run as root from /opt/tailmox
@@ -29,8 +29,15 @@
 source "$(dirname "${BASH_SOURCE[0]}")/.colors.sh"
 
 # Define log file
+TAILMOX_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 LOG_DIR="${TAILMOX_LOG_DIR:-/var/log}"
 LOG_FILE="$LOG_DIR/tailmox.log"
+
+# TMOX maps to 8669 on a telephone keypad.
+TAILMOX_WEB_PORT="${TAILMOX_WEB_PORT:-8669}"
+TAILMOX_WEB_BACKEND_PORT="${TAILMOX_WEB_BACKEND_PORT:-8670}"
+TAILMOX_WEB_SERVICE="${TAILMOX_WEB_SERVICE:-tailmox-web.service}"
+TAILMOX_SYSTEMD_DIR="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
 
 # Create log directory if it doesn't exist
 mkdir -p "$LOG_DIR"
@@ -49,8 +56,10 @@ function log_echo() {
     local message="$1"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     
-    # Output to console with colors
-    echo -e "$message"
+    # The web launcher stays quiet so it prints only its status and URL.
+    if [[ "${TAILMOX_CONSOLE_OUTPUT:-true}" == "true" ]]; then
+        echo -e "$message"
+    fi
     
     # Output to log file without colors, with timestamp
     echo "[$timestamp] $(echo -e "$message" | sed 's/\x1b\[[0-9;]*m//g')" >> "$LOG_FILE"
@@ -99,12 +108,109 @@ function install_dependencies() {
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
             log_echo "${YELLOW}$dep not found. Installing...${RESET}"
-            apt update -qq;
-            DEBIAN_FRONTEND=noninteractive apt install "$dep" -y
+            apt update -qq || return 1
+            DEBIAN_FRONTEND=noninteractive apt install "$dep" -y || return 1
         else
             :
         fi
     done
+
+    install_ttyd
+}
+
+# Debian 12 does not ship ttyd, so install the upstream static binary and
+# verify it against the checksum published with ttyd 1.7.7.
+function install_ttyd() {
+    local architecture
+    local expected_sha256
+    local ttyd_asset
+    local ttyd_download
+    local ttyd_version="1.7.7"
+
+    if [[ -x /usr/local/bin/ttyd ]]; then
+        return 0
+    fi
+
+    architecture=$(uname -m)
+    case "$architecture" in
+        x86_64)
+            ttyd_asset="ttyd.x86_64"
+            expected_sha256="8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55"
+            ;;
+        aarch64|arm64)
+            ttyd_asset="ttyd.aarch64"
+            expected_sha256="b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165"
+            ;;
+        *)
+            log_echo "${RED}No supported ttyd build is available for $architecture.${RESET}"
+            return 1
+            ;;
+    esac
+
+    ttyd_download=$(mktemp /tmp/tailmox-ttyd.XXXXXX) || return 1
+    if ! curl -fsSL \
+        "https://github.com/tsl0922/ttyd/releases/download/$ttyd_version/$ttyd_asset" \
+        -o "$ttyd_download"; then
+        rm -f "$ttyd_download"
+        return 1
+    fi
+
+    if ! printf '%s  %s\n' "$expected_sha256" "$ttyd_download" | sha256sum --check --status; then
+        log_echo "${RED}The downloaded ttyd checksum did not match.${RESET}"
+        rm -f "$ttyd_download"
+        return 1
+    fi
+
+    if ! install -m 0755 "$ttyd_download" /usr/local/bin/ttyd; then
+        rm -f "$ttyd_download"
+        return 1
+    fi
+
+    rm -f "$ttyd_download"
+}
+
+# Start the persistent localhost terminal and expose it only through Tailscale.
+function start_web_terminal() {
+    local script_dir
+    local magicdns_domain
+    local service_source
+    local service_target="$TAILMOX_SYSTEMD_DIR/$TAILMOX_WEB_SERVICE"
+
+    script_dir="$TAILMOX_SCRIPT_DIR"
+    service_source="$script_dir/tailmox-web.service"
+
+    if [[ ! -f "$service_source" ]]; then
+        log_echo "${RED}Missing web service definition: $service_source${RESET}"
+        return 1
+    fi
+
+    if ! install -m 0644 "$service_source" "$service_target"; then
+        log_echo "${RED}Unable to install the Tailmox web service.${RESET}"
+        return 1
+    fi
+
+    if ! systemctl daemon-reload >>"$LOG_FILE" 2>&1 ||
+        ! systemctl enable --now "$TAILMOX_WEB_SERVICE" >>"$LOG_FILE" 2>&1; then
+        log_echo "${RED}Unable to start the Tailmox web terminal service.${RESET}"
+        return 1
+    fi
+
+    if ! tailscale serve --service=svc:tailmox --bg --yes --https="$TAILMOX_WEB_PORT" \
+        "http://127.0.0.1:$TAILMOX_WEB_BACKEND_PORT" >>"$LOG_FILE" 2>&1; then
+        log_echo "${RED}Unable to expose the Tailmox web terminal through Tailscale Serve.${RESET}"
+        return 1
+    fi
+
+    magicdns_domain=$(tailscale status --json |
+        jq -r '.Self.DNSName // empty' |
+        sed -E 's/^[^.]+\.//; s/\.$//')
+    if [[ -z "$magicdns_domain" ]]; then
+        log_echo "${RED}Unable to determine this tailnet's MagicDNS domain.${RESET}"
+        return 1
+    fi
+
+    printf 'Tailmox web server started.\n'
+    printf 'https://tailmox.%s:%s/\n' "$magicdns_domain" "$TAILMOX_WEB_PORT"
 }
 
 # Install Tailscale if it is not already installed
@@ -743,23 +849,67 @@ function add_local_node_to_cluster() {
 #### ---MAIN SCRIPT---
 ####
 
+# Parse the script parameters
+TERMINAL_MODE=false
+STAGING=false
+AUTH_KEY=""
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --staging) STAGING="true"; ;;
+        --auth-key)
+            if [[ -z "${2:-}" ]]; then
+                printf '%s\n' "--auth-key requires a value." >&2
+                exit 1
+            fi
+            AUTH_KEY="$2"
+            shift
+            ;;
+        --terminal) TERMINAL_MODE=true; ;;
+        *) log_echo "${RED}Unknown parameter: $1${RESET}"; exit 1 ;;
+    esac
+    shift
+done
+
 # Allow the functions to be loaded by the regression tests without running the
 # installer or making changes to a host.
 if [[ "${TAILMOX_LIBRARY_MODE:-false}" == "true" ]]; then
     return 0 2>/dev/null || exit 0
 fi
 
-log_echo "${GREEN}--- TAILMOX SCRIPT RUNNING ---${RESET}"
+if [[ "$TERMINAL_MODE" != "true" ]]; then
+    TAILMOX_CONSOLE_OUTPUT=false
 
-# Parse the script parameters
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        --staging) STAGING="true"; log_echo "${YELLOW}Staging mode enabled.${RESET}"; ;;
-        --auth-key) AUTH_KEY="$2"; log_echo "${YELLOW}Using auth key for Tailscale...${RESET}"; shift; ;;
-        *) log_echo "${RED}Unknown parameter: $1${RESET}"; exit 1 ;;
-    esac
-    shift
-done
+    if ! check_if_supported_proxmox_is_installed; then
+        printf 'Proxmox VE 8.x or 9.x is required.\n' >&2
+        exit 1
+    fi
+
+    if ! check_script_directory; then
+        exit 1
+    fi
+
+    if ! install_dependencies >/dev/null 2>&1; then
+        printf 'Unable to install Tailmox dependencies.\n' >&2
+        exit 1
+    fi
+
+    if ! install_tailscale >/dev/null 2>&1 || ! start_tailscale "$AUTH_KEY" >/dev/null 2>&1; then
+        printf 'Unable to start Tailscale. Use --auth-key if this host is not signed in.\n' >&2
+        exit 1
+    fi
+
+    if ! start_web_terminal; then
+        printf 'Unable to start the Tailmox web server. See %s for details.\n' "$LOG_FILE" >&2
+        exit 1
+    fi
+
+    exit 0
+fi
+
+log_echo "${GREEN}--- TAILMOX SCRIPT RUNNING ---${RESET}"
+if [[ "$STAGING" == "true" ]]; then
+    log_echo "${YELLOW}Staging mode enabled.${RESET}"
+fi
 
 if ! check_if_supported_proxmox_is_installed; then
     log_echo "${RED}Proxmox VE 8.x or 9.x is required. Exiting...${RESET}"
@@ -775,7 +925,7 @@ install_dependencies
 install_tailscale
 
 # Start Tailscale; use auth key if supplied
-start_tailscale $AUTH_KEY
+start_tailscale "$AUTH_KEY"
 
 ### Now that Tailscale is running...
 

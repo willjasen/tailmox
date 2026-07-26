@@ -119,8 +119,11 @@ decompress_xz() {
   echo "Decompressing $src -> $dst"
   if [[ "$src" == *.tar.xz ]]; then
     if command -v tar >/dev/null 2>&1; then
-      tar -xJf "$src" -C "/tmp"
-      return $?
+      if tar -xJOf "$src" >"$dst"; then
+        return 0
+      fi
+      rm -f "$dst"
+      return 1
     else
       echo "tar/xz is not available to decompress $src" >&2
       return 2
@@ -128,6 +131,51 @@ decompress_xz() {
   else
     echo "File $src is not an .tar.xz archive" >&2
     return 3
+  fi
+}
+
+ensure_free_space() {
+  local needs_download="$1"
+  local dir
+  local size_bytes
+  local required_content_bytes
+  local uncompressed_size_bytes
+  local avail_kb
+  local avail_bytes
+  local required_bytes
+
+  dir="$(dirname "$DOWNLOAD_PATH")"
+  if [[ ! -d "$dir" ]]; then
+    mkdir -p "$dir" || { echo "Cannot create directory $dir" >&2; exit 8; }
+  fi
+
+  echo "Checking if there is enough free space in $dir..."
+  size_bytes=$(json_read ".template.versions.$VERSION.size_in_bytes" || true)
+  if [[ ! "$size_bytes" =~ ^[0-9]+$ ]]; then
+    echo "Invalid size_in_bytes in JSON: $size_bytes; skipping space check." >&2
+    return 0
+  fi
+
+  required_content_bytes=0
+  if [[ "$needs_download" == true ]]; then
+    required_content_bytes=$size_bytes
+  fi
+
+  if [[ "$XZ_FLAG" == "true" || "$XZ_FLAG" == "1" ]]; then
+    uncompressed_size_bytes=$(json_read ".template.versions.uncompressed.size_in_bytes" || true)
+    if [[ "$uncompressed_size_bytes" =~ ^[0-9]+$ ]]; then
+      required_content_bytes=$(( required_content_bytes + uncompressed_size_bytes ))
+    fi
+  elif [[ "$needs_download" != true ]]; then
+    required_content_bytes=$size_bytes
+  fi
+
+  avail_kb=$(df -Pk "$dir" 2>/dev/null | tail -1 | awk '{print $4}')
+  avail_bytes=$(( ${avail_kb:-0} * 1024 ))
+  required_bytes=$(( required_content_bytes + (1024 * 1024 * 1024) ))
+  if (( avail_bytes < required_bytes )); then
+    echo "Not enough free space in $dir. Required: $required_bytes bytes (operation plus 1 GiB buffer), Available: $avail_bytes bytes" >&2
+    exit 9
   fi
 }
 
@@ -149,6 +197,7 @@ if [[ -f "$FINAL_OUTFILE" ]]; then
   fi
 elif [[ "$XZ_FLAG" == "true" && -f "$DOWNLOAD_PATH" ]]; then
   echo "Found existing compressed file: $DOWNLOAD_PATH. Attempting to decompress."
+  ensure_free_space false
   if decompress_xz "$DOWNLOAD_PATH" "$FINAL_OUTFILE"; then
     echo "Decompressed existing file to $FINAL_OUTFILE"
     HASH_FULL=$(json_read ".template.versions.uncompressed.hash" || true)
@@ -170,27 +219,7 @@ elif [[ "$XZ_FLAG" == "true" && -f "$DOWNLOAD_PATH" ]]; then
   fi
 fi
 
-# --- Ensure target directory exists and has enough free space (use DOWNLOAD_PATH) ---
-DIR="$(dirname "$DOWNLOAD_PATH")"
-if [[ ! -d "$DIR" ]]; then
-  mkdir -p "$DIR" || { echo "Cannot create directory $DIR" >&2; exit 8; }
-fi
-
-echo "Checking if there is enough free space in $DIR..."
-SIZE_BYTES=$(json_read ".template.versions.$VERSION.size_in_bytes" || true)
-if [[ -n "$SIZE_BYTES" && "$SIZE_BYTES" != "null" ]]; then
-  if [[ "$SIZE_BYTES" =~ ^[0-9]+$ ]]; then
-    # Get available kilobytes for the filesystem containing DIR, convert to bytes
-    AVAIL_KB=$(df -Pk "$DIR" 2>/dev/null | tail -1 | awk '{print $4}')
-    AVAIL_BYTES=$(( (${AVAIL_KB:-0} * 1024) + (1024 * 1024 * 1024) )) # Add 1GB buffer
-    if (( AVAIL_BYTES < SIZE_BYTES )); then
-      echo "Not enough free space in $DIR. Required: $SIZE_BYTES bytes, Available: $AVAIL_BYTES bytes (including 1GB buffer)" >&2
-      exit 9
-    fi
-  else
-    echo "Invalid size_in_bytes in JSON: $SIZE_BYTES; skipping space check." >&2
-  fi
-fi
+ensure_free_space true
 
 echo "Downloading IPFS CID: $CID"
 echo "Saving to: $DOWNLOAD_PATH"

@@ -56,6 +56,7 @@ The script will check that the following TCP ports are available:
 
  - TCP 22
  - TCP 443
+ - TCP 8669 (the Tailmox web terminal; `TMOX` on a telephone keypad)
  - TCP 8006
 
 The script will exit if any of the ports aren't available.
@@ -78,6 +79,7 @@ Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412
 	{"action": "accept", "proto": "tcp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:22"]},   // Tailmox SSH
 	{"action": "accept", "proto": "tcp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:443"]}, // Tailmox web
 	{"action": "accept", "proto": "tcp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:8006"]}, // Tailmox web
+	{"action": "accept", "proto": "tcp", "src": ["*"], "dst": ["tag:tailmox:8669"]}, // Tailmox terminal
 	{"action": "accept", "proto": "udp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:5405"]}, // Tailmox clustering
 	{"action": "accept", "proto": "udp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:5406"]}, // Tailmox clustering
 	{"action": "accept", "proto": "udp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:5407"]}, // Tailmox clustering
@@ -112,7 +114,7 @@ Under the "Advertised" section, click "Define Service". Then fill in the followi
 
  - Service name: tailmox
  - Description: (this can be whatever you want)
- - Ports: 443
+ - Ports: 443 and 8669
  - Service tags: (add the tag of 'tailmox')
 
 then submit.
@@ -126,14 +128,25 @@ then submit.
 2. Change into the install directory: `cd tailmox`
 3. Make sure that the script is executable: `chmod +x tailmox.sh`
 4. Run the script: `./tailmox.sh`
+5. Open the HTTPS URL printed by the script from a device on your tailnet. The installer runs interactively in the browser terminal.
 
 ---
 
 ### 🖥️ Usage 🖥️
 
-`tailmox.sh` can be run without any parameters, but if the host is not logged into Tailscale, then when the script performs `tailscale up`, Tailscale will provide a link to use to login with.
+`tailmox.sh` starts a persistent browser terminal on TCP 8669 and prints its tailnet-only HTTPS URL. The terminal service listens only on localhost; Tailscale Serve provides HTTPS and access over the tailnet. Opening the URL starts the interactive Tailmox installer.
 
-In order to make the Tailscale functions easier to handle, `tailmox.sh` accepts the "--auth-key" parameter, followed by a Tailscale auth key, which can be generated via their [Keys](https://login.tailscale.com/admin/settings/keys) page. It is recommended that the key generated is reusable.
+The local `tailmox` command provides shortcuts for the main workflows:
+
+```bash
+tailmox cluster             # Run the complete clustering workflow
+tailmox serve               # Start the browser-terminal launcher
+tailmox stage               # Set up Tailscale and certificates only
+tailmox test                # Run the test suite
+tailmox help                # List available commands
+```
+
+The launcher accepts the `--auth-key` parameter, followed by a Tailscale auth key, which can be generated via the Tailscale [Keys](https://login.tailscale.com/admin/settings/keys) page. An auth key is required when the host is not already signed in because the browser terminal is reachable only after Tailscale is online.
 
 During the running of the script, if there are existing hosts within the tailmox cluster, it is likely to ask for the password of one of the remote hosts in order to properly join the Proxmox cluster.
 
@@ -142,6 +155,14 @@ During the running of the script, if there are existing hosts within the tailmox
 ### 🧪 Testing 🧪
 
 This project has been tested to successfully join a cluster of three Proxmox v8 and v9 hosts together into a cluster via Tailscale. It has been tested up to the point of achieving this goal and not further. It is possible that further testing with other features related to clustering (like high availability and ZFS replication) may not work, though bugs can be patched appropriately when known.
+
+Run the local test suite from the project directory with:
+
+```bash
+./tailmox test
+```
+
+If the project directory is on your `PATH`, the equivalent command is `tailmox test`.
 
 If planning to run `tailmox.sh` many times in a short period, it is recommended that staging is performed first. By supplying the "--staging" parameter, `tailmox.sh` will install Tailscale and retrieve the Tailscale certificate and then stop. The purpose of staging is to prevent many requests to Tailscale for the same certificate in rapid succession. If staging is not performed, it is possible that the step to setup the certificate will take a very long time, which is not optimal when running many tests centered around setting up the Proxmox cluster.
 
