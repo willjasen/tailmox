@@ -1057,10 +1057,10 @@ function ensure_ping_reachability() {
             log_echo "${RED}   - ${packet_size}-byte ICMP: latency result could not be interpreted. No cluster changes will be made.${RESET}"
             all_reachable=false
         elif awk -v latency="$max_latency" -v limit="$latency_warning_ms" 'BEGIN { exit !(latency > limit) }'; then
-            log_echo "${YELLOW}   - WARNING: ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms exceeded 50 ms; ${packet_loss:-packet loss unknown}.${RESET}"
+            log_echo "${YELLOW}   - WARNING: ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms exceeded 50 ms; $received_count of $transmitted_count replies arrived; ${packet_loss:-packet loss unknown}.${RESET}"
             override_required=true
         else
-            log_echo "${GREEN}   - ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms; all replies arrived within 50 ms; ${packet_loss:-0% packet loss}.${RESET}"
+            log_echo "${GREEN}   - ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms; $received_count of $transmitted_count replies arrived within 50 ms; ${packet_loss:-0% packet loss}.${RESET}"
         fi
 
         index=$((index + 1))

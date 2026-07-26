@@ -17,7 +17,7 @@ printf '%s\n' \
     '[[ "${1:-}" == "test" ]] || exit 2' \
     'printf "%s\n" " - pve-local (pve-local.example.ts.net)"' \
     'printf "%s\n" "   - Tailscale path: 20 of 20 Tailscale pings succeeded (80% required); average latency 4.25 ms; maximum latency 7.50 ms."' \
-    'printf "%s\n" "   - 64-byte ICMP: average latency 1.25 ms; maximum latency 2.50 ms; all replies arrived within 50 ms; 0% packet loss."' \
+    'printf "%s\n" "   - 64-byte ICMP: average latency 1.25 ms; maximum latency 2.50 ms; 11 of 11 replies arrived within 50 ms; 0% packet loss."' \
     'printf "%s\n" "   - TCP port 8006 is available; latency 3.75 ms."' \
     'printf "%s\n" " - pve-remote (100.64.0.2)"' \
     'printf "%s\n" "   - TCP port 443 is not available; latency 2001.25 ms."' \
@@ -64,17 +64,17 @@ assert nodes == 2, nodes
 
 checks = connection.execute(
     """
-    SELECT category, status, port, packet_size_bytes,
+    SELECT category, status, port, packet_size_bytes, packets_sent, packets_received,
            latency_average_ms, latency_maximum_ms
     FROM monitor_check_results
     ORDER BY id
     """
 ).fetchall()
 assert len(checks) == 5, checks
-assert ("tailscale", "passed", None, None, 4.25, 7.5) in checks, checks
-assert ("tcp", "passed", 8006, None, 3.75, 3.75) in checks, checks
-assert ("tcp", "failed", 443, None, 2001.25, 2001.25) in checks, checks
-assert ("icmp", "passed", None, 64, 1.25, 2.5) in checks, checks
+assert ("tailscale", "passed", None, None, 20, 20, 4.25, 7.5) in checks, checks
+assert ("tcp", "passed", 8006, None, None, None, 3.75, 3.75) in checks, checks
+assert ("tcp", "failed", 443, None, None, None, 2001.25, 2001.25) in checks, checks
+assert ("icmp", "passed", None, 64, 11, 11, 1.25, 2.5) in checks, checks
 
 cluster = connection.execute(
     """

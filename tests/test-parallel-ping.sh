@@ -165,9 +165,9 @@ if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_tailscale
 fi
 
 printf -v expected_small_icmp_line '%b' \
-    "${GREEN}   - 64-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; all replies arrived within 50 ms; 0% packet loss.${RESET}"
+    "${GREEN}   - 64-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; 11 of 11 replies arrived within 50 ms; 0% packet loss.${RESET}"
 printf -v expected_large_icmp_line '%b' \
-    "${GREEN}   - 1280-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; all replies arrived within 50 ms; 0% packet loss.${RESET}"
+    "${GREEN}   - 1280-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; 11 of 11 replies arrived within 50 ms; 0% packet loss.${RESET}"
 if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_small_icmp_line")" -ne 3 ]] \
     || [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_large_icmp_line")" -ne 3 ]]; then
     printf 'FAIL: ICMP results were not nested beneath peer headings\n'
