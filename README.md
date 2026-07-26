@@ -127,7 +127,7 @@ then submit.
 2. Pull this repo: `git clone https://github.com/willjasen/tailmox`
 2. Change into the install directory: `cd tailmox`
 3. Make sure that the script is executable: `chmod +x tailmox.sh`
-4. Bootstrap the `tailmox` command and start the installer: `./tailmox serve start`
+4. Bootstrap the `tailmox` command and start the installer: `./tailmox serve`
 5. Open the HTTPS URL printed by the script from an administrator's device on your tailnet. The dashboard includes an idle terminal, explicit buttons for `tailmox test`, `tailmox backups create`, and `tailmox cluster`, and a read-only configuration-backup inventory.
 
 ---
@@ -140,7 +140,8 @@ The local `tailmox` command provides shortcuts for the main workflows:
 
 ```bash
 tailmox cluster             # Run the complete clustering workflow
-tailmox serve start         # Start the dashboard and browser terminal
+tailmox serve               # Start the dashboard and browser terminal
+tailmox serve start         # Explicit form of `tailmox serve`
 tailmox serve stop          # Stop the dashboard and browser terminal
 tailmox stage               # Set up Tailscale and certificates only
 tailmox backups             # List configuration backups

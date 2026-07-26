@@ -45,3 +45,29 @@ if [[ "$(sed -n '1p' "$CONFLICT_DIR/tailmox")" != "unrelated command" ]]; then
 fi
 
 printf 'PASS: bootstrap preserves an unrelated existing command\n'
+
+DISPATCH_DIR="$TEST_DIR/dispatch"
+mkdir -p "$DISPATCH_DIR"
+cp "$TEST_ROOT/tailmox" "$DISPATCH_DIR/tailmox"
+printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'printf "tailmox.sh"' \
+    'for argument in "$@"; do printf " <%s>" "$argument"; done' \
+    'printf "\n"' \
+    > "$DISPATCH_DIR/tailmox.sh"
+chmod +x "$DISPATCH_DIR/tailmox" "$DISPATCH_DIR/tailmox.sh"
+
+SHORT_OUTPUT=$(TAILMOX_BIN_DIR="$BIN_DIR" "$DISPATCH_DIR/tailmox" serve)
+EXPLICIT_OUTPUT=$(TAILMOX_BIN_DIR="$BIN_DIR" "$DISPATCH_DIR/tailmox" serve start)
+OPTION_OUTPUT=$(TAILMOX_BIN_DIR="$BIN_DIR" "$DISPATCH_DIR/tailmox" serve start --auth-key test-key)
+SHORT_OPTION_OUTPUT=$(TAILMOX_BIN_DIR="$BIN_DIR" "$DISPATCH_DIR/tailmox" serve --auth-key test-key)
+
+if [[ "$SHORT_OUTPUT" != 'tailmox.sh' ||
+    "$EXPLICIT_OUTPUT" != 'tailmox.sh' ||
+    "$OPTION_OUTPUT" != 'tailmox.sh <--auth-key> <test-key>' ||
+    "$SHORT_OPTION_OUTPUT" != 'tailmox.sh <--auth-key> <test-key>' ]]; then
+    printf 'FAIL: serve did not default to the explicit start action\n'
+    exit 1
+fi
+
+printf 'PASS: serve defaults to the explicit start action\n'

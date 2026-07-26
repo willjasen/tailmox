@@ -24,9 +24,13 @@ source "$TEST_ROOT/tailmox.sh"
 
 SYSTEMCTL_CALLS="$TEST_LOG_DIR/systemctl-calls"
 TAILSCALE_CALLS="$TEST_LOG_DIR/tailscale-calls"
+WEB_SERVICE_ACTIVE=false
 
 function systemctl() {
     printf '%s\n' "$*" >> "$SYSTEMCTL_CALLS"
+    if [[ "${1:-}" == "is-active" ]]; then
+        [[ "$WEB_SERVICE_ACTIVE" == "true" ]]
+    fi
 }
 
 function tailscale() {
@@ -68,6 +72,22 @@ if ! grep -Fxq 'enable tailmox-web.service' "$SYSTEMCTL_CALLS" ||
     printf 'FAIL: systemd service was not enabled and restarted\n'
     exit 1
 fi
+
+WEB_SERVICE_ACTIVE=true
+SYSTEMCTL_CALL_COUNT=$(wc -l < "$SYSTEMCTL_CALLS")
+TAILSCALE_CALL_COUNT=$(wc -l < "$TAILSCALE_CALLS")
+OUTPUT=$(start_web_terminal)
+
+if [[ "$OUTPUT" != 'Tailmox web server is already running.' ]]; then
+    printf 'FAIL: start did not report that the web server was already running\n'
+    exit 1
+fi
+if [[ "$(wc -l < "$SYSTEMCTL_CALLS")" -ne $((SYSTEMCTL_CALL_COUNT + 1)) ||
+    "$(wc -l < "$TAILSCALE_CALLS")" -ne "$TAILSCALE_CALL_COUNT" ]]; then
+    printf 'FAIL: starting an already-running web server changed its state\n'
+    exit 1
+fi
+WEB_SERVICE_ACTIVE=false
 
 if ! grep -Fxq \
     "serve --bg --yes --https=8669 --set-path=/ $TAILMOX_WEB_ROOT" \

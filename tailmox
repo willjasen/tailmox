@@ -128,7 +128,7 @@ show_usage() {
     cat <<'EOF'
 Usage:
   tailmox cluster [options]  Run the complete clustering workflow
-  tailmox serve start [options]
+  tailmox serve [start] [options]
                              Start the dashboard and browser terminal
   tailmox serve stop         Stop the dashboard and browser terminal
   tailmox stage [options]    Set up Tailscale and certificates only
@@ -159,6 +159,9 @@ case "${1:-}" in
                 shift
                 exec "$TAILMOX_ROOT/tailmox.sh" "$@"
                 ;;
+            ""|-*)
+                exec "$TAILMOX_ROOT/tailmox.sh" "$@"
+                ;;
             stop)
                 shift
                 if [[ "$#" -ne 0 ]]; then
@@ -171,7 +174,7 @@ case "${1:-}" in
                 if [[ -n "${1:-}" ]]; then
                     printf 'Unknown serve action: %s\n' "$1" >&2
                 fi
-                printf 'Usage: tailmox serve <start|stop>\n' >&2
+                printf 'Usage: tailmox serve [start|stop]\n' >&2
                 exit 2
                 ;;
         esac

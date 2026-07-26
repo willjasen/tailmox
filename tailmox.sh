@@ -354,6 +354,14 @@ function start_web_terminal() {
         return 1
     fi
 
+    if [[ -e "$service_target" ]] &&
+        grep -Fqx 'Description=Tailmox web terminal' "$service_target" &&
+        grep -Fq '/tailmox-web-terminal' "$service_target" &&
+        systemctl is-active --quiet "$TAILMOX_WEB_SERVICE" >>"$LOG_FILE" 2>&1; then
+        printf 'Tailmox web server is already running.\n'
+        return 0
+    fi
+
     if ! install_web_dashboard; then
         return 1
     fi
