@@ -91,6 +91,18 @@ else
     PASS_COUNT=$((PASS_COUNT + 1))
 fi
 
+EXPECTED_SECTION_ORDER=$'1. Host readiness\n2. Tailscale identity\n3. Local host connectivity\n4. Peer connectivity\nRESULT: Setup test passed'
+ACTUAL_SECTION_ORDER=$(printf '%s\n' "$SETUP_OUTPUT" |
+    sed $'s/\033\\[[0-9;]*m//g' |
+    grep -Eo '1\. Host readiness|2\. Tailscale identity|3\. Local host connectivity|4\. Peer connectivity|RESULT: Setup test passed')
+if [[ "$ACTUAL_SECTION_ORDER" == "$EXPECTED_SECTION_ORDER" ]]; then
+    printf 'PASS: setup test output separates its major phases in order\n'
+    PASS_COUNT=$((PASS_COUNT + 1))
+else
+    printf 'FAIL: setup test output separates its major phases in order\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+fi
+
 MOCK_MISSING_DEPENDENCY="ttyd"
 if SETUP_OUTPUT=$(test_setup_safely 2>&1); then
     printf 'FAIL: missing dependency fails the self-test\n'

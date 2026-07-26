@@ -87,6 +87,15 @@ function log_echo() {
     echo "[$timestamp] $(echo -e "$message" | sed 's/\x1b\[[0-9;]*m//g')" >> "$LOG_FILE"
 }
 
+# Visually separate the major phases of the read-only setup test.
+function log_test_section() {
+    local section_number="$1"
+    local section_title="$2"
+
+    log_echo ""
+    log_echo "${CYAN}━━━ ${section_number}. ${section_title} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+}
+
 # Check if Proxmox is installed
 function check_if_supported_proxmox_is_installed() {
     log_echo "${YELLOW}Checking if Proxmox v8 or v9 is installed...${RESET}"
@@ -1540,8 +1549,9 @@ function test_setup_safely() {
     local dns_name
 
     printf '%s\n' "Tailmox setup test (read-only)"
-    printf '%s\n\n' "No packages, services, Tailscale settings, or cluster state will be changed."
+    printf '%s\n' "No packages, services, Tailscale settings, or cluster state will be changed."
 
+    log_test_section 1 "Host readiness"
     if ! check_if_supported_proxmox_is_installed; then
         return 1
     fi
@@ -1562,6 +1572,7 @@ function test_setup_safely() {
         return 1
     fi
 
+    log_test_section 2 "Tailscale identity"
     log_echo "${YELLOW}Reading current Tailscale state...${RESET}"
     if ! status_json=$(tailscale status --json 2>/dev/null) ||
         ! printf '%s\n' "$status_json" | jq -e '
@@ -1606,17 +1617,20 @@ function test_setup_safely() {
         jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]')
     LOCAL_PEERS=$(jq -n --argjson localPeer "$LOCAL_PEER" '[$localPeer]')
 
+    log_test_section 3 "Local host connectivity"
     log_echo "${YELLOW}Testing the local Proxmox host first over its Tailscale address...${RESET}"
     ensure_ping_reachability "$LOCAL_PEERS" "the local Proxmox host" || return 1
     are_hosts_tcp_port_8006_reachable "$LOCAL_PEERS" "the local Proxmox host" || return 1
     are_hosts_tcp_port_443_reachable "$LOCAL_PEERS" "the local Proxmox host" || return 1
 
+    log_test_section 4 "Peer connectivity"
     check_all_peers_online || return 1
     ensure_ping_reachability || return 1
     are_hosts_tcp_port_8006_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
     are_hosts_tcp_port_443_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
 
-    printf '\n%s\n' "Setup test passed."
+    log_echo ""
+    log_echo "${GREEN}━━━ RESULT: Setup test passed ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
     printf '%s\n' "Skipped all mutating steps: package installation, Tailscale up/serve,"
     printf '%s\n' "systemd changes, certificate changes, and Proxmox cluster create/join."
 }
