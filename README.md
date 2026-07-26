@@ -155,7 +155,7 @@ tailmox help                # List available commands
 
 The launcher accepts the `--auth-key` parameter, followed by a Tailscale auth key, which can be generated via the Tailscale [Keys](https://login.tailscale.com/admin/settings/keys) page. An auth key is required when the host is not already signed in because the browser terminal is reachable only after Tailscale is online.
 
-Tailmox preserves an existing Tailscale login instead of authenticating again. The connected device must already have the exact `tag:tailmox` tag, assigned through the Tailscale admin console or API. When provisioning a logged-out host with `--auth-key`, configure that auth key to apply `tag:tailmox`.
+Tailmox preserves an existing Tailscale login instead of authenticating again. After Tailscale connects, `tailmox stage` and the full clustering workflow verify that the local device has the exact `tag:tailmox` tag and stop before configuring Tailscale Serve if it does not. Assign the tag through the Tailscale admin console or API. When provisioning a logged-out host with `--auth-key`, configure that auth key to apply `tag:tailmox`.
 
 During the running of the script, if there are existing hosts within the tailmox cluster, it is likely to ask for the password of one of the remote hosts in order to properly join the Proxmox cluster.
 

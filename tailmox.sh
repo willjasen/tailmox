@@ -446,6 +446,22 @@ function install_tailscale() {
     fi
 }
 
+# Verify the connected local node has the identity required by Tailmox.
+function verify_local_tailmox_tag() {
+    local status_json
+
+    if ! status_json=$(tailscale status --json 2>/dev/null) ||
+        ! printf '%s\n' "$status_json" |
+            jq -e '
+                .BackendState == "Running"
+                and (.Self | type == "object")
+                and ((.Self.Tags // []) | index("tag:tailmox") != null)
+            ' >/dev/null 2>&1; then
+        log_echo "${RED}This device is not connected with the required tag:tailmox identity, or Tailscale returned incomplete status. Assign the tag with the Tailscale API, admin console, or auth key before running Tailmox.${RESET}"
+        return 1
+    fi
+}
+
 # Bring up Tailscale
 function start_tailscale() {
     local auth_key="$1"
@@ -483,9 +499,9 @@ function start_tailscale() {
 
     TAILSCALE_DNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')
 
-    if ! tailscale status --json |
-        jq -e '(.Self.Tags // []) | index("tag:tailmox") != null' >/dev/null 2>&1; then
-        log_echo "${RED}This device does not have the required tag:tailmox identity. Assign it with the Tailscale API, admin console, or auth key before running Tailmox.${RESET}"
+    # Staging and clustering must stop before configuring Tailscale Serve unless
+    # the post-login local identity is exactly the Tailmox tag.
+    if ! verify_local_tailmox_tag; then
         return 1
     fi
 

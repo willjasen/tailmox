@@ -36,13 +36,18 @@ CONNECTED_OFFLINE_STATUS='{
   }
 }'
 LOGGED_OUT_STATUS='{"BackendState": "NeedsLogin", "Self": null}'
+MALFORMED_STATUS='{"BackendState": "Running", "Self":'
 
 MOCK_STATUS="$CONNECTED_STATUS"
 MOCK_STATUS_AFTER_UP="$CONNECTED_STATUS"
 TAILSCALE_UP_CALLS=""
+MOCK_STATUS_FAILURE=false
 
 function tailscale() {
     if [[ "${1:-}" == "status" && "${2:-}" == "--json" ]]; then
+        if [[ "$MOCK_STATUS_FAILURE" == "true" ]]; then
+            return 1
+        fi
         printf '%s\n' "$MOCK_STATUS"
         return 0
     fi
@@ -117,6 +122,22 @@ if ! start_tailscale "tskey-test" >/dev/null 2>&1 &&
 else
     fail "auth key must result in a device carrying tag:tailmox"
 fi
+
+MOCK_STATUS="$MALFORMED_STATUS"
+TAILSCALE_UP_CALLS=""
+if ! verify_local_tailmox_tag >/dev/null 2>&1; then
+    pass "malformed post-connection status fails the local tag check"
+else
+    fail "malformed post-connection status fails the local tag check"
+fi
+
+MOCK_STATUS_FAILURE=true
+if ! verify_local_tailmox_tag >/dev/null 2>&1; then
+    pass "post-connection status command failure fails the local tag check"
+else
+    fail "post-connection status command failure fails the local tag check"
+fi
+MOCK_STATUS_FAILURE=false
 
 printf '\n%s passed; %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 
