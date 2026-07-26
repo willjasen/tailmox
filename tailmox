@@ -129,8 +129,8 @@ show_usage() {
 Usage:
   tailmox cluster [options]  Run the complete clustering workflow
   tailmox serve [start] [options]
-                             Start the dashboard and browser terminal
-  tailmox serve stop         Stop the dashboard and browser terminal
+                             Start the dashboard and read-only command output
+  tailmox serve stop         Stop the dashboard and command-output service
   tailmox stage [options]    Set up Tailscale and certificates only
   tailmox backups [list]     List Tailmox configuration backups
   tailmox backups create     Create a configuration backup now

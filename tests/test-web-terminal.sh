@@ -60,6 +60,11 @@ if grep -Fq -- '--base-path' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
     exit 1
 fi
 
+if grep -Fq -- '--writable' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
+    printf 'FAIL: ttyd allowed browser input to the host process\n'
+    exit 1
+fi
+
 if ! grep -Fq -- '--url-arg' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service" ||
     ! grep -Fq -- '/opt/tailmox/tailmox-web-terminal' \
         "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
@@ -197,4 +202,4 @@ if ! refresh_web_backup_inventory ||
     exit 1
 fi
 
-printf 'PASS: dashboard embeds the terminal and publishes live monitor and safe backup metadata\n'
+printf 'PASS: dashboard embeds read-only command output and publishes live monitor and safe backup metadata\n'

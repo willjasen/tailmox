@@ -4,7 +4,6 @@ set -Eeuo pipefail
 
 TAILMOX_WEB_LAUNCHER_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 TAILMOX_COMMAND="${TAILMOX_COMMAND:-$TAILMOX_WEB_LAUNCHER_DIR/tailmox}"
-TAILMOX_WEB_SHELL="${TAILMOX_WEB_SHELL:-/bin/bash}"
 TAILMOX_WEB_ACTION="${1:-}"
 
 if [[ "$#" -gt 1 ]]; then
@@ -15,10 +14,13 @@ fi
 case "$TAILMOX_WEB_ACTION" in
     "")
         printf '%s\n' \
-            'Tailmox terminal ready.' \
-            'Choose tailmox test or tailmox cluster above, or enter a command here.' \
+            'Tailmox command output is ready.' \
+            'Choose an action above to run an approved Tailmox command.' \
+            'This view is read-only and does not provide a host shell.' \
             ''
-        exec "$TAILMOX_WEB_SHELL"
+        while true; do
+            sleep 3600
+        done
         ;;
     test)
         exec "$TAILMOX_COMMAND" test

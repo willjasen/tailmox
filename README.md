@@ -70,7 +70,7 @@ This script uses the tag of "tailmox" to determine which Tailscale machines are 
 }
 ```
 
-Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. The rule at the end restricts the Tailmox dashboard and its writable root terminal to tailnet administrators.
+Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. The rule at the end restricts the Tailmox dashboard and its read-only command-output view to tailnet administrators.
 ```
 "acls": [
 	/// ... ACL rules before
@@ -128,21 +128,21 @@ then submit.
 2. Change into the install directory: `cd tailmox`
 3. Make sure that the script is executable: `chmod +x tailmox.sh`
 4. Bootstrap the `tailmox` command and start the installer: `./tailmox serve`
-5. Open the HTTPS URL printed by the script from an administrator's device on your tailnet. The dashboard includes an idle terminal, explicit buttons for `tailmox test`, `tailmox backups create`, and `tailmox cluster`, and a read-only configuration-backup inventory.
+5. Open the HTTPS URL printed by the script from an administrator's device on your tailnet. The dashboard includes a read-only command-output view, explicit buttons for `tailmox test`, `tailmox backups create`, and `tailmox cluster`, and a read-only configuration-backup inventory.
 
 ---
 
 ### 🖥️ Usage 🖥️
 
-`tailmox.sh` starts a persistent dashboard on TCP 8669 and prints its tailnet-only HTTPS URL using the current Proxmox host's Tailscale MagicDNS name. The dashboard embeds an idle interactive terminal at `/terminal/` and shows a read-only inventory of configuration backups. Opening the page does not start setup. Use the `tailmox test` button for the read-only setup check, `tailmox backups create` to create a private configuration archive, or the confirmation-gated `tailmox cluster` button to begin the clustering workflow. The terminal service listens only on localhost; Tailscale Serve provides HTTPS and access over the tailnet.
+`tailmox.sh` starts a persistent dashboard on TCP 8669 and prints its tailnet-only HTTPS URL using the current Proxmox host's Tailscale MagicDNS name. The dashboard embeds a read-only command-output view at `/terminal/` and shows a read-only inventory of configuration backups. Opening the page does not start setup or launch a host shell. Use the `tailmox test` button for the read-only setup check, `tailmox backups create` to create a private configuration archive, or the confirmation-gated `tailmox cluster` button to begin the clustering workflow. The command-output service listens only on localhost; Tailscale Serve provides HTTPS and access over the tailnet.
 
 The local `tailmox` command provides shortcuts for the main workflows:
 
 ```bash
 tailmox cluster             # Run the complete clustering workflow
-tailmox serve               # Start the dashboard and browser terminal
+tailmox serve               # Start the dashboard and read-only command output
 tailmox serve start         # Explicit form of `tailmox serve`
-tailmox serve stop          # Stop the dashboard and browser terminal
+tailmox serve stop          # Stop the dashboard and command-output service
 tailmox stage               # Set up Tailscale and certificates only
 tailmox backups             # List configuration backups
 tailmox backups create      # Create a configuration backup now

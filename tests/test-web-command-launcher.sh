@@ -7,27 +7,29 @@ TEST_DIR=$(mktemp -d)
 trap 'rm -rf "$TEST_DIR"' EXIT
 
 MOCK_COMMAND="$TEST_DIR/mock-command"
-MOCK_SHELL="$TEST_DIR/mock-shell"
 
 printf '%s\n' \
     '#!/usr/bin/env bash' \
     'printf "tailmox:%s\n" "$*"' > "$MOCK_COMMAND"
-printf '%s\n' \
-    '#!/usr/bin/env bash' \
-    'printf "idle-shell\n"' > "$MOCK_SHELL"
-chmod +x "$MOCK_COMMAND" "$MOCK_SHELL"
+chmod +x "$MOCK_COMMAND"
 
-if idle_output=$(
-    TAILMOX_COMMAND="$MOCK_COMMAND" \
-    TAILMOX_WEB_SHELL="$MOCK_SHELL" \
-        "$TEST_ROOT/tailmox-web-terminal"
-) &&
-    [[ "$idle_output" == *"Tailmox terminal ready."* ]] &&
-    [[ "$idle_output" == *"idle-shell"* ]] &&
+TAILMOX_COMMAND="$MOCK_COMMAND" \
+    "$TEST_ROOT/tailmox-web-terminal" > "$TEST_DIR/idle-output" &
+IDLE_PID=$!
+for _ in {1..20}; do
+    [[ -s "$TEST_DIR/idle-output" ]] && break
+    sleep 0.05
+done
+idle_output=$(cat "$TEST_DIR/idle-output")
+kill "$IDLE_PID"
+wait "$IDLE_PID" 2>/dev/null || true
+
+if [[ "$idle_output" == *"Tailmox command output is ready."* ]] &&
+    [[ "$idle_output" == *"This view is read-only"* ]] &&
     [[ "$idle_output" != *"tailmox:"* ]]; then
-    printf 'PASS: opening the web terminal does not start Tailmox\n'
+    printf 'PASS: opening the web terminal shows an idle read-only view\n'
 else
-    printf 'FAIL: opening the web terminal does not start Tailmox\n'
+    printf 'FAIL: opening the web terminal did not show an idle read-only view\n'
     exit 1
 fi
 
