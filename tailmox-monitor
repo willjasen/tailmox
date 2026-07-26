@@ -1,0 +1,852 @@
+#!/usr/bin/env python3
+
+"""Run Tailmox health checks periodically and store normalized observations."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import fcntl
+import http.server
+import json
+import os
+import pathlib
+import re
+import signal
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+import urllib.parse
+
+
+DEFAULT_INTERVAL_SECONDS = 60
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+PEER_HEADING = re.compile(r"^\s*-\s+(.+?)\s+\(([^)]+)\)\s*$")
+TAILSCALE_PATH = re.compile(
+    r"Tailscale path(?: check failed)?:\s+(\d+)\s+of\s+(\d+)\s+Tailscale pings succeeded"
+)
+ICMP_RESULT = re.compile(
+    r"(?P<size>\d+)-byte ICMP:.*?average latency "
+    r"(?P<average>[0-9.]+|unknown) ms; maximum latency "
+    r"(?P<maximum>[0-9.]+|unknown) ms;(?P<remainder>.*)"
+)
+ICMP_REPLIES = re.compile(r"only\s+(\d+)\s+of\s+(\d+)\s+replies")
+TCP_RESULT = re.compile(r"TCP port\s+(\d+)\s+is\s+(not\s+)?available")
+
+SCHEMA = """
+PRAGMA foreign_keys = ON;
+CREATE TABLE IF NOT EXISTS monitor_runs (
+    id INTEGER PRIMARY KEY,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    duration_ms INTEGER,
+    requested_mode TEXT NOT NULL
+        CHECK (requested_mode IN ('auto', 'pre-cluster', 'cluster')),
+    mode TEXT NOT NULL CHECK (mode IN ('pre-cluster', 'cluster')),
+    hostname TEXT NOT NULL,
+    cluster_name TEXT,
+    test_exit_code INTEGER,
+    status TEXT NOT NULL
+        CHECK (status IN ('running', 'passed', 'warning', 'failed')),
+    error_code TEXT
+);
+CREATE INDEX IF NOT EXISTS monitor_runs_started_at
+    ON monitor_runs(started_at DESC);
+CREATE INDEX IF NOT EXISTS monitor_runs_mode_started_at
+    ON monitor_runs(mode, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS monitor_nodes (
+    id INTEGER PRIMARY KEY,
+    identity TEXT NOT NULL UNIQUE,
+    hostname TEXT NOT NULL,
+    dns_name TEXT,
+    tailscale_ip TEXT,
+    first_seen_at TEXT NOT NULL,
+    last_seen_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS monitor_nodes_hostname
+    ON monitor_nodes(hostname);
+
+CREATE TABLE IF NOT EXISTS monitor_run_nodes (
+    run_id INTEGER NOT NULL REFERENCES monitor_runs(id) ON DELETE CASCADE,
+    node_id INTEGER NOT NULL REFERENCES monitor_nodes(id),
+    is_local INTEGER NOT NULL CHECK (is_local IN (0, 1)),
+    online INTEGER NOT NULL CHECK (online IN (0, 1)),
+    PRIMARY KEY (run_id, node_id)
+);
+
+CREATE TABLE IF NOT EXISTS monitor_checks (
+    id INTEGER PRIMARY KEY,
+    run_id INTEGER NOT NULL REFERENCES monitor_runs(id) ON DELETE CASCADE,
+    node_id INTEGER REFERENCES monitor_nodes(id),
+    category TEXT NOT NULL,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('passed', 'warning', 'failed')),
+    packet_size_bytes INTEGER,
+    packets_sent INTEGER,
+    packets_received INTEGER,
+    latency_average_ms REAL,
+    latency_maximum_ms REAL,
+    port INTEGER,
+    detail TEXT
+);
+CREATE INDEX IF NOT EXISTS monitor_checks_run_id
+    ON monitor_checks(run_id);
+CREATE INDEX IF NOT EXISTS monitor_checks_status_run_id
+    ON monitor_checks(status, run_id);
+
+CREATE TABLE IF NOT EXISTS monitor_cluster_samples (
+    run_id INTEGER PRIMARY KEY REFERENCES monitor_runs(id) ON DELETE CASCADE,
+    quorate INTEGER CHECK (quorate IN (0, 1)),
+    configured_nodes INTEGER,
+    expected_votes INTEGER,
+    total_votes INTEGER,
+    quorum INTEGER,
+    ring_id TEXT
+);
+"""
+
+
+class AnalyticsBroker:
+    def __init__(self) -> None:
+        self.condition = threading.Condition()
+        self.document: dict[str, object] = {
+            "generatedAt": utc_now(),
+            "latest": None,
+            "last24Hours": {"runs": 0, "passed": 0, "warnings": 0, "failed": 0},
+            "history": [],
+        }
+        self.version = 0
+
+    def publish(self, document: dict[str, object]) -> None:
+        with self.condition:
+            self.document = document
+            self.version += 1
+            self.condition.notify_all()
+
+    def snapshot(self) -> tuple[int, dict[str, object]]:
+        with self.condition:
+            return self.version, self.document
+
+    def wait_for_update(
+        self, version: int, timeout: float
+    ) -> tuple[int, dict[str, object]]:
+        with self.condition:
+            self.condition.wait_for(lambda: self.version != version, timeout=timeout)
+            return self.version, self.document
+
+
+class MonitorHTTPServer(http.server.ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+    def __init__(
+        self, address: tuple[str, int], broker: AnalyticsBroker
+    ) -> None:
+        self.broker = broker
+        super().__init__(address, MonitorRequestHandler)
+
+
+class MonitorRequestHandler(http.server.BaseHTTPRequestHandler):
+    server: MonitorHTTPServer
+
+    def log_message(self, format_string: str, *args: object) -> None:
+        return
+
+    def do_GET(self) -> None:
+        path = urllib.parse.urlparse(self.path).path.rstrip("/")
+        if path.endswith("/events") or path == "/events":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("X-Accel-Buffering", "no")
+            self.end_headers()
+
+            version = -1
+            try:
+                while True:
+                    new_version, document = self.server.broker.wait_for_update(
+                        version, timeout=15
+                    )
+                    if new_version == version:
+                        self.wfile.write(b": keepalive\n\n")
+                    else:
+                        payload = json.dumps(document, separators=(",", ":"))
+                        self.wfile.write(
+                            f"event: analytics\ndata: {payload}\n\n".encode("utf-8")
+                        )
+                        version = new_version
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                return
+
+        if path.endswith("/health") or path == "/health":
+            body = b'{"status":"ok"}\n'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
+        self.send_error(404)
+
+
+def utc_now() -> str:
+    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def command_path(env_name: str, default: str) -> str:
+    return os.environ.get(env_name, default)
+
+
+def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=None,
+        )
+    except OSError as error:
+        return subprocess.CompletedProcess(command, 127, "", str(error))
+
+
+def parse_pvecm_status(output: str) -> tuple[str | None, dict[str, object] | None]:
+    if "Cluster information" not in output:
+        return None, None
+
+    values: dict[str, str] = {}
+    for line in output.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        values[key.strip().lower()] = value.strip()
+
+    def integer(name: str) -> int | None:
+        match = re.search(r"\d+", values.get(name, ""))
+        return int(match.group()) if match else None
+
+    quorate_value = values.get("quorate", "").lower()
+    if quorate_value in {"yes", "1"}:
+        quorate = 1
+    elif quorate_value in {"no", "0"}:
+        quorate = 0
+    else:
+        quorate = None
+    sample: dict[str, object] = {
+        "quorate": quorate,
+        "configured_nodes": integer("nodes"),
+        "expected_votes": integer("expected votes"),
+        "total_votes": integer("total votes"),
+        "quorum": integer("quorum"),
+        "ring_id": values.get("ring id") or None,
+    }
+    return values.get("name") or None, sample
+
+
+def detect_mode(requested_mode: str) -> tuple[str, str | None, dict[str, object] | None, str | None]:
+    if requested_mode == "pre-cluster":
+        return "pre-cluster", None, None, None
+
+    pvecm = command_path("TAILMOX_MONITOR_PVECM_COMMAND", "pvecm")
+    result = run_command([pvecm, "status"])
+    cluster_name, sample = parse_pvecm_status(result.stdout + result.stderr)
+    if sample is not None:
+        return "cluster", cluster_name, sample, None
+    if requested_mode == "cluster":
+        return "cluster", None, None, "cluster_not_detected"
+    return "pre-cluster", None, None, None
+
+
+def initialize_database(database_path: pathlib.Path) -> sqlite3.Connection:
+    database_path.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+    connection = sqlite3.connect(database_path, timeout=30)
+    connection.executescript(SCHEMA)
+    connection.execute("PRAGMA journal_mode = WAL")
+    connection.execute("PRAGMA synchronous = NORMAL")
+    connection.execute("PRAGMA foreign_keys = ON")
+    connection.commit()
+    try:
+        database_path.chmod(0o640)
+    except OSError:
+        pass
+    return connection
+
+
+def upsert_node(
+    connection: sqlite3.Connection,
+    run_id: int,
+    observed_at: str,
+    hostname: str,
+    dns_name: str | None,
+    tailscale_ip: str | None,
+    is_local: bool,
+    online: bool,
+) -> int:
+    identity = dns_name or tailscale_ip or hostname
+    connection.execute(
+        """
+        INSERT INTO monitor_nodes (
+            identity, hostname, dns_name, tailscale_ip, first_seen_at, last_seen_at
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(identity) DO UPDATE SET
+            hostname = excluded.hostname,
+            dns_name = excluded.dns_name,
+            tailscale_ip = excluded.tailscale_ip,
+            last_seen_at = excluded.last_seen_at
+        """,
+        (identity, hostname, dns_name, tailscale_ip, observed_at, observed_at),
+    )
+    node_id = connection.execute(
+        "SELECT id FROM monitor_nodes WHERE identity = ?", (identity,)
+    ).fetchone()[0]
+    connection.execute(
+        """
+        INSERT OR REPLACE INTO monitor_run_nodes (run_id, node_id, is_local, online)
+        VALUES (?, ?, ?, ?)
+        """,
+        (run_id, node_id, int(is_local), int(online)),
+    )
+    return int(node_id)
+
+
+def collect_tailscale_nodes(
+    connection: sqlite3.Connection, run_id: int, observed_at: str
+) -> dict[str, int]:
+    tailscale = command_path("TAILMOX_MONITOR_TAILSCALE_COMMAND", "tailscale")
+    result = run_command([tailscale, "status", "--json"])
+    if result.returncode != 0:
+        return {}
+
+    try:
+        status = json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+    node_ids: dict[str, int] = {}
+    local = status.get("Self")
+    if isinstance(local, dict):
+        hostname = str(local.get("HostName") or os.uname().nodename)
+        dns_name = str(local.get("DNSName") or "").rstrip(".") or None
+        addresses = local.get("TailscaleIPs")
+        tailscale_ip = str(addresses[0]) if isinstance(addresses, list) and addresses else None
+        node_id = upsert_node(
+            connection,
+            run_id,
+            observed_at,
+            hostname,
+            dns_name,
+            tailscale_ip,
+            True,
+            bool(local.get("Online")),
+        )
+        for key in (hostname, dns_name, tailscale_ip):
+            if key:
+                node_ids[key] = node_id
+
+    peers = status.get("Peer")
+    if isinstance(peers, dict):
+        for peer in peers.values():
+            if not isinstance(peer, dict) or "tag:tailmox" not in (peer.get("Tags") or []):
+                continue
+            hostname = str(peer.get("HostName") or "unknown")
+            dns_name = str(peer.get("DNSName") or "").rstrip(".") or None
+            addresses = peer.get("TailscaleIPs")
+            tailscale_ip = str(addresses[0]) if isinstance(addresses, list) and addresses else None
+            node_id = upsert_node(
+                connection,
+                run_id,
+                observed_at,
+                hostname,
+                dns_name,
+                tailscale_ip,
+                False,
+                bool(peer.get("Online")),
+            )
+            for key in (hostname, dns_name, tailscale_ip):
+                if key:
+                    node_ids[key] = node_id
+
+    return node_ids
+
+
+def add_check(
+    connection: sqlite3.Connection,
+    run_id: int,
+    node_id: int | None,
+    category: str,
+    name: str,
+    status: str,
+    **values: object,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO monitor_checks (
+            run_id, node_id, category, name, status, packet_size_bytes,
+            packets_sent, packets_received, latency_average_ms,
+            latency_maximum_ms, port, detail
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            run_id,
+            node_id,
+            category,
+            name,
+            status,
+            values.get("packet_size_bytes"),
+            values.get("packets_sent"),
+            values.get("packets_received"),
+            values.get("latency_average_ms"),
+            values.get("latency_maximum_ms"),
+            values.get("port"),
+            values.get("detail"),
+        ),
+    )
+
+
+def parse_test_checks(
+    connection: sqlite3.Connection,
+    run_id: int,
+    output: str,
+    node_ids: dict[str, int],
+) -> int:
+    current_node_id: int | None = None
+    check_count = 0
+    for raw_line in output.splitlines():
+        line = ANSI_ESCAPE.sub("", raw_line)
+        heading = PEER_HEADING.match(line)
+        if heading:
+            current_node_id = node_ids.get(heading.group(1)) or node_ids.get(heading.group(2))
+            continue
+
+        tailscale_match = TAILSCALE_PATH.search(line)
+        if tailscale_match:
+            received, sent = map(int, tailscale_match.groups())
+            status = "passed" if "failed" not in line.lower() else "failed"
+            add_check(
+                connection,
+                run_id,
+                current_node_id,
+                "tailscale",
+                "path",
+                status,
+                packets_sent=sent,
+                packets_received=received,
+            )
+            check_count += 1
+            continue
+
+        icmp_match = ICMP_RESULT.search(line)
+        if icmp_match:
+            replies = ICMP_REPLIES.search(icmp_match.group("remainder"))
+            status = "warning" if "warning" in line.lower() else "passed"
+            add_check(
+                connection,
+                run_id,
+                current_node_id,
+                "icmp",
+                "latency",
+                status,
+                packet_size_bytes=int(icmp_match.group("size")),
+                packets_received=int(replies.group(1)) if replies else None,
+                packets_sent=int(replies.group(2)) if replies else None,
+                latency_average_ms=(
+                    float(icmp_match.group("average"))
+                    if icmp_match.group("average") != "unknown"
+                    else None
+                ),
+                latency_maximum_ms=(
+                    float(icmp_match.group("maximum"))
+                    if icmp_match.group("maximum") != "unknown"
+                    else None
+                ),
+            )
+            check_count += 1
+            continue
+
+        tcp_match = TCP_RESULT.search(line)
+        if tcp_match:
+            add_check(
+                connection,
+                run_id,
+                current_node_id,
+                "tcp",
+                "port",
+                "failed" if tcp_match.group(2) else "passed",
+                port=int(tcp_match.group(1)),
+            )
+            check_count += 1
+
+    return check_count
+
+
+def publish_analytics(
+    connection: sqlite3.Connection,
+    output_path: pathlib.Path,
+    broker: AnalyticsBroker,
+) -> None:
+    latest = connection.execute(
+        """
+        SELECT id, started_at, finished_at, mode, hostname, cluster_name,
+               status, duration_ms
+        FROM monitor_runs
+        WHERE status != 'running'
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    totals = connection.execute(
+        """
+        SELECT COUNT(*),
+               SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN status = 'warning' THEN 1 ELSE 0 END),
+               SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END)
+        FROM monitor_runs
+        WHERE datetime(started_at) >= datetime('now', '-24 hours')
+        """
+    ).fetchone()
+    history_rows = connection.execute(
+        """
+        SELECT id, started_at, mode, status, duration_ms
+        FROM monitor_runs
+        WHERE status != 'running'
+        ORDER BY id DESC
+        LIMIT 60
+        """
+    ).fetchall()
+
+    latest_data = None
+    if latest:
+        run_id = latest[0]
+        nodes = connection.execute(
+            """
+            SELECT n.hostname, n.dns_name, n.tailscale_ip, rn.is_local, rn.online
+            FROM monitor_run_nodes rn
+            JOIN monitor_nodes n ON n.id = rn.node_id
+            WHERE rn.run_id = ?
+            ORDER BY rn.is_local DESC, n.hostname
+            """,
+            (run_id,),
+        ).fetchall()
+        failed_checks = connection.execute(
+            """
+            SELECT n.hostname, c.category, c.name, c.status, c.port,
+                   c.packet_size_bytes, c.latency_maximum_ms
+            FROM monitor_checks c
+            LEFT JOIN monitor_nodes n ON n.id = c.node_id
+            WHERE c.run_id = ? AND c.status != 'passed'
+            ORDER BY c.status DESC, n.hostname, c.category
+            """,
+            (run_id,),
+        ).fetchall()
+        cluster_sample = connection.execute(
+            """
+            SELECT quorate, configured_nodes, expected_votes, total_votes,
+                   quorum, ring_id
+            FROM monitor_cluster_samples
+            WHERE run_id = ?
+            """,
+            (run_id,),
+        ).fetchone()
+        latest_data = {
+            "id": run_id,
+            "startedAt": latest[1],
+            "finishedAt": latest[2],
+            "mode": latest[3],
+            "hostname": latest[4],
+            "clusterName": latest[5],
+            "status": latest[6],
+            "durationMs": latest[7],
+            "cluster": (
+                {
+                    "quorate": (
+                        bool(cluster_sample[0])
+                        if cluster_sample[0] is not None
+                        else None
+                    ),
+                    "configuredNodes": cluster_sample[1],
+                    "expectedVotes": cluster_sample[2],
+                    "totalVotes": cluster_sample[3],
+                    "quorum": cluster_sample[4],
+                    "ringId": cluster_sample[5],
+                }
+                if cluster_sample
+                else None
+            ),
+            "nodes": [
+                {
+                    "hostname": row[0],
+                    "dnsName": row[1],
+                    "tailscaleIp": row[2],
+                    "local": bool(row[3]),
+                    "online": bool(row[4]),
+                }
+                for row in nodes
+            ],
+            "issues": [
+                {
+                    "hostname": row[0],
+                    "category": row[1],
+                    "name": row[2],
+                    "status": row[3],
+                    "port": row[4],
+                    "packetSizeBytes": row[5],
+                    "latencyMaximumMs": row[6],
+                }
+                for row in failed_checks
+            ],
+        }
+
+    document = {
+        "generatedAt": utc_now(),
+        "latest": latest_data,
+        "last24Hours": {
+            "runs": totals[0] or 0,
+            "passed": totals[1] or 0,
+            "warnings": totals[2] or 0,
+            "failed": totals[3] or 0,
+        },
+        "history": [
+            {
+                "id": row[0],
+                "startedAt": row[1],
+                "mode": row[2],
+                "status": row[3],
+                "durationMs": row[4],
+            }
+            for row in reversed(history_rows)
+        ],
+    }
+    broker.publish(document)
+
+    output_path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".monitor.", suffix=".json", dir=output_path.parent
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as temporary:
+            json.dump(document, temporary, separators=(",", ":"))
+            temporary.write("\n")
+        os.chmod(temporary_name, 0o644)
+        os.replace(temporary_name, output_path)
+    except BaseException:
+        try:
+            os.unlink(temporary_name)
+        except OSError:
+            pass
+        raise
+
+
+def monitor_once(
+    connection: sqlite3.Connection,
+    requested_mode: str,
+    test_command: str,
+    web_output: pathlib.Path,
+    broker: AnalyticsBroker,
+) -> str:
+    started_at = utc_now()
+    started_monotonic = time.monotonic()
+    mode, cluster_name, cluster_sample, mode_error = detect_mode(requested_mode)
+    hostname = os.uname().nodename
+    cursor = connection.execute(
+        """
+        INSERT INTO monitor_runs (
+            started_at, requested_mode, mode, hostname, cluster_name, status, error_code
+        ) VALUES (?, ?, ?, ?, ?, 'running', ?)
+        """,
+        (started_at, requested_mode, mode, hostname, cluster_name, mode_error),
+    )
+    run_id = int(cursor.lastrowid)
+    connection.commit()
+
+    node_ids = collect_tailscale_nodes(connection, run_id, started_at)
+    if cluster_sample is not None:
+        connection.execute(
+            """
+            INSERT INTO monitor_cluster_samples (
+                run_id, quorate, configured_nodes, expected_votes,
+                total_votes, quorum, ring_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                cluster_sample["quorate"],
+                cluster_sample["configured_nodes"],
+                cluster_sample["expected_votes"],
+                cluster_sample["total_votes"],
+                cluster_sample["quorum"],
+                cluster_sample["ring_id"],
+            ),
+        )
+        add_check(
+            connection,
+            run_id,
+            None,
+            "cluster",
+            "quorum",
+            "passed" if cluster_sample["quorate"] == 1 else "failed",
+            detail=(
+                "The Proxmox cluster is quorate."
+                if cluster_sample["quorate"] == 1
+                else "The Proxmox cluster is not confirmed quorate."
+            ),
+        )
+
+    test_result = run_command([test_command, "test"])
+    combined_output = "\n".join(part for part in (test_result.stdout, test_result.stderr) if part)
+    parsed_checks = parse_test_checks(connection, run_id, combined_output, node_ids)
+    if parsed_checks == 0:
+        add_check(
+            connection,
+            run_id,
+            None,
+            "tailmox",
+            "test",
+            "passed" if test_result.returncode == 0 else "failed",
+            detail="No individual network results were emitted.",
+        )
+
+    check_statuses = {
+        row[0]
+        for row in connection.execute(
+            "SELECT DISTINCT status FROM monitor_checks WHERE run_id = ?", (run_id,)
+        )
+    }
+    if mode_error or test_result.returncode != 0 or "failed" in check_statuses:
+        status = "failed"
+    elif "warning" in check_statuses:
+        status = "warning"
+    else:
+        status = "passed"
+
+    finished_at = utc_now()
+    duration_ms = round((time.monotonic() - started_monotonic) * 1000)
+    connection.execute(
+        """
+        UPDATE monitor_runs
+        SET finished_at = ?, duration_ms = ?, test_exit_code = ?, status = ?
+        WHERE id = ?
+        """,
+        (finished_at, duration_ms, test_result.returncode, status, run_id),
+    )
+    connection.commit()
+    publish_analytics(connection, web_output, broker)
+    return status
+
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="tailmox monitor",
+        description="Run tailmox test every minute and store normalized health history.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("auto", "pre-cluster", "cluster"),
+        default="auto",
+        help="monitoring mode; auto changes to cluster mode when membership is detected",
+    )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="record one result and exit",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    arguments = parse_arguments()
+    script_dir = pathlib.Path(__file__).resolve().parent
+    database_path = pathlib.Path(
+        os.environ.get("TAILMOX_MONITOR_DB", "/var/lib/tailmox/monitor.sqlite3")
+    )
+    web_output = pathlib.Path(
+        os.environ.get("TAILMOX_MONITOR_WEB_OUTPUT", "/var/lib/tailmox/web/monitor.json")
+    )
+    interval = int(
+        os.environ.get("TAILMOX_MONITOR_INTERVAL_SECONDS", str(DEFAULT_INTERVAL_SECONDS))
+    )
+    max_runs = int(os.environ.get("TAILMOX_MONITOR_MAX_RUNS", "0"))
+    test_command = command_path(
+        "TAILMOX_MONITOR_TEST_COMMAND", str(script_dir / "tailmox")
+    )
+    sse_enabled = os.environ.get("TAILMOX_MONITOR_SSE_ENABLED", "true") == "true"
+    sse_host = os.environ.get("TAILMOX_MONITOR_SSE_HOST", "127.0.0.1")
+    sse_port = int(os.environ.get("TAILMOX_MONITOR_SSE_PORT", "8671"))
+    if interval < 1:
+        print("TAILMOX_MONITOR_INTERVAL_SECONDS must be at least 1.", file=sys.stderr)
+        return 2
+
+    lock_path = database_path.with_suffix(database_path.suffix + ".lock")
+    lock_path.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+    lock_file = lock_path.open("w", encoding="utf-8")
+    try:
+        fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print(f"A Tailmox monitor is already using {database_path}.", file=sys.stderr)
+        return 1
+
+    stopping = False
+
+    def stop_monitor(_signum: int, _frame: object) -> None:
+        nonlocal stopping
+        stopping = True
+
+    signal.signal(signal.SIGINT, stop_monitor)
+    signal.signal(signal.SIGTERM, stop_monitor)
+
+    connection = initialize_database(database_path)
+    broker = AnalyticsBroker()
+    server: MonitorHTTPServer | None = None
+    server_thread: threading.Thread | None = None
+    if sse_enabled:
+        try:
+            server = MonitorHTTPServer((sse_host, sse_port), broker)
+        except OSError as error:
+            print(
+                f"Unable to start the Tailmox monitor event stream on "
+                f"{sse_host}:{sse_port}: {error}",
+                file=sys.stderr,
+            )
+            connection.close()
+            lock_file.close()
+            return 1
+        server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+        server_thread.start()
+
+    completed_runs = 0
+    try:
+        while not stopping:
+            cycle_started = time.monotonic()
+            status = monitor_once(
+                connection, arguments.mode, test_command, web_output, broker
+            )
+            completed_runs += 1
+            print(f"{utc_now()} Tailmox monitor run {status}.", flush=True)
+            if arguments.once or (max_runs and completed_runs >= max_runs):
+                break
+
+            wait_seconds = max(0.0, interval - (time.monotonic() - cycle_started))
+            signal.pause() if wait_seconds == 0 and stopping else None
+            deadline = time.monotonic() + wait_seconds
+            while not stopping and time.monotonic() < deadline:
+                time.sleep(min(0.5, deadline - time.monotonic()))
+    finally:
+        if server is not None:
+            server.shutdown()
+            server.server_close()
+        if server_thread is not None:
+            server_thread.join(timeout=2)
+        connection.close()
+        lock_file.close()
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

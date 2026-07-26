@@ -151,9 +151,254 @@ button {
     padding: clamp(18px, 2.5vw, 36px) clamp(18px, 3vw, 44px) clamp(24px, 3vw, 44px);
 }
 
+.monitor-panel {
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding: clamp(18px, 2vw, 26px);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: linear-gradient(145deg, rgba(22, 35, 32, 0.98), rgba(10, 19, 17, 0.98));
+    box-shadow: var(--shadow);
+}
+
+.monitor-heading {
+    align-items: flex-start;
+}
+
+.monitor-description {
+    margin: 7px 0 0;
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.monitor-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.monitor-state-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--red);
+}
+
+.monitor-state.is-connected .monitor-state-dot {
+    background: var(--green-strong);
+    box-shadow: 0 0 10px rgba(56, 201, 149, 0.65);
+}
+
+.monitor-state.is-connected {
+    color: var(--green);
+}
+
+.monitor-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.metric-card {
+    min-width: 0;
+    padding: 14px 15px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(8, 16, 15, 0.58);
+}
+
+.metric-card strong,
+.metric-card small {
+    display: block;
+}
+
+.metric-card strong {
+    margin-top: 5px;
+    overflow: hidden;
+    font-size: 1.2rem;
+    text-overflow: ellipsis;
+    text-transform: capitalize;
+    white-space: nowrap;
+}
+
+.metric-card small {
+    margin-top: 4px;
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 0.68rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.health-passed {
+    color: var(--green);
+}
+
+.health-warning {
+    color: var(--amber);
+}
+
+.health-failed {
+    color: var(--red);
+}
+
+.monitor-details {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.history-panel,
+.node-panel {
+    min-width: 0;
+    padding: 14px 15px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(8, 16, 15, 0.38);
+}
+
+.subheading-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.subheading-row h2 {
+    font-size: 0.82rem;
+}
+
+.subheading-row span {
+    color: var(--muted);
+    font-size: 0.66rem;
+}
+
+.run-history {
+    display: flex;
+    min-height: 46px;
+    align-items: end;
+    gap: 3px;
+    margin-top: 13px;
+}
+
+.history-run {
+    width: 100%;
+    min-width: 3px;
+    max-width: 13px;
+    height: 28px;
+    border-radius: 3px;
+    background: var(--green-strong);
+}
+
+.history-run.is-warning {
+    height: 36px;
+    background: var(--amber);
+}
+
+.history-run.is-failed {
+    height: 44px;
+    background: var(--red);
+}
+
+.history-empty {
+    align-self: center;
+    color: var(--muted);
+    font-size: 0.72rem;
+}
+
+.node-list {
+    display: grid;
+    gap: 7px;
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 0.72rem;
+}
+
+.node-list code {
+    color: var(--green);
+}
+
+.node-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 7px;
+    border-top: 1px solid rgba(43, 60, 55, 0.7);
+}
+
+.node-row:first-child {
+    padding-top: 0;
+    border-top: 0;
+}
+
+.node-row strong,
+.node-row small {
+    display: block;
+}
+
+.node-row strong {
+    color: var(--text);
+    font-size: 0.76rem;
+}
+
+.node-row small {
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 0.64rem;
+}
+
+.node-badges {
+    display: flex;
+    gap: 5px;
+}
+
+.node-badge {
+    padding: 3px 6px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 0.6rem;
+    font-weight: 700;
+}
+
+.node-badge.is-online {
+    border-color: rgba(56, 201, 149, 0.3);
+    color: var(--green);
+}
+
+.node-badge.is-issue {
+    border-color: rgba(255, 132, 124, 0.35);
+    color: var(--red);
+}
+
 .terminal-panel,
 .backup-panel {
     min-width: 0;
+}
+
+@media (max-width: 900px) {
+    .monitor-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .monitor-details {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 560px) {
+    .monitor-summary {
+        grid-template-columns: 1fr;
+    }
 }
 
 .terminal-panel {

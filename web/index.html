@@ -36,6 +36,68 @@
         </header>
 
         <main class="workspace">
+            <section class="monitor-panel" aria-labelledby="monitor-heading">
+                <div class="panel-heading monitor-heading">
+                    <div>
+                        <p class="eyebrow">Continuous health</p>
+                        <h1 id="monitor-heading">Tailmox monitor</h1>
+                        <p class="monitor-description" id="monitor-description">
+                            Waiting for the monitor event stream…
+                        </p>
+                    </div>
+                    <div class="monitor-state" id="monitor-state">
+                        <span class="monitor-state-dot" aria-hidden="true"></span>
+                        <span id="monitor-state-label">Connecting</span>
+                    </div>
+                </div>
+
+                <div class="monitor-summary" aria-live="polite">
+                    <div class="metric-card">
+                        <span class="summary-label">Latest health</span>
+                        <strong id="monitor-health">—</strong>
+                        <small id="monitor-latest-time">No result yet</small>
+                    </div>
+                    <div class="metric-card">
+                        <span class="summary-label">Mode</span>
+                        <strong id="monitor-mode">—</strong>
+                        <small id="monitor-cluster">Detecting cluster state</small>
+                    </div>
+                    <div class="metric-card">
+                        <span class="summary-label">Runs · 24 hours</span>
+                        <strong id="monitor-run-count">0</strong>
+                        <small id="monitor-pass-rate">No history yet</small>
+                    </div>
+                    <div class="metric-card">
+                        <span class="summary-label">Nodes in latest run</span>
+                        <strong id="monitor-node-count">0</strong>
+                        <small id="monitor-online-count">No snapshot yet</small>
+                    </div>
+                </div>
+
+                <div class="monitor-details">
+                    <div class="history-panel">
+                        <div class="subheading-row">
+                            <h2>Recent runs</h2>
+                            <span>Oldest → newest</span>
+                        </div>
+                        <div
+                            class="run-history"
+                            id="monitor-history"
+                            aria-label="Recent monitor run statuses"
+                        ></div>
+                    </div>
+                    <div class="node-panel">
+                        <div class="subheading-row">
+                            <h2>Latest node snapshot</h2>
+                            <span id="monitor-issue-count">0 issues</span>
+                        </div>
+                        <div class="node-list" id="monitor-nodes">
+                            Run <code>tailmox monitor</code> to begin collecting data.
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <section class="terminal-panel" aria-labelledby="terminal-heading">
                 <div class="panel-heading terminal-heading">
                     <div>

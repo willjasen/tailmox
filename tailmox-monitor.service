@@ -1,0 +1,13 @@
+[Unit]
+Description=Tailmox health monitor
+After=network-online.target tailscaled.service pve-cluster.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/tailmox monitor --mode auto
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -8,8 +8,162 @@ const runClusterButton = document.querySelector("#run-cluster");
 const runTestButton = document.querySelector("#run-test");
 const terminal = document.querySelector("#terminal");
 const backupTemplate = document.querySelector("#backup-template");
+const monitorCluster = document.querySelector("#monitor-cluster");
+const monitorDescription = document.querySelector("#monitor-description");
+const monitorHealth = document.querySelector("#monitor-health");
+const monitorHistory = document.querySelector("#monitor-history");
+const monitorIssueCount = document.querySelector("#monitor-issue-count");
+const monitorLatestTime = document.querySelector("#monitor-latest-time");
+const monitorMode = document.querySelector("#monitor-mode");
+const monitorNodeCount = document.querySelector("#monitor-node-count");
+const monitorNodes = document.querySelector("#monitor-nodes");
+const monitorOnlineCount = document.querySelector("#monitor-online-count");
+const monitorPassRate = document.querySelector("#monitor-pass-rate");
+const monitorRunCount = document.querySelector("#monitor-run-count");
+const monitorState = document.querySelector("#monitor-state");
+const monitorStateLabel = document.querySelector("#monitor-state-label");
 
 document.querySelector("#host-name").textContent = window.location.hostname;
+
+function formatMonitorTimestamp(value) {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+        return "Unknown time";
+    }
+    return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+    }).format(parsed);
+}
+
+function formatMonitorMode(mode) {
+    return mode === "cluster" ? "Cluster" : "Pre-cluster";
+}
+
+function renderMonitorHistory(history) {
+    if (!history.length) {
+        const empty = document.createElement("span");
+        empty.className = "history-empty";
+        empty.textContent = "No monitor runs recorded";
+        monitorHistory.replaceChildren(empty);
+        return;
+    }
+
+    const bars = history.map((run) => {
+        const bar = document.createElement("span");
+        bar.className = `history-run is-${run.status}`;
+        bar.title = `${formatMonitorTimestamp(run.startedAt)} · ${run.status} · ${formatMonitorMode(run.mode)}`;
+        bar.setAttribute("aria-label", bar.title);
+        return bar;
+    });
+    monitorHistory.replaceChildren(...bars);
+}
+
+function renderMonitorNodes(latest) {
+    const nodes = Array.isArray(latest.nodes) ? latest.nodes : [];
+    const issues = Array.isArray(latest.issues) ? latest.issues : [];
+    monitorNodeCount.textContent = String(nodes.length);
+    monitorOnlineCount.textContent = `${nodes.filter((node) => node.online).length} online`;
+    monitorIssueCount.textContent = `${issues.length} issue${issues.length === 1 ? "" : "s"}`;
+
+    if (!nodes.length) {
+        monitorNodes.textContent = "No Tailmox nodes were present in the latest snapshot.";
+        return;
+    }
+
+    const issueHosts = new Set(issues.map((issue) => issue.hostname).filter(Boolean));
+    const rows = nodes.map((node) => {
+        const row = document.createElement("div");
+        row.className = "node-row";
+
+        const identity = document.createElement("div");
+        const name = document.createElement("strong");
+        const address = document.createElement("small");
+        name.textContent = node.hostname;
+        address.textContent = node.dnsName || node.tailscaleIp || "Address unavailable";
+        identity.append(name, address);
+
+        const badges = document.createElement("div");
+        badges.className = "node-badges";
+        if (node.local) {
+            const localBadge = document.createElement("span");
+            localBadge.className = "node-badge";
+            localBadge.textContent = "Local";
+            badges.append(localBadge);
+        }
+        const status = document.createElement("span");
+        status.className = `node-badge ${node.online && !issueHosts.has(node.hostname) ? "is-online" : "is-issue"}`;
+        status.textContent = !node.online
+            ? "Offline"
+            : issueHosts.has(node.hostname) ? "Issue" : "Healthy";
+        badges.append(status);
+
+        row.append(identity, badges);
+        return row;
+    });
+    monitorNodes.replaceChildren(...rows);
+}
+
+function renderMonitor(analytics) {
+    const totals = analytics.last24Hours || {};
+    const runs = Number(totals.runs) || 0;
+    const passed = Number(totals.passed) || 0;
+    const latest = analytics.latest;
+
+    monitorRunCount.textContent = String(runs);
+    monitorPassRate.textContent = runs
+        ? `${Math.round((passed / runs) * 100)}% passed · ${Number(totals.failed) || 0} failed`
+        : "No history yet";
+    renderMonitorHistory(Array.isArray(analytics.history) ? analytics.history : []);
+
+    if (!latest) {
+        monitorHealth.textContent = "Waiting";
+        monitorHealth.className = "";
+        monitorLatestTime.textContent = "No result yet";
+        monitorMode.textContent = "—";
+        monitorCluster.textContent = "Detecting cluster state";
+        monitorDescription.textContent = "The event stream is ready; waiting for the first test run.";
+        monitorNodeCount.textContent = "0";
+        monitorOnlineCount.textContent = "No snapshot yet";
+        monitorIssueCount.textContent = "0 issues";
+        return;
+    }
+
+    monitorHealth.textContent = latest.status;
+    monitorHealth.className = `health-${latest.status}`;
+    monitorLatestTime.textContent = formatMonitorTimestamp(latest.finishedAt || latest.startedAt);
+    monitorMode.textContent = formatMonitorMode(latest.mode);
+    if (latest.clusterName && latest.cluster) {
+        const quorumState = latest.cluster.quorate ? "quorate" : "quorum issue";
+        const nodeTotal = Number(latest.cluster.configuredNodes);
+        monitorCluster.textContent = `${latest.clusterName} · ${quorumState}`
+            + (Number.isFinite(nodeTotal) ? ` · ${nodeTotal} nodes` : "");
+    } else {
+        monitorCluster.textContent = "Host preparation checks";
+    }
+    monitorDescription.textContent = latest.mode === "cluster"
+        ? "Cluster-aware health, membership, quorum, and network history."
+        : "Baseline Tailscale, ICMP, and Proxmox port health before clustering.";
+    renderMonitorNodes(latest);
+}
+
+const monitorEvents = new EventSource("monitor/events");
+monitorEvents.addEventListener("open", () => {
+    monitorState.classList.add("is-connected");
+    monitorStateLabel.textContent = "Live";
+});
+monitorEvents.addEventListener("error", () => {
+    monitorState.classList.remove("is-connected");
+    monitorStateLabel.textContent = "Monitor offline";
+    monitorDescription.textContent = "Start tailmox monitor to stream health analytics.";
+});
+monitorEvents.addEventListener("analytics", (event) => {
+    try {
+        renderMonitor(JSON.parse(event.data));
+    } catch {
+        monitorDescription.textContent = "The monitor sent an unreadable analytics update.";
+    }
+});
 
 function parseBackupTimestamp(value) {
     const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(value);

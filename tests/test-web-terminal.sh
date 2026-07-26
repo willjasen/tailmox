@@ -83,6 +83,13 @@ if ! grep -Fxq \
     exit 1
 fi
 
+if ! grep -Fxq \
+    'serve --bg --yes --https=8669 --set-path=/monitor http://127.0.0.1:8671' \
+    "$TAILSCALE_CALLS"; then
+    printf 'FAIL: monitor event stream was not mounted beneath the dashboard\n'
+    exit 1
+fi
+
 for asset in index.html tailmox.css tailmox.js backups.json; do
     if [[ ! -f "$TAILMOX_WEB_ROOT/$asset" ]]; then
         printf 'FAIL: dashboard asset %s was not installed\n' "$asset"
@@ -93,10 +100,12 @@ done
 if ! grep -Fq 'id="run-test"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="create-backup"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="run-cluster"' "$TAILMOX_WEB_ROOT/index.html" ||
+    ! grep -Fq 'id="monitor-health"' "$TAILMOX_WEB_ROOT/index.html" ||
+    ! grep -Fq 'new EventSource("monitor/events")' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'terminal/?arg=test' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'terminal/?arg=backup-create' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'terminal/?arg=cluster' "$TAILMOX_WEB_ROOT/tailmox.js"; then
-    printf 'FAIL: dashboard workflow buttons were not installed\n'
+    printf 'FAIL: dashboard workflows or live monitor analytics were not installed\n'
     exit 1
 fi
 
@@ -129,4 +138,4 @@ if ! refresh_web_backup_inventory ||
     exit 1
 fi
 
-printf 'PASS: dashboard embeds the terminal and publishes safe backup metadata\n'
+printf 'PASS: dashboard embeds the terminal and publishes live monitor and safe backup metadata\n'

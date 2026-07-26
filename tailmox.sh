@@ -50,6 +50,7 @@ fi
 # TMOX maps to 8669 on a telephone keypad.
 TAILMOX_WEB_PORT="${TAILMOX_WEB_PORT:-8669}"
 TAILMOX_WEB_BACKEND_PORT="${TAILMOX_WEB_BACKEND_PORT:-8670}"
+TAILMOX_MONITOR_SSE_PORT="${TAILMOX_MONITOR_SSE_PORT:-8671}"
 TAILMOX_WEB_SERVICE="${TAILMOX_WEB_SERVICE:-tailmox-web.service}"
 TAILMOX_WEB_ROOT="${TAILMOX_WEB_ROOT:-/var/lib/tailmox/web}"
 TAILMOX_WEB_ASSET_DIR="${TAILMOX_WEB_ASSET_DIR:-$TAILMOX_SCRIPT_DIR/web}"
@@ -373,7 +374,10 @@ function start_web_terminal() {
         --set-path=/ "$TAILMOX_WEB_ROOT" >>"$LOG_FILE" 2>&1 ||
         ! tailscale serve --bg --yes --https="$TAILMOX_WEB_PORT" \
             --set-path=/terminal \
-            "http://127.0.0.1:$TAILMOX_WEB_BACKEND_PORT" >>"$LOG_FILE" 2>&1; then
+            "http://127.0.0.1:$TAILMOX_WEB_BACKEND_PORT" >>"$LOG_FILE" 2>&1 ||
+        ! tailscale serve --bg --yes --https="$TAILMOX_WEB_PORT" \
+            --set-path=/monitor \
+            "http://127.0.0.1:$TAILMOX_MONITOR_SSE_PORT" >>"$LOG_FILE" 2>&1; then
         log_echo "${RED}Unable to expose the Tailmox dashboard through Tailscale Serve.${RESET}"
         return 1
     fi

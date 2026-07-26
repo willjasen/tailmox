@@ -145,6 +145,9 @@ tailmox stage               # Set up Tailscale and certificates only
 tailmox backups             # List configuration backups
 tailmox backups create      # Create a configuration backup now
 tailmox test                # Test setup without changing the host
+tailmox monitor             # Record test analytics every minute
+tailmox monitor install     # Install and start the background monitor
+tailmox monitor uninstall   # Stop and remove the background monitor
 tailmox self-test           # Run the regression test suite
 tailmox help                # List available commands
 ```
@@ -187,6 +190,56 @@ tailmox test
 ```
 
 This read-only test first verifies that the local Proxmox host is online with the exact `tag:tailmox` identity, then tests its own Tailscale path, ICMP behavior, and required TCP ports through its Tailscale address. Only after that self-test passes does it perform the same network checks for the other Tailmox peers. It does not install packages, change Tailscale or systemd, request certificates, create a cluster, or join one.
+
+Run the same checks continuously and keep a local history with:
+
+```bash
+tailmox monitor
+```
+
+The monitor runs `tailmox test` immediately and then once per minute. It uses
+`auto` mode by default: a host that is not yet clustered records
+`pre-cluster` network health, and a host with detected Proxmox cluster
+membership records `cluster` mode plus the available quorum, votes, ring, and
+membership data. A mode can also be selected explicitly:
+
+```bash
+tailmox monitor --mode pre-cluster
+tailmox monitor --mode cluster
+tailmox monitor --once
+```
+
+For continuous operation across reboots, install it as a system service:
+
+```bash
+tailmox monitor install
+```
+
+To stop and remove that service later:
+
+```bash
+tailmox monitor uninstall
+```
+
+Uninstalling removes only the Tailmox monitor service definition. It preserves
+the monitoring database so historical analytics are available if the monitor
+is reinstalled.
+
+Results are stored in `/var/lib/tailmox/monitor.sqlite3`. The schema keeps
+runs, stable node identities, per-run node snapshots, individual network
+checks, and cluster samples in related tables. Raw Tailscale JSON and terminal
+output are not stored in the database. Every host has its own database and
+records only tests performed locally; Tailmox does not accept or upload monitor
+results between hosts.
+
+While the monitor is running, it exposes a read-only Server-Sent Events
+endpoint on localhost TCP 8671. `tailmox serve` publishes that endpoint beneath
+`/monitor` through the existing tailnet-only HTTPS listener, and the dashboard
+updates immediately after a run without polling. The endpoint accepts no
+uploads or monitoring results. The database remains outside the web root; the
+browser receives only a small analytics projection containing current health,
+the last 24 hours of run totals, recent status history, and the latest node
+snapshot.
 
 Run the project's regression test suite separately with:
 

@@ -61,6 +61,69 @@ run_self_tests() {
     printf '\nAll %d test files passed.\n' "$passed"
 }
 
+install_monitor_service() {
+    local systemd_dir="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
+    local service_name="${TAILMOX_MONITOR_SERVICE:-tailmox-monitor.service}"
+    local service_source="$TAILMOX_ROOT/tailmox-monitor.service"
+    local service_target="$systemd_dir/$service_name"
+
+    if [[ ! -f "$service_source" ]]; then
+        printf 'Missing monitor service definition: %s\n' "$service_source" >&2
+        return 1
+    fi
+    if [[ -e "$service_target" ]] &&
+        { ! grep -Fqx 'Description=Tailmox health monitor' "$service_target" ||
+          ! grep -Fq '/tailmox monitor ' "$service_target"; }; then
+        printf 'Refusing to replace unrelated service: %s\n' "$service_target" >&2
+        return 1
+    fi
+    if ! install -d -m 0755 "$systemd_dir" ||
+        ! install -m 0644 "$service_source" "$service_target"; then
+        printf 'Unable to install %s.\n' "$service_target" >&2
+        return 1
+    fi
+    if ! systemctl daemon-reload ||
+        ! systemctl enable "$service_name" ||
+        ! systemctl restart "$service_name"; then
+        printf 'Unable to enable and start %s.\n' "$service_name" >&2
+        return 1
+    fi
+
+    printf 'Tailmox monitor installed and running once per minute.\n'
+}
+
+uninstall_monitor_service() {
+    local systemd_dir="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
+    local service_name="${TAILMOX_MONITOR_SERVICE:-tailmox-monitor.service}"
+    local service_target="$systemd_dir/$service_name"
+
+    if [[ ! -e "$service_target" ]]; then
+        printf 'Tailmox monitor is not installed. Monitoring history was preserved.\n'
+        return 0
+    fi
+    if [[ -e "$service_target" ]] &&
+        { ! grep -Fqx 'Description=Tailmox health monitor' "$service_target" ||
+          ! grep -Fq '/tailmox monitor ' "$service_target"; }; then
+        printf 'Refusing to remove unrelated service: %s\n' "$service_target" >&2
+        return 1
+    fi
+    if ! systemctl disable --now "$service_name"; then
+        printf 'Unable to stop and disable %s; it was not removed.\n' \
+            "$service_name" >&2
+        return 1
+    fi
+    if [[ -e "$service_target" ]] && ! rm -f "$service_target"; then
+        printf 'Unable to remove %s.\n' "$service_target" >&2
+        return 1
+    fi
+    if ! systemctl daemon-reload; then
+        printf 'The service was removed, but systemd could not be reloaded.\n' >&2
+        return 1
+    fi
+
+    printf 'Tailmox monitor uninstalled. Monitoring history was preserved.\n'
+}
+
 show_usage() {
     cat <<'EOF'
 Usage:
@@ -70,6 +133,9 @@ Usage:
   tailmox backups [list]     List Tailmox configuration backups
   tailmox backups create     Create a configuration backup now
   tailmox test               Safely test setup without changing the host
+  tailmox monitor [options]  Record test analytics every minute
+  tailmox monitor install    Install and start the background monitor
+  tailmox monitor uninstall  Stop and remove the background monitor
   tailmox self-test          Run the regression test suite
   tailmox help               Show this help
 
@@ -127,6 +193,30 @@ case "${1:-}" in
             exit 2
         fi
         exec "$TAILMOX_ROOT/tailmox.sh" --dry-run
+        ;;
+    monitor)
+        shift
+        case "${1:-}" in
+            install)
+                shift
+                if [[ "$#" -ne 0 ]]; then
+                    printf 'tailmox monitor install does not accept arguments.\n' >&2
+                    exit 2
+                fi
+                install_monitor_service
+                ;;
+            uninstall)
+                shift
+                if [[ "$#" -ne 0 ]]; then
+                    printf 'tailmox monitor uninstall does not accept arguments.\n' >&2
+                    exit 2
+                fi
+                uninstall_monitor_service
+                ;;
+            *)
+                exec "$TAILMOX_ROOT/tailmox-monitor" "$@"
+                ;;
+        esac
         ;;
     self-test)
         shift
