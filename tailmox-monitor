@@ -45,6 +45,12 @@ TCP_RESULT = re.compile(
     r"^\s*-\s+TCP port\s+(?P<port>\d+)\s+is\s+(?P<unavailable>not\s+)?available"
     r"(?:;\s+latency\s+(?P<latency>[0-9.]+)\s+ms)?\.\s*$"
 )
+MONITOR_ICMP_RESULT = re.compile(
+    r"^__TAILMOX_MONITOR_ICMP__\t(?P<hostname>[^\t]+)\t"
+    r"(?P<size>\d+)\t(?P<status>passed|warning|failed)\t"
+    r"(?P<received>\d+|unknown)\t(?P<sent>\d+|unknown)\t"
+    r"(?P<average>[0-9.]+|unknown)\t(?P<maximum>[0-9.]+|unknown)$"
+)
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -363,7 +369,9 @@ def command_path(env_name: str, default: str) -> str:
     return os.environ.get(env_name, default)
 
 
-def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
+def run_command(
+    command: list[str], environment: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
             command,
@@ -371,6 +379,7 @@ def run_command(command: list[str]) -> subprocess.CompletedProcess[str]:
             capture_output=True,
             text=True,
             timeout=None,
+            env=environment,
         )
     except OSError as error:
         return subprocess.CompletedProcess(command, 127, "", str(error))
@@ -708,6 +717,28 @@ def parse_test_checks(
     check_count = 0
     for raw_line in output.splitlines():
         line = ANSI_ESCAPE.sub("", raw_line)
+        monitor_icmp_match = MONITOR_ICMP_RESULT.fullmatch(line)
+        if monitor_icmp_match:
+            received = monitor_icmp_match.group("received")
+            sent = monitor_icmp_match.group("sent")
+            average = monitor_icmp_match.group("average")
+            maximum = monitor_icmp_match.group("maximum")
+            add_check(
+                connection,
+                run_id,
+                node_ids.get(monitor_icmp_match.group("hostname")),
+                "icmp",
+                "latency",
+                monitor_icmp_match.group("status"),
+                packet_size_bytes=int(monitor_icmp_match.group("size")),
+                packets_received=int(received) if received != "unknown" else None,
+                packets_sent=int(sent) if sent != "unknown" else None,
+                latency_average_ms=float(average) if average != "unknown" else None,
+                latency_maximum_ms=float(maximum) if maximum != "unknown" else None,
+            )
+            check_count += 1
+            continue
+
         heading = PEER_HEADING.match(line)
         if heading:
             current_node_id = node_ids.get(heading.group(1)) or node_ids.get(heading.group(2))
@@ -1091,7 +1122,9 @@ def monitor_once(
             ),
         )
 
-    test_result = run_command([test_command, "test"])
+    test_environment = os.environ.copy()
+    test_environment["TAILMOX_MONITOR_OUTPUT"] = "true"
+    test_result = run_command([test_command, "test"], test_environment)
     combined_output = "\n".join(part for part in (test_result.stdout, test_result.stderr) if part)
     parsed_checks = parse_test_checks(connection, run_id, combined_output, node_ids)
     if parsed_checks == 0:

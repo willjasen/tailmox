@@ -23,6 +23,7 @@ printf '%s\n' \
     'printf "%s\n" " - pve-remote (100.64.0.2)"' \
     'printf "%s\n" "Checking if TCP port 443 is available on all other Tailmox peers..."' \
     'printf "%s\n" "   - 64-byte ICMP: result could not be interpreted. No cluster changes will be made."' \
+    'printf "__TAILMOX_MONITOR_ICMP__\tpve-remote\t1280\tpassed\t11\t11\t1.50\t2.75\n"' \
     'printf "%s\n" "   - TCP port 443 is not available; latency 2001.25 ms."' \
     'exit 1' > "$MOCK_TAILMOX"
 
@@ -73,12 +74,13 @@ checks = connection.execute(
     ORDER BY id
     """
 ).fetchall()
-assert len(checks) == 6, checks
+assert len(checks) == 7, checks
 assert ("tailscale", "passed", None, None, 20, 20, 4.25, 7.5) in checks, checks
 assert ("tcp", "passed", 8006, None, None, None, 3.75, 3.75) in checks, checks
 assert ("tcp", "failed", 443, None, None, None, 2001.25, 2001.25) in checks, checks
 assert ("icmp", "passed", None, 64, 11, 11, 1.25, 2.5) in checks, checks
 assert ("icmp", "failed", None, 64, None, None, None, None) in checks, checks
+assert ("icmp", "passed", None, 1280, 11, 11, 1.5, 2.75) in checks, checks
 
 cluster = connection.execute(
     """
@@ -126,11 +128,11 @@ assert len(analytics["latest"]["nodes"]) == 2, analytics
 assert len(analytics["latest"]["issues"]) == 2, analytics
 assert analytics["history"][0]["id"] == analytics["latest"]["id"], analytics
 assert analytics["history"][0]["finishedAt"], analytics
-assert analytics["history"][0]["latencyAverageMs"] == 502.625, analytics
+assert analytics["history"][0]["latencyAverageMs"] == 402.4, analytics
 assert analytics["history"][0]["latencyMaximumMs"] == 2001.25, analytics
 assert len(analytics["history"][0]["nodes"]) == 2, analytics
 assert len(analytics["history"][0]["issues"]) == 2, analytics
-assert len(analytics["history"][0]["checks"]) == 6, analytics
+assert len(analytics["history"][0]["checks"]) == 7, analytics
 assert {
     "hostname": "pve-local",
     "category": "tailscale",

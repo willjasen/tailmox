@@ -946,6 +946,21 @@ function ensure_ping_reachability() {
     local -a result_files
     local -a ping_pids
 
+    function emit_monitor_icmp_result() {
+        local hostname="$1"
+        local size="$2"
+        local status="$3"
+        local received="$4"
+        local sent="$5"
+        local average="$6"
+        local maximum="$7"
+
+        if [[ "${TAILMOX_MONITOR_OUTPUT:-false}" == "true" ]]; then
+            printf '__TAILMOX_MONITOR_ICMP__\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+                "$hostname" "$size" "$status" "$received" "$sent" "$average" "$maximum"
+        fi
+    }
+
     if ! printf '%s\n' "$peers_to_check" | jq -e '
         (type == "array")
         and all(.[];
@@ -1050,18 +1065,23 @@ function ensure_ping_reachability() {
 
         if [[ -z "$transmitted_count" || -z "$received_count" ]]; then
             log_echo "${RED}   - ${packet_size}-byte ICMP: result could not be interpreted. No cluster changes will be made.${RESET}"
+            emit_monitor_icmp_result "$peer_hostname" "$packet_size" failed unknown unknown unknown unknown
             all_reachable=false
         elif [[ "$received_count" -lt "$transmitted_count" ]]; then
             log_echo "${YELLOW}   - WARNING: ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency:-unknown} ms; only $received_count of $transmitted_count replies arrived within 50 ms; ${packet_loss:-packet loss unknown}.${RESET}"
+            emit_monitor_icmp_result "$peer_hostname" "$packet_size" warning "$received_count" "$transmitted_count" "${avg_latency:-unknown}" "${max_latency:-unknown}"
             override_required=true
         elif [[ -z "$max_latency" ]]; then
             log_echo "${RED}   - ${packet_size}-byte ICMP: latency result could not be interpreted. No cluster changes will be made.${RESET}"
+            emit_monitor_icmp_result "$peer_hostname" "$packet_size" failed "$received_count" "$transmitted_count" "${avg_latency:-unknown}" unknown
             all_reachable=false
         elif awk -v latency="$max_latency" -v limit="$latency_warning_ms" 'BEGIN { exit !(latency > limit) }'; then
             log_echo "${YELLOW}   - WARNING: ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms exceeded 50 ms; $received_count of $transmitted_count replies arrived; ${packet_loss:-packet loss unknown}.${RESET}"
+            emit_monitor_icmp_result "$peer_hostname" "$packet_size" warning "$received_count" "$transmitted_count" "${avg_latency:-unknown}" "$max_latency"
             override_required=true
         else
             log_echo "${GREEN}   - ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms; $received_count of $transmitted_count replies arrived within 50 ms; ${packet_loss:-0% packet loss}.${RESET}"
+            emit_monitor_icmp_result "$peer_hostname" "$packet_size" passed "$received_count" "$transmitted_count" "${avg_latency:-unknown}" "$max_latency"
         fi
 
         index=$((index + 1))
