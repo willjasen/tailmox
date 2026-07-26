@@ -60,6 +60,11 @@ if grep -Fq -- '--base-path' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
     exit 1
 fi
 
+if grep -Fq -- '--writable' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
+    printf 'FAIL: ttyd allowed browser input to the host process\n'
+    exit 1
+fi
+
 if ! grep -Fq -- '--url-arg' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service" ||
     ! grep -Fq -- '/opt/tailmox/tailmox-web-terminal' \
         "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
@@ -159,6 +164,8 @@ if ! grep -Fq 'id="run-test"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="run-cluster"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="monitor-health"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'new EventSource("monitor/events")' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'addEventListener("backups"' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    grep -Fq 'setInterval(loadBackups' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'terminal/?arg=test' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'terminal/?arg=backup-create' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'terminal/?arg=cluster' "$TAILMOX_WEB_ROOT/tailmox.js"; then
@@ -195,4 +202,4 @@ if ! refresh_web_backup_inventory ||
     exit 1
 fi
 
-printf 'PASS: dashboard embeds the terminal and publishes live monitor and safe backup metadata\n'
+printf 'PASS: dashboard embeds read-only command output and publishes live monitor and safe backup metadata\n'

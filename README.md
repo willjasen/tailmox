@@ -70,7 +70,7 @@ This script uses the tag of "tailmox" to determine which Tailscale machines are 
 }
 ```
 
-Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. The rule at the end restricts the Tailmox dashboard and its writable root terminal to tailnet administrators.
+Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. The rule at the end restricts the Tailmox dashboard and its read-only command-output view to tailnet administrators.
 ```
 "acls": [
 	/// ... ACL rules before
@@ -128,13 +128,13 @@ then submit.
 2. Change into the install directory: `cd tailmox`
 3. Make sure that the script is executable: `chmod +x tailmox.sh`
 4. Bootstrap the `tailmox` command and start the installer: `./tailmox serve`
-5. Open the HTTPS URL printed by the script from an administrator's device on your tailnet. The dashboard includes an idle terminal, explicit buttons for `tailmox test`, `tailmox backups create`, and `tailmox cluster`, and a read-only configuration-backup inventory.
+5. Open the HTTPS URL printed by the script from an administrator's device on your tailnet. The dashboard includes a read-only command-output view, explicit buttons for `tailmox test`, `tailmox backups create`, and `tailmox cluster`, and a read-only configuration-backup inventory.
 
 ---
 
 ### 🖥️ Usage 🖥️
 
-`tailmox.sh` starts a persistent dashboard on TCP 8669 and prints its tailnet-only HTTPS URL using the current Proxmox host's Tailscale MagicDNS name. The dashboard embeds an idle interactive terminal at `/terminal/` and shows a read-only inventory of configuration backups. Opening the page does not start setup. Use the `tailmox test` button for the read-only setup check, `tailmox backups create` to create a private configuration archive, or the confirmation-gated `tailmox cluster` button to begin the clustering workflow. The terminal service listens only on localhost; Tailscale Serve provides HTTPS and access over the tailnet.
+`tailmox.sh` starts a persistent dashboard on TCP 8669 and prints its tailnet-only HTTPS URL using the current Proxmox host's Tailscale MagicDNS name. The dashboard embeds a read-only command-output view at `/terminal/` and shows a read-only inventory of configuration backups. Opening the page does not start setup or launch a host shell. Use the `tailmox test` button for the read-only setup check, `tailmox backups create` to create a private configuration archive, or the confirmation-gated `tailmox cluster` button to begin the clustering workflow. The command-output service listens only on localhost; Tailscale Serve provides HTTPS and access over the tailnet.
 
 The local `tailmox` command provides shortcuts for the main workflows:
 
@@ -238,11 +238,13 @@ results between hosts.
 While the monitor is running, it exposes a read-only Server-Sent Events
 endpoint on localhost TCP 8671. `tailmox serve start` publishes that endpoint beneath
 `/monitor` through the existing tailnet-only HTTPS listener, and the dashboard
-updates immediately after a run without polling. The endpoint accepts no
-uploads or monitoring results. The database remains outside the web root; the
-browser receives only a small analytics projection containing current health,
-the last 24 hours of run totals, recent status history, and the latest node
-snapshot.
+updates monitor results and the backup inventory without browser polling.
+Backup metadata is pushed when Tailmox refreshes its inventory, including after
+`tailmox backups create`; the initial page load and Refresh button retain a
+read-only fallback. The endpoint accepts no uploads or monitoring results. The
+database and backup contents remain outside the web root; the browser receives
+only a small analytics projection and backup metadata containing type, creation
+time, size, integrity, and filename.
 
 Run the project's regression test suite separately with:
 

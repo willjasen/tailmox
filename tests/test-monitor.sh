@@ -104,12 +104,45 @@ if grep -aFq '"BackendState"' "$DATABASE"; then
 fi
 
 if ! grep -Fq '"Content-Type", "text/event-stream"' "$TEST_ROOT/tailmox-monitor" ||
+    ! grep -Fq 'event: backups' "$TEST_ROOT/tailmox-monitor" ||
     grep -Fq 'def do_POST' "$TEST_ROOT/tailmox-monitor"; then
-    printf 'FAIL: monitor event endpoint is missing or accepts uploaded results\n'
+    printf 'FAIL: monitor event endpoint is missing backup events or accepts uploads\n'
     exit 1
 fi
 
-printf 'PASS: monitor stores normalized analytics and exposes read-only SSE\n'
+python3 - "$TEST_ROOT/tailmox-monitor" "$TEST_TMP/backups.json" <<'PY'
+import json
+import pathlib
+import runpy
+import sys
+import threading
+
+monitor_path, inventory_name = sys.argv[1:]
+module = runpy.run_path(monitor_path)
+broker = module["AnalyticsBroker"]()
+stop_event = threading.Event()
+inventory_path = pathlib.Path(inventory_name)
+inventory = {
+    "generatedAt": "2026-07-26T13:00:00Z",
+    "backups": [{"filename": "proxmox-cluster-test.tar.gz"}],
+}
+inventory_path.write_text(json.dumps(inventory), encoding="utf-8")
+watcher = threading.Thread(
+    target=module["watch_backup_inventory"],
+    args=(inventory_path, broker, stop_event),
+)
+watcher.start()
+try:
+    _, _, backup_version, backup_document = broker.wait_for_update(0, 0, 3)
+    assert backup_version == 1, backup_version
+    assert backup_document == inventory, backup_document
+finally:
+    stop_event.set()
+    watcher.join(timeout=2)
+    assert not watcher.is_alive()
+PY
+
+printf 'PASS: monitor stores analytics and pushes read-only backup metadata over SSE\n'
 
 PRE_CLUSTER_DATABASE="$TEST_TMP/pre-cluster.sqlite3"
 TAILMOX_MONITOR_DB="$PRE_CLUSTER_DATABASE" \
