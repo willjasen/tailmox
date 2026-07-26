@@ -15,6 +15,7 @@ source "$TEST_ROOT/tailmox.sh"
 HOSTNAME="pve-local"
 MOCK_TAGS='["tag:tailmox"]'
 MOCK_MISSING_DEPENDENCY=""
+MOCK_ICMP_WARNING=false
 CHECK_LOG=""
 
 function check_if_supported_proxmox_is_installed() { return 0; }
@@ -28,6 +29,9 @@ function check_all_peers_online() {
 }
 function ensure_ping_reachability() {
     CHECK_LOG+="ping:${2:-all other Tailmox peers}:${3:-true} "
+    if [[ "$MOCK_ICMP_WARNING" == true && "${3:-true}" == false ]]; then
+        TAILMOX_ICMP_WARNINGS_RECORDED=true
+    fi
     return 0
 }
 function are_hosts_tcp_port_8006_reachable() {
@@ -102,6 +106,17 @@ else
     printf 'FAIL: setup test output separates its major phases in order\n'
     FAIL_COUNT=$((FAIL_COUNT + 1))
 fi
+
+MOCK_ICMP_WARNING=true
+SETUP_WARNING_OUTPUT=$(test_setup_safely)
+if [[ "$SETUP_WARNING_OUTPUT" == *$'\033[1;33m━━━ RESULT: Setup test passed with warnings'* ]]; then
+    printf 'PASS: setup test reports ICMP warnings in its yellow result summary\n'
+    PASS_COUNT=$((PASS_COUNT + 1))
+else
+    printf 'FAIL: setup test reports ICMP warnings in its yellow result summary\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+fi
+MOCK_ICMP_WARNING=false
 
 if [[ "$SETUP_OUTPUT" == *"Skipped all mutating steps"* ]]; then
     printf 'FAIL: setup test omits the redundant skipped-steps summary\n'

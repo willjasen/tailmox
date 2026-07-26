@@ -1128,6 +1128,7 @@ function ensure_ping_reachability() {
         if [[ "$require_icmp_confirmation" == true ]]; then
             confirm_icmp_warning_override || return 1
         else
+            TAILMOX_ICMP_WARNINGS_RECORDED=true
             log_echo "${YELLOW}ICMP warnings were recorded; the read-only test will continue without confirmation.${RESET}"
         fi
     fi
@@ -1711,6 +1712,8 @@ function test_setup_safely() {
     local tailscale_ip
     local dns_name
 
+    TAILMOX_ICMP_WARNINGS_RECORDED=false
+
     printf '%s\n' "Tailmox setup test (read-only)"
     printf '%s\n' "No packages, services, Tailscale settings, or cluster state will be changed."
 
@@ -1793,7 +1796,11 @@ function test_setup_safely() {
     are_hosts_tcp_port_443_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
 
     log_echo ""
-    log_echo "${GREEN}━━━ RESULT: Setup test passed ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    if [[ "$TAILMOX_ICMP_WARNINGS_RECORDED" == true ]]; then
+        log_echo "${YELLOW}━━━ RESULT: Setup test passed with warnings ━━━━━━━━━━━━━━━━━━━${RESET}"
+    else
+        log_echo "${GREEN}━━━ RESULT: Setup test passed ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${RESET}"
+    fi
 }
 
 ####
