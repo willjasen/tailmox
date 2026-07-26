@@ -616,6 +616,7 @@ function backup_proxmox_cluster_configuration() {
     local temporary_archive
     local source_path
     local -a backup_sources=()
+    local -a archive_sources=()
 
     for source_path in \
         "$TAILMOX_PVE_CONFIG_DIR" \
@@ -623,6 +624,7 @@ function backup_proxmox_cluster_configuration() {
         "$TAILMOX_HOSTS_FILE"; do
         if [[ -e "$source_path" ]]; then
             backup_sources+=("$source_path")
+            archive_sources+=("${source_path#/}")
         fi
     done
 
@@ -644,7 +646,7 @@ function backup_proxmox_cluster_configuration() {
     done
     temporary_archive="${backup_archive}.tmp"
 
-    if ! (umask 077; tar -czf "$temporary_archive" "${backup_sources[@]}"); then
+    if ! (umask 077; tar -czf "$temporary_archive" -C / "${archive_sources[@]}"); then
         rm -f "$temporary_archive"
         log_echo "${RED}Unable to archive the current Proxmox cluster configuration. No cluster changes will be made.${RESET}"
         return 1

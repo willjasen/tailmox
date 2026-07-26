@@ -43,10 +43,11 @@ fi
 
 if create_output=$("$TEST_ROOT/tailmox" backups create 2>&1) &&
     [[ "$create_output" == *"Archived the current Proxmox cluster configuration at"* ]] &&
+    [[ "$create_output" != *"Removing leading"* ]] &&
     [[ $(find "$TAILMOX_CLUSTER_BACKUP_DIR" -type f -name 'proxmox-cluster-*.tar.gz' | wc -l | tr -d ' ') -eq 1 ]]; then
-    pass "backup create makes a configuration archive"
+    pass "backup create makes a configuration archive without tar path warnings"
 else
-    fail "backup create makes a configuration archive"
+    fail "backup create makes a configuration archive without tar path warnings"
 fi
 
 if list_output=$("$TEST_ROOT/tailmox" backups list 2>&1) &&
