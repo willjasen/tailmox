@@ -28,10 +28,23 @@
 # Source color definitions
 source "$(dirname "${BASH_SOURCE[0]}")/.colors.sh"
 
-# Define log file
+# Define log file. Dry runs must not create or rotate host log files.
 TAILMOX_SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-LOG_DIR="${TAILMOX_LOG_DIR:-/var/log}"
-LOG_FILE="$LOG_DIR/tailmox.log"
+TAILMOX_EARLY_DRY_RUN=false
+for tailmox_argument in "$@"; do
+    if [[ "$tailmox_argument" == "--dry-run" ]]; then
+        TAILMOX_EARLY_DRY_RUN=true
+        break
+    fi
+done
+
+if [[ "$TAILMOX_EARLY_DRY_RUN" == "true" ]]; then
+    LOG_DIR=""
+    LOG_FILE=/dev/null
+else
+    LOG_DIR="${TAILMOX_LOG_DIR:-/var/log}"
+    LOG_FILE="$LOG_DIR/tailmox.log"
+fi
 
 # TMOX maps to 8669 on a telephone keypad.
 TAILMOX_WEB_PORT="${TAILMOX_WEB_PORT:-8669}"
@@ -39,12 +52,13 @@ TAILMOX_WEB_BACKEND_PORT="${TAILMOX_WEB_BACKEND_PORT:-8670}"
 TAILMOX_WEB_SERVICE="${TAILMOX_WEB_SERVICE:-tailmox-web.service}"
 TAILMOX_SYSTEMD_DIR="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
 
-# Create log directory if it doesn't exist
-mkdir -p "$LOG_DIR"
+# Create and rotate logs only during real setup.
+if [[ "$TAILMOX_EARLY_DRY_RUN" != "true" ]]; then
+    mkdir -p "$LOG_DIR"
 
-# Rotate log if it's larger than 10MB
-if [ -f "$LOG_FILE" ] && [ $(stat -f%z "$LOG_FILE" 2>/dev/null || stat -c%s "$LOG_FILE" 2>/dev/null || echo 0) -gt 10485760 ]; then
-    mv "$LOG_FILE" "${LOG_FILE}.old"
+    if [ -f "$LOG_FILE" ] && [ $(stat -f%z "$LOG_FILE" 2>/dev/null || stat -c%s "$LOG_FILE" 2>/dev/null || echo 0) -gt 10485760 ]; then
+        mv "$LOG_FILE" "${LOG_FILE}.old"
+    fi
 fi
 
 ###
@@ -861,6 +875,94 @@ function add_local_node_to_cluster() {
     fi
 }
 
+# Exercise the host-facing setup checks without making configuration changes.
+function test_setup_safely() {
+    local dependency
+    local missing_dependencies=false
+    local status_json
+    local tailscale_ip
+    local dns_name
+
+    printf '%s\n' "Tailmox setup test (read-only)"
+    printf '%s\n\n' "No packages, services, Tailscale settings, or cluster state will be changed."
+
+    if ! check_if_supported_proxmox_is_installed; then
+        return 1
+    fi
+
+    if ! check_script_directory; then
+        return 1
+    fi
+
+    log_echo "${YELLOW}Checking tools required by setup...${RESET}"
+    for dependency in curl expect git jq ttyd tailscale pvecm ping nc openssl; do
+        if command -v "$dependency" &>/dev/null; then
+            log_echo "${GREEN} - $dependency is available.${RESET}"
+        else
+            log_echo "${RED} - $dependency is missing (normal setup would install it when supported).${RESET}"
+            missing_dependencies=true
+        fi
+    done
+    if [[ "$missing_dependencies" == "true" ]]; then
+        log_echo "${RED}Setup cannot be fully tested until the missing tools are available.${RESET}"
+        return 1
+    fi
+
+    log_echo "${YELLOW}Reading current Tailscale state...${RESET}"
+    if ! status_json=$(tailscale status --json 2>/dev/null) ||
+        ! printf '%s\n' "$status_json" | jq -e '
+            (.BackendState == "Running")
+            and ((.Self | type) == "object")
+            and (.Self.Online == true)
+            and ((.Peer | type) == "object")
+        ' >/dev/null 2>&1; then
+        log_echo "${RED}Tailscale is not online or returned incomplete status.${RESET}"
+        log_echo "${YELLOW}Normal setup would install or start Tailscale; the test did neither.${RESET}"
+        return 1
+    fi
+
+    if ! tailscale_ip=$(tailscale ip -4 2>/dev/null) || [[ -z "$tailscale_ip" ]]; then
+        log_echo "${RED}Unable to read this host's Tailscale IPv4 address.${RESET}"
+        return 1
+    fi
+    dns_name=$(printf '%s\n' "$status_json" | jq -r '.Self.DNSName // empty' | sed 's/\.$//')
+    if [[ -z "$dns_name" ]]; then
+        log_echo "${RED}Unable to read this host's Tailscale DNS name.${RESET}"
+        return 1
+    fi
+
+    TAILSCALE_IP="$tailscale_ip"
+    TAILSCALE_DNS_NAME="$dns_name"
+    MAGICDNS_DOMAIN_NAME=$(printf '%s\n' "$dns_name" | cut -d'.' -f2-)
+    LOCAL_PEER=$(jq -n \
+        --arg hostname "$HOSTNAME" \
+        --arg ip "$TAILSCALE_IP" \
+        --arg dnsName "$TAILSCALE_DNS_NAME" \
+        '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: true}')
+    OTHER_PEERS=$(printf '%s\n' "$status_json" | jq -c '[.Peer[]
+        | select((.Tags // []) | index("tag:tailmox"))
+        | {
+            hostname: .HostName,
+            ip: .TailscaleIPs[0],
+            dnsName: .DNSName,
+            online: .Online
+        }]')
+    ALL_PEERS=$(printf '%s\n' "$OTHER_PEERS" |
+        jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]')
+
+    check_all_peers_online || return 1
+    ensure_ping_reachability || return 1
+    are_hosts_tcp_port_8006_reachable || return 1
+    are_hosts_tcp_port_443_reachable || return 1
+
+    log_echo "${YELLOW}Reading current Proxmox cluster state...${RESET}"
+    check_local_node_cluster_status || true
+
+    printf '\n%s\n' "Setup test passed."
+    printf '%s\n' "Skipped all mutating steps: package installation, Tailscale up/serve,"
+    printf '%s\n' "systemd changes, certificate changes, and Proxmox cluster create/join."
+}
+
 ####
 #### ---MAIN SCRIPT---
 ####
@@ -868,10 +970,12 @@ function add_local_node_to_cluster() {
 # Parse the script parameters
 TERMINAL_MODE=false
 STAGING=false
+DRY_RUN=false
 AUTH_KEY=""
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --staging) STAGING="true"; ;;
+        --dry-run) DRY_RUN=true; ;;
         --auth-key)
             if [[ -z "${2:-}" ]]; then
                 printf '%s\n' "--auth-key requires a value." >&2
@@ -890,6 +994,11 @@ done
 # installer or making changes to a host.
 if [[ "${TAILMOX_LIBRARY_MODE:-false}" == "true" ]]; then
     return 0 2>/dev/null || exit 0
+fi
+
+if [[ "$DRY_RUN" == "true" ]]; then
+    test_setup_safely
+    exit $?
 fi
 
 if [[ "$TERMINAL_MODE" != "true" ]]; then

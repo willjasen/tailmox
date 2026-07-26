@@ -38,7 +38,7 @@ bootstrap_command() {
     fi
 }
 
-run_tests() {
+run_self_tests() {
     local test_file
     local passed=0
     local -a test_files=()
@@ -67,7 +67,8 @@ Usage:
   tailmox cluster [options]  Run the complete clustering workflow
   tailmox serve [options]    Start the browser-terminal launcher
   tailmox stage [options]    Set up Tailscale and certificates only
-  tailmox test               Run the test suite
+  tailmox test               Safely test setup without changing the host
+  tailmox self-test          Run the regression test suite
   tailmox help               Show this help
 
 Options such as --auth-key are passed through to tailmox.sh.
@@ -95,7 +96,15 @@ case "${1:-}" in
             printf 'tailmox test does not accept arguments.\n' >&2
             exit 2
         fi
-        run_tests
+        exec "$TAILMOX_ROOT/tailmox.sh" --dry-run
+        ;;
+    self-test)
+        shift
+        if [[ "$#" -ne 0 ]]; then
+            printf 'tailmox self-test does not accept arguments.\n' >&2
+            exit 2
+        fi
+        run_self_tests
         ;;
     ""|help|-h|--help)
         show_usage

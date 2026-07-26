@@ -142,7 +142,8 @@ The local `tailmox` command provides shortcuts for the main workflows:
 tailmox cluster             # Run the complete clustering workflow
 tailmox serve               # Start the browser-terminal launcher
 tailmox stage               # Set up Tailscale and certificates only
-tailmox test                # Run the test suite
+tailmox test                # Test setup without changing the host
+tailmox self-test           # Run the regression test suite
 tailmox help                # List available commands
 ```
 
@@ -158,13 +159,19 @@ During the running of the script, if there are existing hosts within the tailmox
 
 This project has been tested to successfully join a cluster of three Proxmox v8 and v9 hosts together into a cluster via Tailscale. It has been tested up to the point of achieving this goal and not further. It is possible that further testing with other features related to clustering (like high availability and ZFS replication) may not work, though bugs can be patched appropriately when known.
 
-Run the local test suite from the project directory with:
+Safely exercise the setup checks on a Proxmox host with:
 
 ```bash
-./tailmox test
+tailmox test
 ```
 
-If the project directory is on your `PATH`, the equivalent command is `tailmox test`.
+This read-only test checks the Proxmox version, required tools, current Tailscale state, Tailmox peers, peer latency and required TCP ports, and current cluster status. It does not install packages, change Tailscale or systemd, request certificates, create a cluster, or join one.
+
+Run the project's regression test suite separately with:
+
+```bash
+tailmox self-test
+```
 
 If planning to run `tailmox.sh` many times in a short period, it is recommended that staging is performed first. By supplying the "--staging" parameter, `tailmox.sh` will install Tailscale and retrieve the Tailscale certificate and then stop. The purpose of staging is to prevent many requests to Tailscale for the same certificate in rapid succession. If staging is not performed, it is possible that the step to setup the certificate will take a very long time, which is not optimal when running many tests centered around setting up the Proxmox cluster.
 
