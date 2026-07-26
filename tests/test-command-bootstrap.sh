@@ -51,6 +51,12 @@ mkdir -p "$DISPATCH_DIR"
 cp "$TEST_ROOT/tailmox" "$DISPATCH_DIR/tailmox"
 printf '%s\n' \
     '#!/usr/bin/env bash' \
+    'if [[ -n "${TAILMOX_DISPATCH_CALLS:-}" ]]; then' \
+    '    printf "%s\n" "$*" >> "$TAILMOX_DISPATCH_CALLS"' \
+    'fi' \
+    'if [[ "${TAILMOX_FAIL_WEB_STOP:-false}" == "true" && "${1:-}" == "--web-stop" ]]; then' \
+    '    exit 1' \
+    'fi' \
     'printf "tailmox.sh"' \
     'for argument in "$@"; do printf " <%s>" "$argument"; done' \
     'printf "\n"' \
@@ -71,3 +77,35 @@ if [[ "$SHORT_OUTPUT" != 'tailmox.sh' ||
 fi
 
 printf 'PASS: serve defaults to the explicit start action\n'
+
+DISPATCH_CALLS="$TEST_DIR/dispatch-calls"
+RESTART_OUTPUT=$(TAILMOX_DISPATCH_CALLS="$DISPATCH_CALLS" \
+    TAILMOX_BIN_DIR="$BIN_DIR" "$DISPATCH_DIR/tailmox" serve restart)
+
+if [[ "$RESTART_OUTPUT" != $'tailmox.sh <--web-stop>\ntailmox.sh' ]] ||
+    [[ "$(sed -n '1p' "$DISPATCH_CALLS")" != '--web-stop' ]] ||
+    [[ -n "$(sed -n '2p' "$DISPATCH_CALLS")" ]]; then
+    printf 'FAIL: serve restart did not stop and then start the web server\n'
+    exit 1
+fi
+
+if TAILMOX_BIN_DIR="$BIN_DIR" "$DISPATCH_DIR/tailmox" \
+    serve restart unexpected >/dev/null 2>&1; then
+    printf 'FAIL: serve restart accepted unexpected arguments\n'
+    exit 1
+fi
+
+FAILED_RESTART_CALLS="$TEST_DIR/failed-restart-calls"
+if TAILMOX_DISPATCH_CALLS="$FAILED_RESTART_CALLS" TAILMOX_FAIL_WEB_STOP=true \
+    TAILMOX_BIN_DIR="$BIN_DIR" "$DISPATCH_DIR/tailmox" \
+    serve restart >/dev/null 2>&1; then
+    printf 'FAIL: serve restart succeeded after stop failed\n'
+    exit 1
+fi
+if [[ "$(wc -l < "$FAILED_RESTART_CALLS")" -ne 1 ]] ||
+    [[ "$(sed -n '1p' "$FAILED_RESTART_CALLS")" != '--web-stop' ]]; then
+    printf 'FAIL: serve restart attempted to start after stop failed\n'
+    exit 1
+fi
+
+printf 'PASS: serve restart stops and then starts the web server\n'

@@ -143,6 +143,7 @@ tailmox cluster             # Run the complete clustering workflow
 tailmox serve               # Start the dashboard and read-only command output
 tailmox serve start         # Explicit form of `tailmox serve`
 tailmox serve stop          # Stop the dashboard and command-output service
+tailmox serve restart       # Stop and restart the dashboard and command-output service
 tailmox stage               # Set up Tailscale and certificates only
 tailmox backups             # List configuration backups
 tailmox backups create      # Create a configuration backup now
