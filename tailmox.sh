@@ -922,11 +922,12 @@ function ensure_ping_reachability() {
         fi
 
         if [[ "$check_type" == "tailscale" ]]; then
+            log_echo "${BLUE} - $peer_hostname ($peer_dns_name)${RESET}"
             tailscale_result=$(tail -1 "$result_file")
             if [[ "$command_succeeded" == true ]]; then
-                log_echo "${BLUE} - $peer_hostname ($peer_dns_name), Tailscale path: ${tailscale_result:-reachable}.${RESET}"
+                log_echo "${BLUE}   - Tailscale path: ${tailscale_result:-reachable}.${RESET}"
             else
-                log_echo "${RED} - $peer_hostname ($peer_dns_name), Tailscale path check failed: ${tailscale_result:-no result}. No cluster changes will be made.${RESET}"
+                log_echo "${RED}   - Tailscale path check failed: ${tailscale_result:-no result}. No cluster changes will be made.${RESET}"
                 all_reachable=false
             fi
             index=$((index + 1))
@@ -949,19 +950,19 @@ function ensure_ping_reachability() {
         max_latency=$(awk -F'/' '/^(rtt|round-trip)/ {print $6}' "$result_file" | tail -1)
 
         if [[ -z "$transmitted_count" || -z "$received_count" ]]; then
-            log_echo "${RED} - $peer_hostname ($peer_dns_name), ${packet_size}-byte ICMP: result could not be interpreted. No cluster changes will be made.${RESET}"
+            log_echo "${RED}   - ${packet_size}-byte ICMP: result could not be interpreted. No cluster changes will be made.${RESET}"
             all_reachable=false
         elif [[ "$received_count" -lt "$transmitted_count" ]]; then
-            log_echo "${YELLOW} - WARNING: $peer_hostname ($peer_dns_name), ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency:-unknown} ms; only $received_count of $transmitted_count replies arrived within 50 ms; ${packet_loss:-packet loss unknown}.${RESET}"
+            log_echo "${YELLOW}   - WARNING: ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency:-unknown} ms; only $received_count of $transmitted_count replies arrived within 50 ms; ${packet_loss:-packet loss unknown}.${RESET}"
             override_required=true
         elif [[ -z "$max_latency" ]]; then
-            log_echo "${RED} - $peer_hostname ($peer_dns_name), ${packet_size}-byte ICMP: latency result could not be interpreted. No cluster changes will be made.${RESET}"
+            log_echo "${RED}   - ${packet_size}-byte ICMP: latency result could not be interpreted. No cluster changes will be made.${RESET}"
             all_reachable=false
         elif awk -v latency="$max_latency" -v limit="$latency_warning_ms" 'BEGIN { exit !(latency > limit) }'; then
-            log_echo "${YELLOW} - WARNING: $peer_hostname ($peer_dns_name), ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms exceeded 50 ms; ${packet_loss:-packet loss unknown}.${RESET}"
+            log_echo "${YELLOW}   - WARNING: ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms exceeded 50 ms; ${packet_loss:-packet loss unknown}.${RESET}"
             override_required=true
         else
-            log_echo "${GREEN} - $peer_hostname ($peer_dns_name), ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms; all replies arrived within 50 ms; ${packet_loss:-0% packet loss}.${RESET}"
+            log_echo "${GREEN}   - ${packet_size}-byte ICMP: average latency ${avg_latency:-unknown} ms; maximum latency ${max_latency} ms; all replies arrived within 50 ms; ${packet_loss:-0% packet loss}.${RESET}"
         fi
 
         index=$((index + 1))

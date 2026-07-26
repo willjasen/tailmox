@@ -148,19 +148,31 @@ if [[ "$(grep -c -- '^ping --c 1 --timeout=200ms ' "$TAILSCALE_PING_ARGS_FILE")"
 fi
 
 for peer in pve1 pve2 pve3; do
-    printf -v expected_tailscale_line '%b' \
-        "${BLUE} - $peer ($peer.example.ts.net), Tailscale path: 20 of 20 Tailscale pings succeeded (80% required).${RESET}"
-    if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_tailscale_line")" -ne 1 ]]; then
-        printf 'FAIL: successful Tailscale path result for %s was not blue\n' "$peer"
+    printf -v expected_peer_line '%b' \
+        "${BLUE} - $peer ($peer.example.ts.net)${RESET}"
+    if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_peer_line")" -ne 1 ]]; then
+        printf 'FAIL: peer heading for %s was not printed once\n' "$peer"
         exit 1
     fi
 
-    if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -c -- "$peer .*64-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms")" -ne 1 ]] \
-        || [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -c -- "$peer .*1280-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms")" -ne 1 ]]; then
-        printf 'FAIL: peer ICMP results did not clearly report average and maximum latency by packet size\n'
-        exit 1
-    fi
 done
+
+printf -v expected_tailscale_line '%b' \
+    "${BLUE}   - Tailscale path: 20 of 20 Tailscale pings succeeded (80% required).${RESET}"
+if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_tailscale_line")" -ne 3 ]]; then
+    printf 'FAIL: successful Tailscale path results were not nested and blue\n'
+    exit 1
+fi
+
+printf -v expected_small_icmp_line '%b' \
+    "${GREEN}   - 64-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; all replies arrived within 50 ms; 0% packet loss.${RESET}"
+printf -v expected_large_icmp_line '%b' \
+    "${GREEN}   - 1280-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; all replies arrived within 50 ms; 0% packet loss.${RESET}"
+if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_small_icmp_line")" -ne 3 ]] \
+    || [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_large_icmp_line")" -ne 3 ]]; then
+    printf 'FAIL: ICMP results were not nested beneath peer headings\n'
+    exit 1
+fi
 
 printf 'PASS: all peers use Tailscale path checks and both ICMP packet sizes in parallel\n'
 
