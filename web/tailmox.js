@@ -6,6 +6,7 @@ const refreshButton = document.querySelector("#refresh-backups");
 const reloadTerminalButton = document.querySelector("#reload-terminal");
 const runClusterButton = document.querySelector("#run-cluster");
 const runTestButton = document.querySelector("#run-test");
+const terminalFrame = document.querySelector("#terminal-frame");
 const terminal = document.querySelector("#terminal");
 const backupTemplate = document.querySelector("#backup-template");
 const monitorCluster = document.querySelector("#monitor-cluster");
@@ -621,14 +622,21 @@ async function loadBackups() {
 }
 
 refreshButton.addEventListener("click", loadBackups);
+
+function showTerminal(path) {
+    terminalFrame.hidden = false;
+    reloadTerminalButton.disabled = false;
+    terminal.src = path;
+}
+
 reloadTerminalButton.addEventListener("click", () => {
-    terminal.src = `terminal/?reloaded=${Date.now()}`;
+    showTerminal(`terminal/?reloaded=${Date.now()}`);
 });
 runTestButton.addEventListener("click", () => {
-    terminal.src = `terminal/?arg=test&started=${Date.now()}`;
+    showTerminal(`terminal/?arg=test&started=${Date.now()}`);
 });
 createBackupButton.addEventListener("click", () => {
-    terminal.src = `terminal/?arg=backup-create&started=${Date.now()}`;
+    showTerminal(`terminal/?arg=backup-create&started=${Date.now()}`);
 });
 runClusterButton.addEventListener("click", () => {
     const confirmed = window.confirm(
@@ -636,7 +644,7 @@ runClusterButton.addEventListener("click", () => {
         + "It can change networking and Proxmox cluster state after its built-in confirmations.",
     );
     if (confirmed) {
-        terminal.src = `terminal/?arg=cluster&started=${Date.now()}`;
+        showTerminal(`terminal/?arg=cluster&started=${Date.now()}`);
     }
 });
 

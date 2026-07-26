@@ -177,13 +177,13 @@
                             <span aria-hidden="true">›</span>
                             tailmox cluster
                         </button>
-                        <button class="button button-secondary" id="reload-terminal" type="button">
+                        <button class="button button-secondary" id="reload-terminal" type="button" disabled>
                             Reload terminal
                         </button>
                     </div>
                 </div>
 
-                <div class="terminal-frame">
+                <div class="terminal-frame" id="terminal-frame" hidden>
                     <div class="terminal-bar" aria-hidden="true">
                         <span class="terminal-light terminal-light-red"></span>
                         <span class="terminal-light terminal-light-yellow"></span>
@@ -192,7 +192,6 @@
                     </div>
                     <iframe
                         id="terminal"
-                        src="terminal/"
                         title="Interactive Tailmox terminal"
                         allow="clipboard-read; clipboard-write"
                     ></iframe>

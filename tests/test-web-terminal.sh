@@ -173,6 +173,11 @@ done
 if ! grep -Fq 'id="run-test"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="create-backup"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="run-cluster"' "$TAILMOX_WEB_ROOT/index.html" ||
+    ! grep -Fq 'id="terminal-frame" hidden' "$TAILMOX_WEB_ROOT/index.html" ||
+    grep -Fq 'src="terminal/"' "$TAILMOX_WEB_ROOT/index.html" ||
+    ! grep -Fq 'function showTerminal(path)' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'terminalFrame.hidden = false;' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'reloadTerminalButton.disabled = false;' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'id="monitor-health"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="monitor-database-size"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="monitor-latency-chart"' "$TAILMOX_WEB_ROOT/index.html" ||
