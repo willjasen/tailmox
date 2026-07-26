@@ -41,6 +41,13 @@ function tailscale() {
 function pvecm() {
     PVECM_CALL_COUNT=$((PVECM_CALL_COUNT + 1))
 
+    if [[ "${1:-}" == "status" ]]; then
+        printf '%s\n' \
+            'Cluster information' \
+            '-------------------' \
+            'Quorate:          Yes'
+    fi
+
     return 0
 }
 
@@ -111,6 +118,41 @@ elif [[ "$PVECM_CALL_COUNT" -ne 0 ]]; then
 else
     pass "backup failure blocks cluster creation"
 fi
+
+rm -f "$TAILMOX_CLUSTER_BACKUP_DIR"
+mkdir -p "$TAILMOX_CLUSTER_BACKUP_DIR"
+export TAILMOX_COROSYNC_CONFIG="$TAILMOX_PVE_CONFIG_DIR/corosync.conf"
+export TAILMOX_EXISTING_CLUSTER_CONFIRMATION_DEVICE="$TEST_DIR/migration-confirmation"
+printf '%s\n' 'MIGRATE' > "$TAILMOX_EXISTING_CLUSTER_CONFIRMATION_DEVICE"
+ALL_PEERS='[
+  {"hostname":"pve1","ip":"100.64.0.1","online":true},
+  {"hostname":"pve2","ip":"100.64.0.2","online":true}
+]'
+cat > "$TAILMOX_COROSYNC_CONFIG" <<'EOF'
+totem {
+    config_version: 1
+}
+nodelist {
+    node {
+        name: pve1
+        ring0_addr: 192.0.2.1
+    }
+    node {
+        name: pve2
+        ring0_addr: 192.0.2.2
+    }
+}
+EOF
+
+if prepare_existing_cluster_for_tailmox >/dev/null 2>&1 &&
+    grep -q 'ring0_addr: 100.64.0.1' "$TAILMOX_COROSYNC_CONFIG" &&
+    grep -q 'ring0_addr: 100.64.0.2' "$TAILMOX_COROSYNC_CONFIG" &&
+    find "$TAILMOX_CLUSTER_BACKUP_DIR" -type f -name '*.tar.gz' | grep -q .; then
+    pass "existing-cluster migration archives configuration before replacement"
+else
+    fail "existing-cluster migration archives configuration before replacement"
+fi
+
 printf '\n%s passed; %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
