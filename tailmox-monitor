@@ -38,8 +38,8 @@ ICMP_RESULT = re.compile(
 )
 ICMP_REPLIES = re.compile(r"(?:only\s+)?(\d+)\s+of\s+(\d+)\s+replies")
 TCP_RESULT = re.compile(
-    r"TCP port\s+(?P<port>\d+)\s+is\s+(?P<unavailable>not\s+)?available"
-    r"(?:;\s+latency\s+(?P<latency>[0-9.]+)\s+ms)?"
+    r"^\s*-\s+TCP port\s+(?P<port>\d+)\s+is\s+(?P<unavailable>not\s+)?available"
+    r"(?:;\s+latency\s+(?P<latency>[0-9.]+)\s+ms)?\.\s*$"
 )
 
 SCHEMA = """

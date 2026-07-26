@@ -333,9 +333,11 @@ function openMonitorRunDialog(run) {
             && check.latencyAverageMs !== undefined
             && check.latencyMaximumMs !== null
             && check.latencyMaximumMs !== undefined;
-        const latency = hasLatency
-            ? `avg ${Number(check.latencyAverageMs).toFixed(3)} ms · max ${Number(check.latencyMaximumMs).toFixed(3)} ms`
-            : "latency unavailable";
+        const latency = check.category === "tcp"
+            ? (check.status === "passed" ? "Passed" : "Failed")
+            : hasLatency
+                ? `avg ${Number(check.latencyAverageMs).toFixed(3)} ms · max ${Number(check.latencyMaximumMs).toFixed(3)} ms`
+                : "latency unavailable";
         const packets = check.packetsSent !== null && check.packetsSent !== undefined
             ? ` · ${check.packetsReceived}/${check.packetsSent} replies`
             : "";
