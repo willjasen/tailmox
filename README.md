@@ -128,13 +128,13 @@ then submit.
 2. Change into the install directory: `cd tailmox`
 3. Make sure that the script is executable: `chmod +x tailmox.sh`
 4. Bootstrap the `tailmox` command and start the installer: `./tailmox serve`
-5. Open the HTTPS URL printed by the script from an administrator's device on your tailnet. The dashboard includes the interactive installer terminal and a read-only configuration-backup inventory.
+5. Open the HTTPS URL printed by the script from an administrator's device on your tailnet. The dashboard includes an idle terminal, explicit buttons for `tailmox test`, `tailmox backups create`, and `tailmox cluster`, and a read-only configuration-backup inventory.
 
 ---
 
 ### 🖥️ Usage 🖥️
 
-`tailmox.sh` starts a persistent dashboard on TCP 8669 and prints its tailnet-only HTTPS URL using the current Proxmox host's Tailscale MagicDNS name. The dashboard embeds the interactive Tailmox terminal at `/terminal/` and shows a read-only inventory of configuration backups. The terminal service listens only on localhost; Tailscale Serve provides HTTPS and access over the tailnet.
+`tailmox.sh` starts a persistent dashboard on TCP 8669 and prints its tailnet-only HTTPS URL using the current Proxmox host's Tailscale MagicDNS name. The dashboard embeds an idle interactive terminal at `/terminal/` and shows a read-only inventory of configuration backups. Opening the page does not start setup. Use the `tailmox test` button for the read-only setup check, `tailmox backups create` to create a private configuration archive, or the confirmation-gated `tailmox cluster` button to begin the clustering workflow. The terminal service listens only on localhost; Tailscale Serve provides HTTPS and access over the tailnet.
 
 The local `tailmox` command provides shortcuts for the main workflows:
 

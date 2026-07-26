@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+TAILMOX_WEB_LAUNCHER_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+TAILMOX_COMMAND="${TAILMOX_COMMAND:-$TAILMOX_WEB_LAUNCHER_DIR/tailmox}"
+TAILMOX_WEB_SHELL="${TAILMOX_WEB_SHELL:-/bin/bash}"
+TAILMOX_WEB_ACTION="${1:-}"
+
+if [[ "$#" -gt 1 ]]; then
+    printf 'The Tailmox web terminal accepts only one action.\n' >&2
+    exit 2
+fi
+
+case "$TAILMOX_WEB_ACTION" in
+    "")
+        printf '%s\n' \
+            'Tailmox terminal ready.' \
+            'Choose tailmox test or tailmox cluster above, or enter a command here.' \
+            ''
+        exec "$TAILMOX_WEB_SHELL"
+        ;;
+    test)
+        exec "$TAILMOX_COMMAND" test
+        ;;
+    backup-create)
+        exec "$TAILMOX_COMMAND" backups create
+        ;;
+    cluster)
+        exec "$TAILMOX_COMMAND" cluster
+        ;;
+    *)
+        printf 'Unsupported Tailmox web action: %s\n' "$TAILMOX_WEB_ACTION" >&2
+        exit 2
+        ;;
+esac

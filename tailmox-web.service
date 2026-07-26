@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/ttyd --interface 127.0.0.1 --port 8670 --writable --check-origin --client-option titleFixed=Tailmox /bin/bash /opt/tailmox/tailmox.sh --terminal
+ExecStart=/usr/local/bin/ttyd --interface 127.0.0.1 --port 8670 --url-arg --writable --check-origin --client-option titleFixed=Tailmox /bin/bash /opt/tailmox/tailmox-web-terminal
 Restart=on-failure
 RestartSec=2
 

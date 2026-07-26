@@ -56,6 +56,13 @@ if grep -Fq -- '--base-path' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
     exit 1
 fi
 
+if ! grep -Fq -- '--url-arg' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service" ||
+    ! grep -Fq -- '/opt/tailmox/tailmox-web-terminal' \
+        "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
+    printf 'FAIL: ttyd did not use the action-restricted web terminal launcher\n'
+    exit 1
+fi
+
 if ! grep -Fxq 'enable tailmox-web.service' "$SYSTEMCTL_CALLS" ||
     ! grep -Fxq 'restart tailmox-web.service' "$SYSTEMCTL_CALLS"; then
     printf 'FAIL: systemd service was not enabled and restarted\n'
@@ -82,6 +89,16 @@ for asset in index.html tailmox.css tailmox.js backups.json; do
         exit 1
     fi
 done
+
+if ! grep -Fq 'id="run-test"' "$TAILMOX_WEB_ROOT/index.html" ||
+    ! grep -Fq 'id="create-backup"' "$TAILMOX_WEB_ROOT/index.html" ||
+    ! grep -Fq 'id="run-cluster"' "$TAILMOX_WEB_ROOT/index.html" ||
+    ! grep -Fq 'terminal/?arg=test' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'terminal/?arg=backup-create' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'terminal/?arg=cluster' "$TAILMOX_WEB_ROOT/tailmox.js"; then
+    printf 'FAIL: dashboard workflow buttons were not installed\n'
+    exit 1
+fi
 
 if ! jq -e '
     .backups | length == 2

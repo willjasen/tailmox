@@ -182,6 +182,20 @@ button {
     padding: 0 2px 16px;
 }
 
+.terminal-description {
+    margin: 7px 0 0;
+    color: var(--muted);
+    font-size: 0.75rem;
+}
+
+.terminal-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
 .backup-heading {
     align-items: flex-start;
 }
@@ -247,6 +261,53 @@ h2 {
     background: rgba(16, 26, 24, 0.84);
     font-size: 0.76rem;
     font-weight: 650;
+}
+
+.button-test,
+.button-backup,
+.button-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 13px;
+    border-radius: 9px;
+    font-size: 0.76rem;
+    font-weight: 700;
+}
+
+.button-test {
+    border-color: rgba(115, 226, 184, 0.42);
+    background: rgba(56, 201, 149, 0.08);
+    color: var(--green);
+}
+
+.button-backup {
+    border-color: rgba(245, 199, 106, 0.4);
+    background: rgba(245, 199, 106, 0.07);
+    color: var(--amber);
+}
+
+.button-backup:hover {
+    border-color: var(--amber);
+    background: rgba(245, 199, 106, 0.13);
+}
+
+.button-primary {
+    border-color: var(--green-strong);
+    background: var(--green-strong);
+    color: #04110d;
+}
+
+.button-primary:hover {
+    border-color: var(--green);
+    background: var(--green);
+}
+
+.button-test span,
+.button-backup span,
+.button-primary span {
+    font-size: 0.95rem;
+    line-height: 0;
 }
 
 .icon-button {
@@ -582,10 +643,19 @@ iframe {
     }
 
     .terminal-heading {
-        align-items: flex-end;
+        align-items: flex-start;
+        flex-direction: column;
     }
 
-    .button-secondary {
+    .terminal-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .button-secondary,
+    .button-test,
+    .button-backup,
+    .button-primary {
         padding: 8px 10px;
         font-size: 0.7rem;
     }

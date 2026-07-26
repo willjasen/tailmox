@@ -1,8 +1,11 @@
 const backupList = document.querySelector("#backup-list");
 const backupCount = document.querySelector("#backup-count");
+const createBackupButton = document.querySelector("#create-backup");
 const latestBackup = document.querySelector("#latest-backup");
 const refreshButton = document.querySelector("#refresh-backups");
 const reloadTerminalButton = document.querySelector("#reload-terminal");
+const runClusterButton = document.querySelector("#run-cluster");
+const runTestButton = document.querySelector("#run-test");
 const terminal = document.querySelector("#terminal");
 const backupTemplate = document.querySelector("#backup-template");
 
@@ -146,6 +149,21 @@ async function loadBackups() {
 refreshButton.addEventListener("click", loadBackups);
 reloadTerminalButton.addEventListener("click", () => {
     terminal.src = `terminal/?reloaded=${Date.now()}`;
+});
+runTestButton.addEventListener("click", () => {
+    terminal.src = `terminal/?arg=test&started=${Date.now()}`;
+});
+createBackupButton.addEventListener("click", () => {
+    terminal.src = `terminal/?arg=backup-create&started=${Date.now()}`;
+});
+runClusterButton.addEventListener("click", () => {
+    const confirmed = window.confirm(
+        "Start the interactive Tailmox clustering workflow? "
+        + "It can change networking and Proxmox cluster state after its built-in confirmations.",
+    );
+    if (confirmed) {
+        terminal.src = `terminal/?arg=cluster&started=${Date.now()}`;
+    }
 });
 
 loadBackups();

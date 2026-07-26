@@ -41,10 +41,25 @@
                     <div>
                         <p class="eyebrow">Interactive workspace</p>
                         <h1 id="terminal-heading">Tailmox terminal</h1>
+                        <p class="terminal-description">Nothing starts until you choose a workflow.</p>
                     </div>
-                    <button class="button button-secondary" id="reload-terminal" type="button">
-                        Reload terminal
-                    </button>
+                    <div class="terminal-actions" aria-label="Tailmox terminal actions">
+                        <button class="button button-test" id="run-test" type="button">
+                            <span aria-hidden="true">✓</span>
+                            tailmox test
+                        </button>
+                        <button class="button button-backup" id="create-backup" type="button">
+                            <span aria-hidden="true">＋</span>
+                            tailmox backups create
+                        </button>
+                        <button class="button button-primary" id="run-cluster" type="button">
+                            <span aria-hidden="true">›</span>
+                            tailmox cluster
+                        </button>
+                        <button class="button button-secondary" id="reload-terminal" type="button">
+                            Reload terminal
+                        </button>
+                    </div>
                 </div>
 
                 <div class="terminal-frame">
