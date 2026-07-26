@@ -17,7 +17,7 @@ TAILSCALE_PING_TARGETS_FILE="$TEST_LOG_DIR/tailscale-ping-targets"
 TAILSCALE_PING_ARGS_FILE="$TEST_LOG_DIR/tailscale-ping-args"
 FAIL_PING_TARGET=""
 FAIL_TAILSCALE_PING_TARGET=""
-FAIL_TAILSCALE_PING_COUNT=20
+FAIL_TAILSCALE_PING_COUNT=5
 CONFIRM_OVERRIDE_RESULT=1
 
 function confirm_icmp_warning_override() {
@@ -32,11 +32,11 @@ function ping() {
     sleep 1
 
     if [[ "$target" == "$FAIL_PING_TARGET" ]]; then
-        printf '11 packets transmitted, 0 received, 100%% packet loss, time 5000ms\n'
+        printf '15 packets transmitted, 0 received, 100%% packet loss, time 5000ms\n'
         return 1
     fi
 
-    printf '11 packets transmitted, 11 received, 0%% packet loss, time 5000ms\n'
+    printf '15 packets transmitted, 15 received, 0%% packet loss, time 5000ms\n'
     printf 'rtt min/avg/max/mdev = 1.000/2.000/3.000/0.100 ms\n'
     return 0
 }
@@ -99,7 +99,7 @@ if ! FIRST_CHECK_OUTPUT=$(ensure_ping_reachability 2>&1); then
 fi
 ELAPSED_TIME=$(($(date +%s) - START_TIME))
 
-if [[ "$ELAPSED_TIME" -gt 2 ]]; then
+if [[ "$ELAPSED_TIME" -gt 4 ]]; then
     printf 'FAIL: peer connectivity checks did not run in parallel (%ss elapsed)\n' "$ELAPSED_TIME"
     exit 1
 fi
@@ -119,7 +119,7 @@ if ! diff -u "$TEST_LOG_DIR/expected-targets" "$TEST_LOG_DIR/actual-targets"; th
     exit 1
 fi
 
-if [[ "$(grep -c -- '-c 11 -i 0.5 -W 0.05 -w 6' "$PING_ARGS_FILE")" -ne 6 ]]; then
+if [[ "$(grep -c -- '-c 15 -i 0.357142857 -W 0.05 -w 6' "$PING_ARGS_FILE")" -ne 6 ]]; then
     printf 'FAIL: peer pings did not use the five-second sampling options\n'
     exit 1
 fi
@@ -132,7 +132,7 @@ fi
 
 sort "$TAILSCALE_PING_TARGETS_FILE" > "$TEST_LOG_DIR/actual-tailscale-targets"
 for peer in pve1 pve2 pve3; do
-    for ((attempt = 0; attempt < 20; attempt++)); do
+    for ((attempt = 0; attempt < 5; attempt++)); do
         printf '%s.example.ts.net\n' "$peer"
     done
 done > "$TEST_LOG_DIR/expected-tailscale-targets"
@@ -142,8 +142,8 @@ if ! diff -u "$TEST_LOG_DIR/expected-tailscale-targets" "$TEST_LOG_DIR/actual-ta
     exit 1
 fi
 
-if [[ "$(grep -c -- '^ping --c 1 --timeout=200ms ' "$TAILSCALE_PING_ARGS_FILE")" -ne 60 ]]; then
-    printf 'FAIL: Tailscale path checks did not run 20 bounded DISCO pings per peer\n'
+if [[ "$(grep -c -- '^ping --c 1 --timeout=200ms ' "$TAILSCALE_PING_ARGS_FILE")" -ne 15 ]]; then
+    printf 'FAIL: Tailscale path checks did not run five bounded DISCO pings per peer\n'
     exit 1
 fi
 
@@ -158,16 +158,16 @@ for peer in pve1 pve2 pve3; do
 done
 
 printf -v expected_tailscale_line '%b' \
-    "${GREEN}   - Tailscale path: 20 of 20 Tailscale pings succeeded (80% required); average latency 2.000 ms; maximum latency 2.000 ms; duration 0 s.${RESET}"
+    "${GREEN}   - Tailscale path: 5 of 5 Tailscale pings succeeded (80% required); average latency 2.000 ms; maximum latency 2.000 ms; duration 3 s.${RESET}"
 if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_tailscale_line")" -ne 3 ]]; then
     printf 'FAIL: successful Tailscale path results did not include latency\n'
     exit 1
 fi
 
 printf -v expected_small_icmp_line '%b' \
-    "${GREEN}   - 64-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; 11 of 11 replies arrived within 50 ms; 0% packet loss.${RESET}"
+    "${GREEN}   - 64-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; 15 of 15 replies arrived within 50 ms; 0% packet loss.${RESET}"
 printf -v expected_large_icmp_line '%b' \
-    "${GREEN}   - 1280-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; 11 of 11 replies arrived within 50 ms; 0% packet loss.${RESET}"
+    "${GREEN}   - 1280-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; 15 of 15 replies arrived within 50 ms; 0% packet loss.${RESET}"
 if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_small_icmp_line")" -ne 3 ]] \
     || [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_large_icmp_line")" -ne 3 ]]; then
     printf 'FAIL: ICMP results were not nested beneath peer headings\n'
@@ -179,25 +179,25 @@ printf 'PASS: all peers use Tailscale path checks and both ICMP packet sizes in 
 : > "$PING_TARGETS_FILE"
 : > "$TAILSCALE_PING_TARGETS_FILE"
 FAIL_TAILSCALE_PING_TARGET="pve2.example.ts.net"
-FAIL_TAILSCALE_PING_COUNT=4
+FAIL_TAILSCALE_PING_COUNT=1
 
 if ! ensure_ping_reachability >/dev/null 2>&1; then
-    printf 'FAIL: 16 of 20 successful Tailscale pings did not meet the 80%% threshold\n'
+    printf 'FAIL: 4 of 5 successful Tailscale pings did not meet the 80%% threshold\n'
     exit 1
 fi
 
 printf 'PASS: 80%% Tailscale ping success meets the path threshold\n'
 
 : > "$TEST_LOG_DIR/tailscale-call-pve2.example.ts.net"
-FAIL_TAILSCALE_PING_COUNT=5
+FAIL_TAILSCALE_PING_COUNT=2
 
 if ensure_ping_reachability >/dev/null 2>&1; then
-    printf 'FAIL: 15 of 20 successful Tailscale pings met the 80%% threshold\n'
+    printf 'FAIL: 3 of 5 successful Tailscale pings met the 80%% threshold\n'
     exit 1
 fi
 
 if [[ "$(wc -l < "$PING_TARGETS_FILE" | tr -d ' ')" -ne 12 ]] \
-    || [[ "$(wc -l < "$TAILSCALE_PING_TARGETS_FILE" | tr -d ' ')" -ne 120 ]]; then
+    || [[ "$(wc -l < "$TAILSCALE_PING_TARGETS_FILE" | tr -d ' ')" -ne 30 ]]; then
     printf 'FAIL: a failed Tailscale path check prevented other parallel checks from running\n'
     exit 1
 fi

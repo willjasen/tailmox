@@ -847,11 +847,11 @@ function confirm_icmp_warning_override() {
 # Ping every other Tailmox peer by its Tailscale MagicDNS name in parallel.
 # Run a sequence of Tailscale's default DISCO pings to verify the Tailscale
 # path. This allows the first probe to establish a direct route even if it uses
-# DERP, while later probes can use that route. Twenty probes, each capped at
-# 200 ms, finish within a five-second window, and at least 80% must succeed.
+# DERP, while later probes can use that route. Five probes are spaced across a
+# three-second window, and at least 80% must succeed.
 # Separately, test both a conventional 64-byte ICMP packet and a large
-# 1280-byte ICMP packet. Eleven ICMP probes at 0.5-second intervals span
-# approximately five seconds. Each ICMP reply gets a 50 ms window; slower or
+# 1280-byte ICMP packet. Fifteen ICMP probes at approximately 0.357-second
+# intervals span five seconds. Each ICMP reply gets a 50 ms window; slower or
 # missing replies require confirmation.
 function sample_tailscale_ping_reachability() {
     local peer_dns_name="$1"
@@ -859,6 +859,7 @@ function sample_tailscale_ping_reachability() {
     local ping_count="$3"
     local required_count="$4"
     local timeout="$5"
+    local interval="$6"
     local attempt
     local successful_count=0
     local latency_count=0
@@ -887,6 +888,9 @@ function sample_tailscale_ping_reachability() {
                     'BEGIN { printf "%.3f", (latency > max_value) ? latency : max_value }')
             fi
         fi
+        if [[ "$attempt" -lt $((ping_count - 1)) ]]; then
+            sleep "$interval"
+        fi
     done
 
     finished_at="${EPOCHREALTIME:-$(date +%s)}"
@@ -913,16 +917,17 @@ function ensure_ping_reachability() {
     local check_description="${2:-all other Tailmox peers}"
     local require_icmp_confirmation="${3:-true}"
 
-    log_echo "${YELLOW}Checking $check_description with Tailscale path pings and 64-byte and 1280-byte ICMP packets in parallel for approximately five seconds...${RESET}"
+    log_echo "${YELLOW}Checking $check_description with five Tailscale path pings over three seconds and 15 64-byte and 1280-byte ICMP packets over five seconds in parallel...${RESET}"
 
-    local ping_count=11
-    local ping_interval=0.5
+    local ping_count=15
+    local ping_interval=0.357142857
     local ping_deadline=6
     local reply_timeout=0.05
     local latency_warning_ms=50
-    local tailscale_ping_count=20
-    local tailscale_required_count=16
+    local tailscale_ping_count=5
+    local tailscale_required_count=4
     local tailscale_ping_timeout=200ms
+    local tailscale_ping_interval=0.75
     local peer_count
     local check_count
     local result_dir
@@ -1008,7 +1013,7 @@ function ensure_ping_reachability() {
 
         sample_tailscale_ping_reachability \
             "$peer_dns_name" "$result_file" "$tailscale_ping_count" \
-            "$tailscale_required_count" "$tailscale_ping_timeout" &
+            "$tailscale_required_count" "$tailscale_ping_timeout" "$tailscale_ping_interval" &
         ping_pids[$index]=$!
         check_started_at[$index]="${EPOCHREALTIME:-$(date +%s)}"
         index=$((index + 1))

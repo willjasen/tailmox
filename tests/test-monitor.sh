@@ -16,16 +16,16 @@ printf '%s\n' \
     '#!/usr/bin/env bash' \
     '[[ "${1:-}" == "test" ]] || exit 2' \
     'printf "%s\n" " - pve-local (pve-local.example.ts.net)"' \
-    'printf "%s\n" "   - Tailscale path: 20 of 20 Tailscale pings succeeded (80% required); average latency 4.25 ms; maximum latency 7.50 ms; duration 5 s."' \
-    'printf "%s\n" "   - 64-byte ICMP: average latency 1.25 ms; maximum latency 2.50 ms; 11 of 11 replies arrived within 50 ms; 0% packet loss."' \
-    'printf "__TAILMOX_MONITOR_ICMP__\tpve-local\t64\tpassed\t11\t11\t1.25\t2.50\t5\n"' \
+    'printf "%s\n" "   - Tailscale path: 5 of 5 Tailscale pings succeeded (80% required); average latency 4.25 ms; maximum latency 7.50 ms; duration 3 s."' \
+    'printf "%s\n" "   - 64-byte ICMP: average latency 1.25 ms; maximum latency 2.50 ms; 15 of 15 replies arrived within 50 ms; 0% packet loss."' \
+    'printf "__TAILMOX_MONITOR_ICMP__\tpve-local\t64\tpassed\t15\t15\t1.25\t2.50\t5\n"' \
     'printf "%s\n" "Checking if TCP port 8006 is available on the local Proxmox host..."' \
     'printf "%s\n" "   - TCP port 8006 is available; latency 3.75 ms."' \
     'printf "%s\n" " - pve-remote (100.64.0.2)"' \
     'printf "%s\n" "Checking if TCP port 443 is available on all other Tailmox peers..."' \
     'printf "%s\n" "   - 64-byte ICMP: result could not be interpreted. No cluster changes will be made."' \
     'printf "__TAILMOX_MONITOR_ICMP__\tpve-remote\t64\tfailed\tunknown\tunknown\tunknown\tunknown\t6\n"' \
-    'printf "__TAILMOX_MONITOR_ICMP__\tpve-remote\t1280\tpassed\t11\t11\t1.50\t2.75\t5\n"' \
+    'printf "__TAILMOX_MONITOR_ICMP__\tpve-remote\t1280\tpassed\t15\t15\t1.50\t2.75\t5\n"' \
     'printf "%s\n" "   - TCP port 443 is not available; latency 2001.25 ms."' \
     'exit 1' > "$MOCK_TAILMOX"
 
@@ -77,12 +77,12 @@ checks = connection.execute(
     """
 ).fetchall()
 assert len(checks) == 7, checks
-assert ("tailscale", "passed", None, None, 20, 20, 5, 4.25, 7.5) in checks, checks
+assert ("tailscale", "passed", None, None, 5, 5, 3, 4.25, 7.5) in checks, checks
 assert ("tcp", "passed", 8006, None, None, None, None, 3.75, 3.75) in checks, checks
 assert ("tcp", "failed", 443, None, None, None, None, 2001.25, 2001.25) in checks, checks
-assert ("icmp", "passed", None, 64, 11, 11, 5, 1.25, 2.5) in checks, checks
+assert ("icmp", "passed", None, 64, 15, 15, 5, 1.25, 2.5) in checks, checks
 assert ("icmp", "failed", None, 64, None, None, 6, None, None) in checks, checks
-assert ("icmp", "passed", None, 1280, 11, 11, 5, 1.5, 2.75) in checks, checks
+assert ("icmp", "passed", None, 1280, 15, 15, 5, 1.5, 2.75) in checks, checks
 
 cluster = connection.execute(
     """
@@ -142,9 +142,9 @@ assert {
     "status": "passed",
     "port": None,
     "packetSizeBytes": None,
-    "packetsSent": 20,
-    "packetsReceived": 20,
-    "durationSeconds": 5,
+    "packetsSent": 5,
+    "packetsReceived": 5,
+    "durationSeconds": 3,
     "latencyAverageMs": 4.25,
     "latencyMaximumMs": 7.5,
 } in analytics["history"][0]["checks"], analytics
