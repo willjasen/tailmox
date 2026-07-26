@@ -3,7 +3,6 @@ const backupCount = document.querySelector("#backup-count");
 const createBackupButton = document.querySelector("#create-backup");
 const latestBackup = document.querySelector("#latest-backup");
 const refreshButton = document.querySelector("#refresh-backups");
-const reloadTerminalButton = document.querySelector("#reload-terminal");
 const runClusterButton = document.querySelector("#run-cluster");
 const runTestButton = document.querySelector("#run-test");
 const terminalFrame = document.querySelector("#terminal-frame");
@@ -628,13 +627,9 @@ refreshButton.addEventListener("click", loadBackups);
 
 function showTerminal(path) {
     terminalFrame.hidden = false;
-    reloadTerminalButton.disabled = false;
     terminal.src = path;
 }
 
-reloadTerminalButton.addEventListener("click", () => {
-    showTerminal(`terminal/?reloaded=${Date.now()}`);
-});
 runTestButton.addEventListener("click", () => {
     showTerminal(`terminal/?arg=test&started=${Date.now()}`);
 });
