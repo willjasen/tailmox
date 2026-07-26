@@ -681,6 +681,38 @@ def publish_analytics(
             """,
             (run_id,),
         ).fetchone()
+        failure_reasons = []
+        if run[9] == "cluster_not_detected":
+            failure_reasons.append(
+                {
+                    "category": "monitor",
+                    "name": "cluster detection",
+                    "detail": "Cluster mode was requested, but Proxmox cluster status could not be confirmed.",
+                }
+            )
+        elif run[9]:
+            failure_reasons.append(
+                {
+                    "category": "monitor",
+                    "name": "mode detection",
+                    "detail": f"Monitor mode detection failed: {run[9]}.",
+                }
+            )
+        if run[8] not in (None, 0):
+            test_failure_detail = f"tailmox test exited with code {run[8]}."
+            if not failed_checks:
+                test_failure_detail += (
+                    " No failed individual check was recorded, so the host "
+                    "snapshots may still appear healthy."
+                )
+            failure_reasons.append(
+                {
+                    "category": "tailmox",
+                    "name": "test command",
+                    "detail": test_failure_detail,
+                }
+            )
+
         return {
             "id": run_id,
             "startedAt": run[1],
@@ -690,6 +722,9 @@ def publish_analytics(
             "clusterName": run[5],
             "status": run[6],
             "durationMs": run[7],
+            "testExitCode": run[8],
+            "errorCode": run[9],
+            "failureReasons": failure_reasons,
             "cluster": (
                 {
                     "quorate": (
@@ -735,7 +770,7 @@ def publish_analytics(
     latest = connection.execute(
         """
         SELECT id, started_at, finished_at, mode, hostname, cluster_name,
-               status, duration_ms
+               status, duration_ms, test_exit_code, error_code
         FROM monitor_runs
         WHERE status != 'running'
         ORDER BY id DESC
@@ -755,7 +790,7 @@ def publish_analytics(
     history_rows = connection.execute(
         """
         SELECT id, started_at, finished_at, mode, hostname, cluster_name,
-               status, duration_ms
+               status, duration_ms, test_exit_code, error_code
         FROM monitor_runs
         WHERE status != 'running'
         ORDER BY id DESC

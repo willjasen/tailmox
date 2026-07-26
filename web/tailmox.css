@@ -400,6 +400,10 @@ button {
     border-top: 0;
 }
 
+.issue-row.is-run-level {
+    color: var(--red);
+}
+
 .node-list {
     display: grid;
     gap: 7px;

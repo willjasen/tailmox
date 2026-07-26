@@ -163,6 +163,8 @@ function renderMonitorNodes(run) {
 function openMonitorRunDialog(run) {
     const nodes = Array.isArray(run.nodes) ? run.nodes : [];
     const issues = Array.isArray(run.issues) ? run.issues : [];
+    const failureReasons = Array.isArray(run.failureReasons) ? run.failureReasons : [];
+    const issueCount = issues.length + failureReasons.length;
     monitorDialogSummary.textContent = [
         formatMonitorTimestamp(run.startedAt),
         formatMonitorMode(run.mode),
@@ -170,7 +172,7 @@ function openMonitorRunDialog(run) {
         formatMonitorDuration(run.durationMs),
     ].join(" · ");
     monitorDialogNodeCount.textContent = `${nodes.length} node${nodes.length === 1 ? "" : "s"}`;
-    monitorDialogIssueCount.textContent = `${issues.length} issue${issues.length === 1 ? "" : "s"}`;
+    monitorDialogIssueCount.textContent = `${issueCount} issue${issueCount === 1 ? "" : "s"}`;
 
     const nodeRows = createMonitorNodeRows(run);
     monitorDialogNodes.replaceChildren(...nodeRows);
@@ -178,6 +180,12 @@ function openMonitorRunDialog(run) {
         monitorDialogNodes.textContent = "No Tailmox nodes were present in this snapshot.";
     }
 
+    const failureRows = failureReasons.map((reason) => {
+        const row = document.createElement("div");
+        row.className = "issue-row is-run-level";
+        row.textContent = reason.detail || `${reason.category} · ${reason.name}`;
+        return row;
+    });
     const issueRows = issues.map((issue) => {
         const row = document.createElement("div");
         row.className = "issue-row";
@@ -188,8 +196,8 @@ function openMonitorRunDialog(run) {
         row.textContent = `${target} · ${issue.category} · ${detail} · ${issue.status}`;
         return row;
     });
-    monitorDialogIssues.replaceChildren(...issueRows);
-    if (!issueRows.length) {
+    monitorDialogIssues.replaceChildren(...failureRows, ...issueRows);
+    if (!issueCount) {
         monitorDialogIssues.textContent = "No issues were recorded for this run.";
     }
     monitorRunDialog.showModal();

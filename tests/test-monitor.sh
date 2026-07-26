@@ -102,6 +102,14 @@ assert analytics["history"][0]["finishedAt"], analytics
 assert len(analytics["history"][0]["nodes"]) == 2, analytics
 assert len(analytics["history"][0]["issues"]) == 1, analytics
 assert analytics["history"][0]["cluster"]["quorate"] is True, analytics
+assert analytics["history"][0]["testExitCode"] == 1, analytics
+assert analytics["history"][0]["failureReasons"] == [
+    {
+        "category": "tailmox",
+        "name": "test command",
+        "detail": "tailmox test exited with code 1.",
+    }
+], analytics
 PY
 
 if grep -aFq '"BackendState"' "$DATABASE"; then
