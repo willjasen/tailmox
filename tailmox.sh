@@ -1551,9 +1551,7 @@ function test_setup_safely() {
 
     log_echo "${YELLOW}Checking tools required by setup...${RESET}"
     for dependency in curl expect git jq ttyd tailscale pvecm ping nc openssl; do
-        if command -v "$dependency" &>/dev/null; then
-            log_echo "${GREEN} - $dependency is available.${RESET}"
-        else
+        if ! command -v "$dependency" &>/dev/null; then
             log_echo "${RED} - $dependency is missing (normal setup would install it when supported).${RESET}"
             missing_dependencies=true
         fi

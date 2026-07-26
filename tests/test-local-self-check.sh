@@ -14,11 +14,14 @@ source "$TEST_ROOT/tailmox.sh"
 
 HOSTNAME="pve-local"
 MOCK_TAGS='["tag:tailmox"]'
+MOCK_MISSING_DEPENDENCY=""
 CHECK_LOG=""
 
 function check_if_supported_proxmox_is_installed() { return 0; }
 function check_script_directory() { return 0; }
-function command() { return 0; }
+function command() {
+    [[ "${2:-}" != "$MOCK_MISSING_DEPENDENCY" ]]
+}
 function check_all_peers_online() {
     CHECK_LOG+="peer-online "
     return 0
@@ -78,6 +81,28 @@ else
     printf 'FAIL: local Tailscale and Proxmox checks run before remote peer checks (%s)\n' "$CHECK_LOG"
     FAIL_COUNT=$((FAIL_COUNT + 1))
 fi
+
+SETUP_OUTPUT=$(test_setup_safely)
+if [[ "$SETUP_OUTPUT" == *"is available."* ]]; then
+    printf 'FAIL: setup test reports dependencies that are already available\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+else
+    printf 'PASS: setup test does not report dependencies that are already available\n'
+    PASS_COUNT=$((PASS_COUNT + 1))
+fi
+
+MOCK_MISSING_DEPENDENCY="ttyd"
+if SETUP_OUTPUT=$(test_setup_safely 2>&1); then
+    printf 'FAIL: missing dependency fails the self-test\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+elif [[ "$SETUP_OUTPUT" != *"ttyd is missing"* ]]; then
+    printf 'FAIL: missing dependency is reported\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+else
+    printf 'PASS: missing dependency is reported\n'
+    PASS_COUNT=$((PASS_COUNT + 1))
+fi
+MOCK_MISSING_DEPENDENCY=""
 
 MOCK_TAGS='[]'
 CHECK_LOG=""
