@@ -17,6 +17,7 @@ TAILSCALE_PING_TARGETS_FILE="$TEST_LOG_DIR/tailscale-ping-targets"
 TAILSCALE_PING_ARGS_FILE="$TEST_LOG_DIR/tailscale-ping-args"
 FAIL_PING_TARGET=""
 FAIL_TAILSCALE_PING_TARGET=""
+FAIL_TAILSCALE_PING_COUNT=20
 CONFIRM_OVERRIDE_RESULT=1
 
 function confirm_icmp_warning_override() {
@@ -42,6 +43,8 @@ function ping() {
 
 function tailscale() {
     local target="${!#}"
+    local call_count_file
+    local call_count=0
 
     if [[ "$1" != "ping" ]]; then
         printf 'Unexpected mocked tailscale command: %s\n' "$*" >&2
@@ -50,11 +53,18 @@ function tailscale() {
 
     printf '%s\n' "$target" >> "$TAILSCALE_PING_TARGETS_FILE"
     printf '%s\n' "$*" >> "$TAILSCALE_PING_ARGS_FILE"
-    sleep 1
 
     if [[ "$target" == "$FAIL_TAILSCALE_PING_TARGET" ]]; then
-        printf 'no pong received\n'
-        return 1
+        call_count_file="$TEST_LOG_DIR/tailscale-call-${target}"
+        if [[ -f "$call_count_file" ]]; then
+            call_count=$(<"$call_count_file")
+        fi
+        call_count=$((call_count + 1))
+        printf '%s\n' "$call_count" >"$call_count_file"
+        if [[ "$call_count" -le "$FAIL_TAILSCALE_PING_COUNT" ]]; then
+            printf 'no pong received\n'
+            return 1
+        fi
     fi
 
     printf 'pong from %s via 192.0.2.1:41641 in 2ms\n' "$target"
@@ -121,19 +131,19 @@ if [[ "$(grep -c -- '-s 56 ' "$PING_ARGS_FILE")" -ne 3 ]] \
 fi
 
 sort "$TAILSCALE_PING_TARGETS_FILE" > "$TEST_LOG_DIR/actual-tailscale-targets"
-printf '%s\n' \
-    "pve1.example.ts.net" \
-    "pve2.example.ts.net" \
-    "pve3.example.ts.net" \
-    > "$TEST_LOG_DIR/expected-tailscale-targets"
+for peer in pve1 pve2 pve3; do
+    for ((attempt = 0; attempt < 20; attempt++)); do
+        printf '%s.example.ts.net\n' "$peer"
+    done
+done > "$TEST_LOG_DIR/expected-tailscale-targets"
 
 if ! diff -u "$TEST_LOG_DIR/expected-tailscale-targets" "$TEST_LOG_DIR/actual-tailscale-targets"; then
     printf 'FAIL: Tailscale path checks did not use every Tailscale DNS name\n'
     exit 1
 fi
 
-if [[ "$(grep -c -- '^ping --c 1 ' "$TAILSCALE_PING_ARGS_FILE")" -ne 3 ]]; then
-    printf 'FAIL: Tailscale path checks did not use one default DISCO ping\n'
+if [[ "$(grep -c -- '^ping --c 1 --timeout=200ms ' "$TAILSCALE_PING_ARGS_FILE")" -ne 60 ]]; then
+    printf 'FAIL: Tailscale path checks did not run 20 bounded DISCO pings per peer\n'
     exit 1
 fi
 
@@ -150,19 +160,30 @@ printf 'PASS: all peers use Tailscale path checks and both ICMP packet sizes in 
 : > "$PING_TARGETS_FILE"
 : > "$TAILSCALE_PING_TARGETS_FILE"
 FAIL_TAILSCALE_PING_TARGET="pve2.example.ts.net"
+FAIL_TAILSCALE_PING_COUNT=4
 
-if ensure_ping_reachability >/dev/null 2>&1; then
-    printf 'FAIL: a failed Tailscale path check did not block progress\n'
+if ! ensure_ping_reachability >/dev/null 2>&1; then
+    printf 'FAIL: 16 of 20 successful Tailscale pings did not meet the 80%% threshold\n'
     exit 1
 fi
 
-if [[ "$(wc -l < "$PING_TARGETS_FILE" | tr -d ' ')" -ne 6 ]] \
-    || [[ "$(wc -l < "$TAILSCALE_PING_TARGETS_FILE" | tr -d ' ')" -ne 3 ]]; then
+printf 'PASS: 80%% Tailscale ping success meets the path threshold\n'
+
+: > "$TEST_LOG_DIR/tailscale-call-pve2.example.ts.net"
+FAIL_TAILSCALE_PING_COUNT=5
+
+if ensure_ping_reachability >/dev/null 2>&1; then
+    printf 'FAIL: 15 of 20 successful Tailscale pings met the 80%% threshold\n'
+    exit 1
+fi
+
+if [[ "$(wc -l < "$PING_TARGETS_FILE" | tr -d ' ')" -ne 12 ]] \
+    || [[ "$(wc -l < "$TAILSCALE_PING_TARGETS_FILE" | tr -d ' ')" -ne 120 ]]; then
     printf 'FAIL: a failed Tailscale path check prevented other parallel checks from running\n'
     exit 1
 fi
 
-printf 'PASS: a failed Tailscale path check blocks progress after all parallel checks run\n'
+printf 'PASS: less than 80%% Tailscale ping success blocks progress after all parallel checks run\n'
 
 : > "$PING_TARGETS_FILE"
 FAIL_TAILSCALE_PING_TARGET=""

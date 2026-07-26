@@ -771,10 +771,37 @@ function confirm_icmp_warning_override() {
 }
 
 # Ping every other Tailmox peer by its Tailscale MagicDNS name in parallel.
-# Use Tailscale's default DISCO ping to verify a Tailscale path, then test both a
-# conventional 64-byte ICMP packet and a large 1280-byte ICMP packet. Eleven
-# ICMP probes at 0.5-second intervals span approximately five seconds. Each
-# reply gets a 50 ms window; slower or missing replies require confirmation.
+# Run a sequence of Tailscale's default DISCO pings to verify the Tailscale
+# path. This allows the first probe to establish a direct route even if it uses
+# DERP, while later probes can use that route. Twenty probes, each capped at
+# 200 ms, finish within a five-second window, and at least 80% must succeed.
+# Separately, test both a conventional 64-byte ICMP packet and a large
+# 1280-byte ICMP packet. Eleven ICMP probes at 0.5-second intervals span
+# approximately five seconds. Each ICMP reply gets a 50 ms window; slower or
+# missing replies require confirmation.
+function sample_tailscale_ping_reachability() {
+    local peer_dns_name="$1"
+    local result_file="$2"
+    local ping_count="$3"
+    local required_count="$4"
+    local timeout="$5"
+    local attempt
+    local successful_count=0
+    local attempt_file
+
+    for ((attempt = 0; attempt < ping_count; attempt++)); do
+        attempt_file="${result_file}.attempt-${attempt}"
+        if tailscale ping --c 1 --timeout="$timeout" "$peer_dns_name" >"$attempt_file" 2>&1; then
+            successful_count=$((successful_count + 1))
+        fi
+    done
+
+    printf '%s of %s Tailscale pings succeeded (80%% required)' \
+        "$successful_count" "$ping_count" >"$result_file"
+
+    [[ "$successful_count" -ge "$required_count" ]]
+}
+
 function ensure_ping_reachability() {
     log_echo "${YELLOW}Checking all other Tailmox peers with Tailscale path pings and 64-byte and 1280-byte ICMP packets in parallel for approximately five seconds...${RESET}"
 
@@ -783,6 +810,9 @@ function ensure_ping_reachability() {
     local ping_deadline=6
     local reply_timeout=0.05
     local latency_warning_ms=50
+    local tailscale_ping_count=20
+    local tailscale_required_count=16
+    local tailscale_ping_timeout=200ms
     local peer_count
     local check_count
     local result_dir
@@ -848,7 +878,9 @@ function ensure_ping_reachability() {
         packet_sizes[$index]=""
         result_files[$index]="$result_file"
 
-        tailscale ping --c 1 "$peer_dns_name" >"$result_file" 2>&1 &
+        sample_tailscale_ping_reachability \
+            "$peer_dns_name" "$result_file" "$tailscale_ping_count" \
+            "$tailscale_required_count" "$tailscale_ping_timeout" &
         ping_pids[$index]=$!
         index=$((index + 1))
 
