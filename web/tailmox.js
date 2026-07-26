@@ -164,6 +164,15 @@ monitorEvents.addEventListener("analytics", (event) => {
         monitorDescription.textContent = "The monitor sent an unreadable analytics update.";
     }
 });
+monitorEvents.addEventListener("backups", (event) => {
+    try {
+        const inventory = JSON.parse(event.data);
+        renderBackups(Array.isArray(inventory.backups) ? inventory.backups : []);
+    } catch {
+        backupCount.textContent = "—";
+        latestBackup.textContent = "Unavailable";
+    }
+});
 
 function parseBackupTimestamp(value) {
     const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z$/.exec(value);
@@ -321,4 +330,3 @@ runClusterButton.addEventListener("click", () => {
 });
 
 loadBackups();
-window.setInterval(loadBackups, 30000);

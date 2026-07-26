@@ -113,30 +113,50 @@ CREATE TABLE IF NOT EXISTS monitor_cluster_samples (
 class AnalyticsBroker:
     def __init__(self) -> None:
         self.condition = threading.Condition()
-        self.document: dict[str, object] = {
+        self.analytics_document: dict[str, object] = {
             "generatedAt": utc_now(),
             "latest": None,
             "last24Hours": {"runs": 0, "passed": 0, "warnings": 0, "failed": 0},
             "history": [],
         }
-        self.version = 0
+        self.analytics_version = 0
+        self.backup_document: dict[str, object] = {
+            "generatedAt": utc_now(),
+            "backups": [],
+        }
+        self.backup_version = 0
 
     def publish(self, document: dict[str, object]) -> None:
         with self.condition:
-            self.document = document
-            self.version += 1
+            self.analytics_document = document
+            self.analytics_version += 1
             self.condition.notify_all()
 
-    def snapshot(self) -> tuple[int, dict[str, object]]:
+    def publish_backups(self, document: dict[str, object]) -> None:
         with self.condition:
-            return self.version, self.document
+            if document == self.backup_document:
+                return
+            self.backup_document = document
+            self.backup_version += 1
+            self.condition.notify_all()
 
     def wait_for_update(
-        self, version: int, timeout: float
-    ) -> tuple[int, dict[str, object]]:
+        self, analytics_version: int, backup_version: int, timeout: float
+    ) -> tuple[int, dict[str, object], int, dict[str, object]]:
         with self.condition:
-            self.condition.wait_for(lambda: self.version != version, timeout=timeout)
-            return self.version, self.document
+            self.condition.wait_for(
+                lambda: (
+                    self.analytics_version != analytics_version
+                    or self.backup_version != backup_version
+                ),
+                timeout=timeout,
+            )
+            return (
+                self.analytics_version,
+                self.analytics_document,
+                self.backup_version,
+                self.backup_document,
+            )
 
 
 class MonitorHTTPServer(http.server.ThreadingHTTPServer):
@@ -166,20 +186,37 @@ class MonitorRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("X-Accel-Buffering", "no")
             self.end_headers()
 
-            version = -1
+            analytics_version = -1
+            backup_version = -1
             try:
                 while True:
-                    new_version, document = self.server.broker.wait_for_update(
-                        version, timeout=15
+                    (
+                        new_analytics_version,
+                        analytics_document,
+                        new_backup_version,
+                        backup_document,
+                    ) = self.server.broker.wait_for_update(
+                        analytics_version, backup_version, timeout=15
                     )
-                    if new_version == version:
-                        self.wfile.write(b": keepalive\n\n")
-                    else:
-                        payload = json.dumps(document, separators=(",", ":"))
+                    wrote_event = False
+                    if new_analytics_version != analytics_version:
+                        payload = json.dumps(
+                            analytics_document, separators=(",", ":")
+                        )
                         self.wfile.write(
                             f"event: analytics\ndata: {payload}\n\n".encode("utf-8")
                         )
-                        version = new_version
+                        analytics_version = new_analytics_version
+                        wrote_event = True
+                    if new_backup_version != backup_version:
+                        payload = json.dumps(backup_document, separators=(",", ":"))
+                        self.wfile.write(
+                            f"event: backups\ndata: {payload}\n\n".encode("utf-8")
+                        )
+                        backup_version = new_backup_version
+                        wrote_event = True
+                    if not wrote_event:
+                        self.wfile.write(b": keepalive\n\n")
                     self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError):
                 return
@@ -198,6 +235,28 @@ class MonitorRequestHandler(http.server.BaseHTTPRequestHandler):
 
 def utc_now() -> str:
     return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def watch_backup_inventory(
+    inventory_path: pathlib.Path,
+    broker: AnalyticsBroker,
+    stop_event: threading.Event,
+) -> None:
+    last_contents: str | None = None
+    while not stop_event.is_set():
+        try:
+            contents = inventory_path.read_text(encoding="utf-8")
+            if contents != last_contents:
+                document = json.loads(contents)
+                if not isinstance(document, dict) or not isinstance(
+                    document.get("backups"), list
+                ):
+                    raise ValueError("invalid backup inventory")
+                broker.publish_backups(document)
+                last_contents = contents
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+            pass
+        stop_event.wait(1)
 
 
 def command_path(env_name: str, default: str) -> str:
@@ -869,6 +928,12 @@ def main() -> int:
     web_output = pathlib.Path(
         os.environ.get("TAILMOX_MONITOR_WEB_OUTPUT", "/var/lib/tailmox/web/monitor.json")
     )
+    backup_inventory = pathlib.Path(
+        os.environ.get(
+            "TAILMOX_BACKUP_WEB_INVENTORY",
+            str(web_output.parent / "backups.json"),
+        )
+    )
     interval = int(
         os.environ.get("TAILMOX_MONITOR_INTERVAL_SECONDS", str(DEFAULT_INTERVAL_SECONDS))
     )
@@ -905,6 +970,8 @@ def main() -> int:
     broker = AnalyticsBroker()
     server: MonitorHTTPServer | None = None
     server_thread: threading.Thread | None = None
+    backup_watcher_stop = threading.Event()
+    backup_watcher_thread: threading.Thread | None = None
     if sse_enabled:
         try:
             server = MonitorHTTPServer((sse_host, sse_port), broker)
@@ -919,6 +986,12 @@ def main() -> int:
             return 1
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
         server_thread.start()
+        backup_watcher_thread = threading.Thread(
+            target=watch_backup_inventory,
+            args=(backup_inventory, broker, backup_watcher_stop),
+            daemon=True,
+        )
+        backup_watcher_thread.start()
 
     completed_runs = 0
     try:
@@ -938,6 +1011,9 @@ def main() -> int:
             while not stopping and time.monotonic() < deadline:
                 time.sleep(min(0.5, deadline - time.monotonic()))
     finally:
+        backup_watcher_stop.set()
+        if backup_watcher_thread is not None:
+            backup_watcher_thread.join(timeout=2)
         if server is not None:
             server.shutdown()
             server.server_close()

@@ -238,11 +238,13 @@ results between hosts.
 While the monitor is running, it exposes a read-only Server-Sent Events
 endpoint on localhost TCP 8671. `tailmox serve start` publishes that endpoint beneath
 `/monitor` through the existing tailnet-only HTTPS listener, and the dashboard
-updates immediately after a run without polling. The endpoint accepts no
-uploads or monitoring results. The database remains outside the web root; the
-browser receives only a small analytics projection containing current health,
-the last 24 hours of run totals, recent status history, and the latest node
-snapshot.
+updates monitor results and the backup inventory without browser polling.
+Backup metadata is pushed when Tailmox refreshes its inventory, including after
+`tailmox backups create`; the initial page load and Refresh button retain a
+read-only fallback. The endpoint accepts no uploads or monitoring results. The
+database and backup contents remain outside the web root; the browser receives
+only a small analytics projection and backup metadata containing type, creation
+time, size, integrity, and filename.
 
 Run the project's regression test suite separately with:
 
