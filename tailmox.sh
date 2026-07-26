@@ -29,7 +29,7 @@
 source "$(dirname "${BASH_SOURCE[0]}")/.colors.sh"
 
 # Define log file
-LOG_DIR="/var/log"
+LOG_DIR="${TAILMOX_LOG_DIR:-/var/log}"
 LOG_FILE="$LOG_DIR/tailmox.log"
 
 # Create log directory if it doesn't exist
@@ -168,37 +168,81 @@ function start_tailscale() {
 # Check if all peers with the "tailmox" tag are online
 function check_all_peers_online() {
     log_echo "${YELLOW}Checking if all tailmox peers are online...${RESET}"
-    local all_peers_online=true
-    local offline_peers=""
-    
-    # Get the peers data
-    local peers_data=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox")))')
-    
-    # If no peers are found, return 1
-    if [ -z "$peers_data" ]; then
-        log_echo "${YELLOW}No tailmox peers were found, but proceeding anyways.${RESET}"
-        return 0
-    fi
-    
-    # Check each peer's status
-    echo "$peers_data" | jq -c '.HostName + ":" + (.Online|tostring)' | while read -r peer_status; do
-        local hostname=$(echo "$peer_status" | cut -d: -f1)
-        local is_online=$(echo "$peer_status" | cut -d: -f2)
-        
-        if [ "$is_online" != "true" ]; then
-            all_peers_online=false
-            offline_peers="${offline_peers}${hostname}, "
-        fi
-    done
-    
-    if [ "$all_peers_online" = true ]; then
-        log_echo "${GREEN}All tailmox peers are registered as online in Tailscale.${RESET}"
-        return 0
-    else
-        offline_peers=${offline_peers%, }
-        log_echo "${RED}Not all tailmox peers are online in Tailscale. Offline peers: $offline_peers"
+
+    local status_json
+    local peers_data
+    local peer_count
+    local offline_peers
+
+    # Fail closed if Tailscale status cannot be retrieved or does not contain
+    # the peer object expected by the checks below.
+    if ! status_json=$(tailscale status --json 2>/dev/null); then
+        log_echo "${RED}Unable to retrieve Tailscale peer status. No cluster changes will be made.${RESET}"
         return 1
     fi
+
+    if ! printf '%s\n' "$status_json" | jq -e '
+        (.BackendState == "Running")
+        and ((.Self | type) == "object")
+        and (.Self.Online == true)
+        and ((.Peer | type) == "object")
+    ' >/dev/null 2>&1; then
+        log_echo "${RED}Tailscale is not fully online or returned incomplete peer status. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    # Match the exact Tailmox tag. A substring match could accidentally include
+    # a differently scoped tag such as "tag:tailmox-test".
+    if ! peers_data=$(printf '%s\n' "$status_json" | jq -c '[
+        .Peer[]
+        | select((.Tags // []) | index("tag:tailmox"))
+        | {hostname: .HostName, online: .Online}
+    ]'); then
+        log_echo "${RED}Unable to parse Tailscale peer status. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    # Missing hostnames or non-boolean online states are unsafe to interpret.
+    if ! printf '%s\n' "$peers_data" | jq -e '
+        all(.[];
+            ((.hostname | type) == "string")
+            and (.hostname | length > 0)
+            and ((.online | type) == "boolean")
+        )
+    ' >/dev/null 2>&1; then
+        log_echo "${RED}One or more Tailmox peers have incomplete status data. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    peer_count=$(printf '%s\n' "$peers_data" | jq -r 'length')
+    if [ "$peer_count" -eq 0 ]; then
+        log_echo "${YELLOW}No existing Tailmox peers were found. Bootstrap may proceed.${RESET}"
+        return 0
+    fi
+
+    offline_peers=$(printf '%s\n' "$peers_data" | jq -r '
+        [.[] | select(.online != true) | .hostname] | join(", ")
+    ')
+    if [ -n "$offline_peers" ]; then
+        log_echo "${RED}Not all Tailmox peers are online. Offline peers: $offline_peers. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    log_echo "${GREEN}All $peer_count Tailmox peers are registered as online in Tailscale.${RESET}"
+    return 0
+}
+
+# Re-run the peer check immediately before any command that changes Proxmox
+# cluster membership or creates Corosync configuration. The earlier preflight
+# checks are not sufficient on their own because a peer can go offline while
+# the remaining checks or interactive prompts are in progress.
+function require_all_peers_online_before_cluster_change() {
+    if ! check_all_peers_online; then
+        log_echo "${RED}Cluster change blocked because not all Tailmox peers are confirmed online.${RESET}"
+        return 1
+    fi
+
+    return 0
 }
 
 # Ensure that each Proxmox host in the cluster has the Tailscale MagicDNS hostnames of all other hosts in the cluster
@@ -245,73 +289,97 @@ function require_hostnames_in_cluster() {
     done
 }
 
-# Ensure the local node can ping all nodes via Tailscale
+# Ping every other Tailmox peer by its Tailscale MagicDNS name in parallel.
+# Eleven probes at 0.5-second intervals span approximately five seconds.
 function ensure_ping_reachability() {
-    log_echo "${YELLOW}Ensuring the local node can ping all other nodes...${RESET}"
+    log_echo "${YELLOW}Pinging all other Tailmox peers by Tailscale DNS name in parallel for approximately five seconds...${RESET}"
 
-    # Get all peers with the "tailmox" tag
-    local peers=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | .TailscaleIPs[0]]')
+    local ping_count=11
+    local ping_interval=0.5
+    local ping_deadline=6
+    local peer_count
+    local result_dir
+    local peer
+    local peer_hostname
+    local peer_dns_name
+    local result_file
+    local avg_latency
+    local packet_loss
+    local all_reachable=true
+    local index=0
+    local -a peer_hostnames
+    local -a peer_dns_names
+    local -a result_files
+    local -a ping_pids
 
-    # If no peers are found, exit with an error
-    if [ -z "$peers" ]; then
-        log_echo "${RED}No peers found with the 'tailmox' tag. Exiting...${RESET}"
+    if ! printf '%s\n' "$OTHER_PEERS" | jq -e '
+        (type == "array")
+        and all(.[];
+            ((.hostname | type) == "string")
+            and (.hostname | length > 0)
+            and ((.dnsName | type) == "string")
+            and (.dnsName | length > 0)
+        )
+    ' >/dev/null 2>&1; then
+        log_echo "${RED}Tailmox peer DNS data is invalid or incomplete. No cluster changes will be made.${RESET}"
         return 1
     fi
 
-    # Number of attempts for pinging
-    local max_attempts=3
+    peer_count=$(printf '%s\n' "$OTHER_PEERS" | jq -r 'length')
+    if [ "$peer_count" -eq 0 ]; then
+        log_echo "${YELLOW}No other Tailmox peers require an ICMP check.${RESET}"
+        return 0
+    fi
 
-    # Check ping reachability for each peer
-    echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
-        # Get the hostname for the peer
-        local peer_hostname=$(tailscale status --json | jq -r ".Peer[] | select(.TailscaleIPs[0] == \"$peer_ip\") | .HostName")
-        local ping_interval=0.5
-        local ping_count=6
-        local ping_span=$(echo "$ping_interval * $ping_count" | bc)
-
-        for attempt in $(seq 1 $max_attempts); do
-            log_echo "${BLUE} - Attempt $attempt: Pinging $peer_hostname ($peer_ip) ($ping_count pings over $ping_span seconds)...${RESET}"
-            if ! ping -c $ping_count -i $ping_interval -W 1 "$peer_ip" | grep -q "0 received"; then
-                log_echo "${GREEN} - Successfully pinged $peer_hostname ($peer_ip) on attempt $attempt.${RESET}"
-                break
-            else
-                log_echo "${YELLOW} - Attempt $attempt failed to ping $peer_hostname ($peer_ip). Retrying...${RESET}"
-            fi
-
-            # If this was the last attempt, log failure and return
-            if [ "$attempt" -eq 3 ]; then
-                log_echo "${RED} - Failed to ping $peer_hostname ($peer_ip) after 3 attempts. All responses were lost.${RESET}"
-                return 1
-            fi
-        done
-    done
-}
-
-# Report on the latency of each peer
-function report_peer_latency() {
-    log_echo "${YELLOW}Reporting peer latency...${RESET}"
-
-    # Get all peers with the "tailmox" tag
-    local peers=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | .TailscaleIPs[0]]')
-
-    # If no peers are found, exit with an error
-    if [ -z "$peers" ]; then
-        log_echo "${RED}No peers found with the 'tailmox' tag. Exiting...${RESET}"
+    if ! result_dir=$(mktemp -d /tmp/tailmox-ping.XXXXXX); then
+        log_echo "${RED}Unable to create temporary storage for ICMP results. No cluster changes will be made.${RESET}"
         return 1
     fi
 
-    # Calculate average latency for each peer
-    echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
-        local ping_count=50
-        local ping_interval=0.05
-        log_echo "${BLUE} - Calculating average latency for $peer_ip ($ping_count pings with an interval of $ping_interval seconds)...${RESET}"
-        avg_latency=$(ping -c $ping_count -i $ping_interval "$peer_ip" | awk -F'/' 'END {print $5}')
-        if [ -n "$avg_latency" ]; then
-            log_echo "${GREEN} - Average latency to $peer_ip: ${avg_latency} ms${RESET}"
+    while IFS= read -r peer; do
+        peer_hostname=$(printf '%s\n' "$peer" | jq -r '.hostname')
+        peer_dns_name=$(printf '%s\n' "$peer" | jq -r '.dnsName' | sed 's/\.$//')
+        result_file="$result_dir/$index"
+
+        peer_hostnames[$index]="$peer_hostname"
+        peer_dns_names[$index]="$peer_dns_name"
+        result_files[$index]="$result_file"
+
+        ping -n -c "$ping_count" -i "$ping_interval" -W 1 -w "$ping_deadline" \
+            "$peer_dns_name" >"$result_file" 2>&1 &
+        ping_pids[$index]=$!
+        index=$((index + 1))
+    done < <(printf '%s\n' "$OTHER_PEERS" | jq -c '.[]')
+
+    index=0
+    while [ "$index" -lt "$peer_count" ]; do
+        peer_hostname="${peer_hostnames[$index]}"
+        peer_dns_name="${peer_dns_names[$index]}"
+        result_file="${result_files[$index]}"
+
+        if wait "${ping_pids[$index]}"; then
+            avg_latency=$(awk -F'/' '/^(rtt|round-trip)/ {print $5}' "$result_file" | tail -1)
+            packet_loss=$(awk -F',' '/packet loss/ {
+                gsub(/^[ \t]+|[ \t]+$/, "", $3)
+                print $3
+            }' "$result_file" | tail -1)
+
+            log_echo "${GREEN} - $peer_hostname ($peer_dns_name): reachable; ${packet_loss:-packet loss unknown}; average latency ${avg_latency:-unknown} ms.${RESET}"
         else
-            log_echo "${RED} - Failed to calculate latency for $peer_ip.${RESET}"
+            log_echo "${RED} - $peer_hostname ($peer_dns_name): ICMP check failed. No cluster changes will be made.${RESET}"
+            all_reachable=false
         fi
+
+        index=$((index + 1))
     done
+
+    rm -r "$result_dir"
+
+    if [ "$all_reachable" != true ]; then
+        return 1
+    fi
+
+    return 0
 }
 
 # Check if TCP port 8006 is available on all nodes
@@ -524,6 +592,10 @@ function get_pve_certificate_fingerprint() {
 
 # Create a new Proxmox cluster named "tailmox"
 function create_cluster() {
+    if ! require_all_peers_online_before_cluster_change; then
+        return 1
+    fi
+
     local TAILSCALE_IP=$(tailscale ip -4)
     log_echo "${YELLOW}Creating a new Proxmox cluster named 'tailmox'...${RESET}"
     pvecm create tailmox --link0 address=$TAILSCALE_IP
@@ -561,6 +633,11 @@ function add_local_node_to_cluster() {
                 local target_fingerprint=$(get_pve_certificate_fingerprint "$TARGET_HOSTNAME")
 
                 log_echo "${GREEN}Found an existing cluster on $TARGET_HOSTNAME. Joining the cluster...${RESET}"
+
+                if ! require_all_peers_online_before_cluster_change; then
+                    log_echo "${RED}Cluster join cancelled before pvecm add.${RESET}"
+                    exit 1
+                fi
 
                  # Use expect to handle the password prompt with proper authentication
                 expect -c "
@@ -610,6 +687,12 @@ function add_local_node_to_cluster() {
 ####
 #### ---MAIN SCRIPT---
 ####
+
+# Allow the functions to be loaded by the regression tests without running the
+# installer or making changes to a host.
+if [[ "${TAILMOX_LIBRARY_MODE:-false}" == "true" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 log_echo "${GREEN}--- TAILMOX SCRIPT RUNNING ---${RESET}"
 
@@ -675,9 +758,6 @@ else
     log_echo "${GREEN}All Tailmox peers are reachable via ping.${RESET}"
 fi
 
-# Report on the latency of each peer
-report_peer_latency
-
 # Ensure that all peers are reachable via TCP port 8006
 if ! are_hosts_tcp_port_8006_reachable; then
     log_echo "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
@@ -713,11 +793,16 @@ if ! check_local_node_cluster_status; then
     log_echo "${YELLOW}Do you want to create a cluster on this node?${RESET}"
     read -p "Enter 'y' to create a new cluster or 'n' to exit: " choice
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
-        create_cluster
-        log_echo "${GREEN}Cluster created successfully.${RESET}"
-        log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
-        log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
-        log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
+        if create_cluster; then
+            log_echo "${GREEN}Cluster created successfully.${RESET}"
+            log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+            log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
+            log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
+        else
+            log_echo "${RED}Cluster creation failed or was blocked by the peer safety check.${RESET}"
+            log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
+            exit 1
+        fi
     else
         log_echo "${RED}Exiting without creating a cluster.${RESET}"
         log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
