@@ -1764,9 +1764,10 @@ if [[ "$TERMINAL_MODE" != "true" ]]; then
     exit 0
 fi
 
-log_echo "${GREEN}--- TAILMOX SCRIPT RUNNING ---${RESET}"
 if [[ "$STAGING" == "true" ]]; then
     log_echo "${YELLOW}Staging mode enabled.${RESET}"
+else
+    log_echo "${GREEN}--- TAILMOX SCRIPT RUNNING ---${RESET}"
 fi
 
 if ! check_if_supported_proxmox_is_installed; then
