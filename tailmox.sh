@@ -904,6 +904,7 @@ function sample_tailscale_ping_reachability() {
 function ensure_ping_reachability() {
     local peers_to_check="${1:-$OTHER_PEERS}"
     local check_description="${2:-all other Tailmox peers}"
+    local require_icmp_confirmation="${3:-true}"
 
     log_echo "${YELLOW}Checking $check_description with Tailscale path pings and 64-byte and 1280-byte ICMP packets in parallel for approximately five seconds...${RESET}"
 
@@ -1072,8 +1073,12 @@ function ensure_ping_reachability() {
         return 1
     fi
 
-    if [ "$override_required" = true ] && ! confirm_icmp_warning_override; then
-        return 1
+    if [[ "$override_required" == true ]]; then
+        if [[ "$require_icmp_confirmation" == true ]]; then
+            confirm_icmp_warning_override || return 1
+        else
+            log_echo "${YELLOW}ICMP warnings were recorded; the read-only test will continue without confirmation.${RESET}"
+        fi
     fi
 
     return 0
@@ -1726,13 +1731,13 @@ function test_setup_safely() {
 
     log_test_section 3 "Local host connectivity"
     log_echo "${YELLOW}Testing the local Proxmox host first over its Tailscale address...${RESET}"
-    ensure_ping_reachability "$LOCAL_PEERS" "the local Proxmox host" || return 1
+    ensure_ping_reachability "$LOCAL_PEERS" "the local Proxmox host" false || return 1
     are_hosts_tcp_port_8006_reachable "$LOCAL_PEERS" "the local Proxmox host" || return 1
     are_hosts_tcp_port_443_reachable "$LOCAL_PEERS" "the local Proxmox host" || return 1
 
     log_test_section 4 "Peer connectivity"
     check_all_peers_online || return 1
-    ensure_ping_reachability || return 1
+    ensure_ping_reachability "$OTHER_PEERS" "all other Tailmox peers" false || return 1
     are_hosts_tcp_port_8006_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
     are_hosts_tcp_port_443_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
 

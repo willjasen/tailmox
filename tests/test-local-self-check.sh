@@ -27,7 +27,7 @@ function check_all_peers_online() {
     return 0
 }
 function ensure_ping_reachability() {
-    CHECK_LOG+="ping:${2:-all other Tailmox peers} "
+    CHECK_LOG+="ping:${2:-all other Tailmox peers}:${3:-true} "
     return 0
 }
 function are_hosts_tcp_port_8006_reachable() {
@@ -74,7 +74,7 @@ FAIL_COUNT=0
 
 if test_setup_safely &&
     [[ "$CHECK_LOG" == \
-"ping:the local Proxmox host 8006:the local Proxmox host 443:the local Proxmox host peer-online ping:all other Tailmox peers 8006:all other Tailmox peers 443:all other Tailmox peers " ]]; then
+"ping:the local Proxmox host:false 8006:the local Proxmox host 443:the local Proxmox host peer-online ping:all other Tailmox peers:false 8006:all other Tailmox peers 443:all other Tailmox peers " ]]; then
     printf 'PASS: local Tailscale and Proxmox checks run before remote peer checks\n'
     PASS_COUNT=$((PASS_COUNT + 1))
 else

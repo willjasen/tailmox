@@ -220,6 +220,13 @@ fi
 
 printf 'PASS: a missing 50 ms reply blocks progress after all parallel probes run\n'
 
+if ! ensure_ping_reachability "$OTHER_PEERS" "all other Tailmox peers" false >/dev/null 2>&1; then
+    printf 'FAIL: read-only ICMP warning proceeded only with confirmation\n'
+    exit 1
+fi
+
+printf 'PASS: read-only ICMP warnings do not require confirmation\n'
+
 CONFIRM_OVERRIDE_RESULT=0
 
 if ! ensure_ping_reachability >/dev/null 2>&1; then

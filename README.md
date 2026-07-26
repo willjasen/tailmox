@@ -193,7 +193,7 @@ Safely exercise the setup checks on a Proxmox host with:
 tailmox test
 ```
 
-This read-only test first verifies that the local Proxmox host is online with the exact `tag:tailmox` identity, then tests its own Tailscale path, ICMP behavior, and required TCP ports through its Tailscale address. Only after that self-test passes does it perform the same network checks for the other Tailmox peers. It does not install packages, change Tailscale or systemd, request certificates, create a cluster, or join one.
+This read-only test first verifies that the local Proxmox host is online with the exact `tag:tailmox` identity, then tests its own Tailscale path, ICMP behavior, and required TCP ports through its Tailscale address. Only after that self-test passes does it perform the same network checks for the other Tailmox peers. ICMP warnings are reported but never prompt for `PROCEED`, so the test and monitor can finish non-interactively. It does not install packages, change Tailscale or systemd, request certificates, create a cluster, or join one.
 
 Run the same checks continuously and keep a local history with:
 
