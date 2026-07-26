@@ -14,6 +14,9 @@ const monitorDescription = document.querySelector("#monitor-description");
 const monitorHealth = document.querySelector("#monitor-health");
 const monitorHistory = document.querySelector("#monitor-history");
 const monitorIssueCount = document.querySelector("#monitor-issue-count");
+const monitorLatencyChart = document.querySelector("#monitor-latency-chart");
+const monitorLatencyEmpty = document.querySelector("#monitor-latency-empty");
+const monitorLatencySummary = document.querySelector("#monitor-latency-summary");
 const monitorLatestTime = document.querySelector("#monitor-latest-time");
 const monitorMode = document.querySelector("#monitor-mode");
 const monitorNodeCount = document.querySelector("#monitor-node-count");
@@ -90,6 +93,143 @@ function renderMonitorHistory(history) {
         return bar;
     });
     monitorHistory.replaceChildren(...bars);
+}
+
+function formatLatency(value) {
+    const latency = Number(value);
+    if (!Number.isFinite(latency)) {
+        return "unavailable";
+    }
+    return `${latency.toFixed(latency >= 100 ? 0 : latency >= 10 ? 1 : 2)} ms`;
+}
+
+function renderLatencyChart(history) {
+    const chartRuns = history.slice(-60);
+    const series = chartRuns.map((run) => ({
+        run,
+        average: run.latencyAverageMs === null || run.latencyAverageMs === undefined
+            ? Number.NaN
+            : Number(run.latencyAverageMs),
+        maximum: run.latencyMaximumMs === null || run.latencyMaximumMs === undefined
+            ? Number.NaN
+            : Number(run.latencyMaximumMs),
+    }));
+    const values = series.flatMap((item) => [item.average, item.maximum])
+        .filter((value) => Number.isFinite(value) && value >= 0);
+
+    monitorLatencyChart.replaceChildren();
+    if (!values.length) {
+        monitorLatencyChart.hidden = true;
+        monitorLatencyEmpty.hidden = false;
+        monitorLatencySummary.textContent = "Waiting for latency measurements";
+        return;
+    }
+
+    monitorLatencyChart.hidden = false;
+    monitorLatencyEmpty.hidden = true;
+    const latest = [...series].reverse().find((item) => (
+        Number.isFinite(item.average) || Number.isFinite(item.maximum)
+    ));
+    monitorLatencySummary.textContent = latest
+        ? `Latest · avg ${formatLatency(latest.average)} · max ${formatLatency(latest.maximum)}`
+        : "Latency measurements unavailable";
+
+    const namespace = "http://www.w3.org/2000/svg";
+    const width = 900;
+    const height = 220;
+    const margin = {top: 18, right: 18, bottom: 28, left: 56};
+    const plotWidth = width - margin.left - margin.right;
+    const plotHeight = height - margin.top - margin.bottom;
+    const highest = Math.max(...values);
+    const ceiling = highest > 0 ? highest * 1.08 : 1;
+    const xPosition = (index) => margin.left + (
+        series.length === 1 ? plotWidth / 2 : (index / (series.length - 1)) * plotWidth
+    );
+    const yPosition = (value) => margin.top + plotHeight - (value / ceiling) * plotHeight;
+    const makeSvgElement = (name, attributes = {}) => {
+        const element = document.createElementNS(namespace, name);
+        Object.entries(attributes).forEach(([key, value]) => {
+            element.setAttribute(key, String(value));
+        });
+        return element;
+    };
+
+    for (let index = 0; index <= 4; index += 1) {
+        const value = ceiling * (index / 4);
+        const y = yPosition(value);
+        const gridLine = makeSvgElement("line", {
+            class: "latency-grid-line",
+            x1: margin.left,
+            x2: width - margin.right,
+            y1: y,
+            y2: y,
+        });
+        const label = makeSvgElement("text", {
+            class: "latency-axis-label",
+            x: margin.left - 9,
+            y: y + 4,
+            "text-anchor": "end",
+        });
+        label.textContent = formatLatency(value);
+        monitorLatencyChart.append(gridLine, label);
+    }
+
+    const addSeries = (key, className, label) => {
+        let pathData = "";
+        let startSegment = true;
+        series.forEach((item, index) => {
+            const value = item[key];
+            if (!Number.isFinite(value) || value < 0) {
+                startSegment = true;
+                return;
+            }
+            const x = xPosition(index);
+            const y = yPosition(value);
+            pathData += `${startSegment ? " M" : " L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+            startSegment = false;
+            const point = makeSvgElement("circle", {
+                class: `latency-point ${className}`,
+                cx: x,
+                cy: y,
+                r: 3.5,
+            });
+            const title = makeSvgElement("title");
+            title.textContent = `${formatMonitorTimestamp(item.run.startedAt)} · ${label} ${formatLatency(value)}`;
+            point.append(title);
+            monitorLatencyChart.append(point);
+        });
+        if (pathData) {
+            const path = makeSvgElement("path", {
+                class: `latency-line ${className}`,
+                d: pathData,
+            });
+            monitorLatencyChart.prepend(path);
+        }
+    };
+
+    addSeries("maximum", "is-maximum", "maximum");
+    addSeries("average", "is-average", "average");
+
+    const oldestLabel = makeSvgElement("text", {
+        class: "latency-axis-label",
+        x: margin.left,
+        y: height - 7,
+        "text-anchor": "start",
+    });
+    oldestLabel.textContent = "Oldest";
+    const newestLabel = makeSvgElement("text", {
+        class: "latency-axis-label",
+        x: width - margin.right,
+        y: height - 7,
+        "text-anchor": "end",
+    });
+    newestLabel.textContent = "Newest";
+    monitorLatencyChart.append(oldestLabel, newestLabel);
+    monitorLatencyChart.setAttribute(
+        "aria-label",
+        `Recent latency across ${series.length} monitor run${series.length === 1 ? "" : "s"}; `
+        + `latest average ${formatLatency(latest?.average)}, latest maximum ${formatLatency(latest?.maximum)}.`,
+    );
 }
 
 function formatMonitorDuration(value) {
@@ -291,6 +431,7 @@ function renderMonitor(analytics) {
         ? `${Math.round((passed / runs) * 100)}% passed · ${Number(totals.failed) || 0} failed`
         : "No history yet";
     renderMonitorHistory(history);
+    renderLatencyChart(history);
 
     if (!latest) {
         monitorHealth.textContent = "Waiting";

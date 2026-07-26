@@ -826,6 +826,12 @@ def publish_analytics(
             """,
             (run_id,),
         ).fetchall()
+        average_latencies = [
+            float(row[8]) for row in checks if row[8] is not None
+        ]
+        maximum_latencies = [
+            float(row[9]) for row in checks if row[9] is not None
+        ]
         cluster_sample = connection.execute(
             """
             SELECT quorate, configured_nodes, expected_votes, total_votes,
@@ -878,6 +884,16 @@ def publish_analytics(
             "durationMs": run[7],
             "testExitCode": run[8],
             "errorCode": run[9],
+            "latencyAverageMs": (
+                round(sum(average_latencies) / len(average_latencies), 3)
+                if average_latencies
+                else None
+            ),
+            "latencyMaximumMs": (
+                round(max(maximum_latencies), 3)
+                if maximum_latencies
+                else None
+            ),
             "failureReasons": failure_reasons,
             "cluster": (
                 {

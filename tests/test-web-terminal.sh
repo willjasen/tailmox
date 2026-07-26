@@ -164,6 +164,7 @@ if ! grep -Fq 'id="run-test"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="run-cluster"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="monitor-health"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'id="monitor-database-size"' "$TAILMOX_WEB_ROOT/index.html" ||
+    ! grep -Fq 'id="monitor-latency-chart"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'new EventSource("monitor/events")' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'analytics.databaseSizeBytes' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'bar.addEventListener("click"' "$TAILMOX_WEB_ROOT/tailmox.js" ||
@@ -173,6 +174,8 @@ if ! grep -Fq 'id="run-test"' "$TAILMOX_WEB_ROOT/index.html" ||
     ! grep -Fq 'run.checks' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'hostChecks.map(createMeasurementRow)' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'latencyAverageMs' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'renderLatencyChart(history)' "$TAILMOX_WEB_ROOT/tailmox.js" ||
+    ! grep -Fq 'class: `latency-line ${className}`' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'monitorRunDialog.showModal()' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'monitorRunDialog.close()' "$TAILMOX_WEB_ROOT/tailmox.js" ||
     ! grep -Fq 'run.failureReasons' "$TAILMOX_WEB_ROOT/tailmox.js" ||

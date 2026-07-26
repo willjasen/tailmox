@@ -79,6 +79,29 @@
                     </div>
                 </div>
 
+                <div class="latency-panel">
+                    <div class="subheading-row latency-heading">
+                        <div>
+                            <h2>Recent latency</h2>
+                            <span id="monitor-latency-summary">Waiting for latency measurements</span>
+                        </div>
+                        <div class="latency-legend" aria-hidden="true">
+                            <span class="is-average">Average</span>
+                            <span class="is-maximum">Maximum</span>
+                        </div>
+                    </div>
+                    <svg
+                        class="latency-chart"
+                        id="monitor-latency-chart"
+                        viewBox="0 0 900 220"
+                        role="img"
+                        aria-label="Average and maximum latency for recent monitor runs"
+                    ></svg>
+                    <p class="latency-empty" id="monitor-latency-empty">
+                        Run <code>tailmox monitor</code> to begin charting latency.
+                    </p>
+                </div>
+
                 <div class="monitor-details">
                     <div class="history-panel">
                         <div class="subheading-row">

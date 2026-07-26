@@ -250,7 +250,9 @@ allocated SQLite database size alongside the monitor health summary. Select a
 bar under **Recent runs** to inspect that run's timestamp, mode, result,
 duration, host-grouped Tailscale path, ICMP, and TCP latency measurements,
 per-check issues, and run-level failure reasons such as a nonzero `tailmox
-test` exit. Every host
+test` exit. The **Recent latency** graph plots the mean of each run's recorded
+check averages alongside its highest recorded check maximum for up to 60 runs.
+Runs without latency measurements appear as gaps. Every host
 has its own database and records only tests performed locally; Tailmox does not
 accept or upload monitor results between hosts.
 

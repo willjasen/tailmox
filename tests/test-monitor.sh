@@ -122,6 +122,8 @@ assert len(analytics["latest"]["nodes"]) == 2, analytics
 assert len(analytics["latest"]["issues"]) == 1, analytics
 assert analytics["history"][0]["id"] == analytics["latest"]["id"], analytics
 assert analytics["history"][0]["finishedAt"], analytics
+assert analytics["history"][0]["latencyAverageMs"] == 502.625, analytics
+assert analytics["history"][0]["latencyMaximumMs"] == 2001.25, analytics
 assert len(analytics["history"][0]["nodes"]) == 2, analytics
 assert len(analytics["history"][0]["issues"]) == 1, analytics
 assert len(analytics["history"][0]["checks"]) == 5, analytics
