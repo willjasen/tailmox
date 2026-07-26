@@ -245,8 +245,9 @@ checks, and cluster samples in related tables. Raw Tailscale JSON and terminal
 output are not stored in the database. The `serve` dashboard shows the current
 allocated SQLite database size alongside the monitor health summary. Select a
 bar under **Recent runs** to inspect that run's timestamp, mode, result,
-duration, node snapshot, per-check issues, and run-level failure reasons such
-as a nonzero `tailmox test` exit. Every host
+duration, node snapshot, Tailscale path, ICMP, and TCP latency measurements,
+per-check issues, and run-level failure reasons such as a nonzero
+`tailmox test` exit. Every host
 has its own database and records only tests performed locally; Tailmox does not
 accept or upload monitor results between hosts.
 

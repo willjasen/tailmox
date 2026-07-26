@@ -26,7 +26,10 @@ DEFAULT_INTERVAL_SECONDS = 60
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 PEER_HEADING = re.compile(r"^\s*-\s+(.+?)\s+\(([^)]+)\)\s*$")
 TAILSCALE_PATH = re.compile(
-    r"Tailscale path(?: check failed)?:\s+(\d+)\s+of\s+(\d+)\s+Tailscale pings succeeded"
+    r"Tailscale path(?: check failed)?:\s+(?P<received>\d+)\s+of\s+"
+    r"(?P<sent>\d+)\s+Tailscale pings succeeded"
+    r"(?:.*?average latency (?P<average>[0-9.]+|unknown) ms;"
+    r"\s+maximum latency (?P<maximum>[0-9.]+|unknown) ms)?"
 )
 ICMP_RESULT = re.compile(
     r"(?P<size>\d+)-byte ICMP:.*?average latency "
@@ -34,7 +37,10 @@ ICMP_RESULT = re.compile(
     r"(?P<maximum>[0-9.]+|unknown) ms;(?P<remainder>.*)"
 )
 ICMP_REPLIES = re.compile(r"only\s+(\d+)\s+of\s+(\d+)\s+replies")
-TCP_RESULT = re.compile(r"TCP port\s+(\d+)\s+is\s+(not\s+)?available")
+TCP_RESULT = re.compile(
+    r"TCP port\s+(?P<port>\d+)\s+is\s+(?P<unavailable>not\s+)?available"
+    r"(?:;\s+latency\s+(?P<latency>[0-9.]+)\s+ms)?"
+)
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -585,7 +591,10 @@ def parse_test_checks(
 
         tailscale_match = TAILSCALE_PATH.search(line)
         if tailscale_match:
-            received, sent = map(int, tailscale_match.groups())
+            received = int(tailscale_match.group("received"))
+            sent = int(tailscale_match.group("sent"))
+            average = tailscale_match.group("average")
+            maximum = tailscale_match.group("maximum")
             status = "passed" if "failed" not in line.lower() else "failed"
             add_check(
                 connection,
@@ -596,6 +605,12 @@ def parse_test_checks(
                 status,
                 packets_sent=sent,
                 packets_received=received,
+                latency_average_ms=(
+                    float(average) if average not in (None, "unknown") else None
+                ),
+                latency_maximum_ms=(
+                    float(maximum) if maximum not in (None, "unknown") else None
+                ),
             )
             check_count += 1
             continue
@@ -630,14 +645,21 @@ def parse_test_checks(
 
         tcp_match = TCP_RESULT.search(line)
         if tcp_match:
+            latency_ms = (
+                float(tcp_match.group("latency"))
+                if tcp_match.group("latency") is not None
+                else None
+            )
             add_check(
                 connection,
                 run_id,
                 current_node_id,
                 "tcp",
                 "port",
-                "failed" if tcp_match.group(2) else "passed",
-                port=int(tcp_match.group(1)),
+                "failed" if tcp_match.group("unavailable") else "passed",
+                latency_average_ms=latency_ms,
+                latency_maximum_ms=latency_ms,
+                port=int(tcp_match.group("port")),
             )
             check_count += 1
 
@@ -669,6 +691,18 @@ def publish_analytics(
             LEFT JOIN monitor_nodes n ON n.id = c.node_id
             WHERE c.run_id = ? AND c.status != 'passed'
             ORDER BY c.status DESC, n.hostname, c.category
+            """,
+            (run_id,),
+        ).fetchall()
+        checks = connection.execute(
+            """
+            SELECT n.hostname, c.category, c.name, c.status, c.port,
+                   c.packet_size_bytes, c.packets_sent, c.packets_received,
+                   c.latency_average_ms, c.latency_maximum_ms
+            FROM monitor_checks c
+            LEFT JOIN monitor_nodes n ON n.id = c.node_id
+            WHERE c.run_id = ?
+            ORDER BY n.hostname, c.category, c.port, c.packet_size_bytes
             """,
             (run_id,),
         ).fetchall()
@@ -762,6 +796,21 @@ def publish_analytics(
                     "latencyMaximumMs": row[6],
                 }
                 for row in failed_checks
+            ],
+            "checks": [
+                {
+                    "hostname": row[0],
+                    "category": row[1],
+                    "name": row[2],
+                    "status": row[3],
+                    "port": row[4],
+                    "packetSizeBytes": row[5],
+                    "packetsSent": row[6],
+                    "packetsReceived": row[7],
+                    "latencyAverageMs": row[8],
+                    "latencyMaximumMs": row[9],
+                }
+                for row in checks
             ],
         }
 

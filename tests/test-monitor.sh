@@ -16,11 +16,11 @@ printf '%s\n' \
     '#!/usr/bin/env bash' \
     '[[ "${1:-}" == "test" ]] || exit 2' \
     'printf "%s\n" " - pve-local (pve-local.example.ts.net)"' \
-    'printf "%s\n" "   - Tailscale path: 20 of 20 Tailscale pings succeeded (80% required)."' \
+    'printf "%s\n" "   - Tailscale path: 20 of 20 Tailscale pings succeeded (80% required); average latency 4.25 ms; maximum latency 7.50 ms."' \
     'printf "%s\n" "   - 64-byte ICMP: average latency 1.25 ms; maximum latency 2.50 ms; all replies arrived within 50 ms; 0% packet loss."' \
-    'printf "%s\n" "   - TCP port 8006 is available."' \
+    'printf "%s\n" "   - TCP port 8006 is available; latency 3.75 ms."' \
     'printf "%s\n" " - pve-remote (100.64.0.2)"' \
-    'printf "%s\n" "   - TCP port 443 is not available."' \
+    'printf "%s\n" "   - TCP port 443 is not available; latency 2001.25 ms."' \
     'exit 1' > "$MOCK_TAILMOX"
 
 printf '%s\n' \
@@ -64,14 +64,17 @@ assert nodes == 2, nodes
 
 checks = connection.execute(
     """
-    SELECT category, status, port, packet_size_bytes, latency_maximum_ms
+    SELECT category, status, port, packet_size_bytes,
+           latency_average_ms, latency_maximum_ms
     FROM monitor_checks
     ORDER BY id
     """
 ).fetchall()
 assert len(checks) == 5, checks
-assert ("tcp", "failed", 443, None, None) in checks, checks
-assert ("icmp", "passed", None, 64, 2.5) in checks, checks
+assert ("tailscale", "passed", None, None, 4.25, 7.5) in checks, checks
+assert ("tcp", "passed", 8006, None, 3.75, 3.75) in checks, checks
+assert ("tcp", "failed", 443, None, 2001.25, 2001.25) in checks, checks
+assert ("icmp", "passed", None, 64, 1.25, 2.5) in checks, checks
 
 cluster = connection.execute(
     """
@@ -101,6 +104,19 @@ assert analytics["history"][0]["id"] == analytics["latest"]["id"], analytics
 assert analytics["history"][0]["finishedAt"], analytics
 assert len(analytics["history"][0]["nodes"]) == 2, analytics
 assert len(analytics["history"][0]["issues"]) == 1, analytics
+assert len(analytics["history"][0]["checks"]) == 5, analytics
+assert {
+    "hostname": "pve-local",
+    "category": "tailscale",
+    "name": "path",
+    "status": "passed",
+    "port": None,
+    "packetSizeBytes": None,
+    "packetsSent": 20,
+    "packetsReceived": 20,
+    "latencyAverageMs": 4.25,
+    "latencyMaximumMs": 7.5,
+} in analytics["history"][0]["checks"], analytics
 assert analytics["history"][0]["cluster"]["quorate"] is True, analytics
 assert analytics["history"][0]["testExitCode"] == 1, analytics
 assert analytics["history"][0]["failureReasons"] == [

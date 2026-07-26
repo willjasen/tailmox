@@ -861,17 +861,42 @@ function sample_tailscale_ping_reachability() {
     local timeout="$5"
     local attempt
     local successful_count=0
+    local latency_count=0
+    local latency_total_ms=0
+    local latency_maximum_ms=0
+    local attempt_latency_ms
+    local latency_average_ms
     local attempt_file
 
     for ((attempt = 0; attempt < ping_count; attempt++)); do
         attempt_file="${result_file}.attempt-${attempt}"
         if tailscale ping --c 1 --timeout="$timeout" "$peer_dns_name" >"$attempt_file" 2>&1; then
             successful_count=$((successful_count + 1))
+            attempt_latency_ms=$(sed -nE \
+                's/.* in ([0-9]+([.][0-9]+)?)ms.*/\1/p' "$attempt_file" | tail -1)
+            if [[ -n "$attempt_latency_ms" ]]; then
+                latency_count=$((latency_count + 1))
+                latency_total_ms=$(awk \
+                    -v total="$latency_total_ms" -v latency="$attempt_latency_ms" \
+                    'BEGIN { printf "%.3f", total + latency }')
+                latency_maximum_ms=$(awk \
+                    -v max_value="$latency_maximum_ms" -v latency="$attempt_latency_ms" \
+                    'BEGIN { printf "%.3f", (latency > max_value) ? latency : max_value }')
+            fi
         fi
     done
 
-    printf '%s of %s Tailscale pings succeeded (80%% required)' \
-        "$successful_count" "$ping_count" >"$result_file"
+    if [[ "$latency_count" -gt 0 ]]; then
+        latency_average_ms=$(awk \
+            -v total="$latency_total_ms" -v count="$latency_count" \
+            'BEGIN { printf "%.3f", total / count }')
+        printf '%s of %s Tailscale pings succeeded (80%% required); average latency %s ms; maximum latency %s ms' \
+            "$successful_count" "$ping_count" "$latency_average_ms" \
+            "$latency_maximum_ms" >"$result_file"
+    else
+        printf '%s of %s Tailscale pings succeeded (80%% required); average latency unknown ms; maximum latency unknown ms' \
+            "$successful_count" "$ping_count" >"$result_file"
+    fi
 
     [[ "$successful_count" -ge "$required_count" ]]
 }
@@ -1069,11 +1094,20 @@ function are_hosts_tcp_port_8006_reachable() {
         peer_hostname=$(printf '%s\n' "$peer" | jq -r '.hostname')
 
         log_echo "${BLUE} - $peer_hostname ($peer_ip)${RESET}"
+        local started_at="${EPOCHREALTIME:-$(date +%s)}"
+        local finished_at
+        local latency_ms
         if ! nc -z -w 2 "$peer_ip" 8006 &>/dev/null; then
-            log_echo "${RED}   - TCP port 8006 is not available.${RESET}"
+            finished_at="${EPOCHREALTIME:-$(date +%s)}"
+            latency_ms=$(awk -v started_at="$started_at" -v finished_at="$finished_at" \
+                'BEGIN { printf "%.3f", (finished_at - started_at) * 1000 }')
+            log_echo "${RED}   - TCP port 8006 is not available; latency ${latency_ms} ms.${RESET}"
             return 1
         else
-            log_echo "${GREEN}   - TCP port 8006 is available.${RESET}"
+            finished_at="${EPOCHREALTIME:-$(date +%s)}"
+            latency_ms=$(awk -v started_at="$started_at" -v finished_at="$finished_at" \
+                'BEGIN { printf "%.3f", (finished_at - started_at) * 1000 }')
+            log_echo "${GREEN}   - TCP port 8006 is available; latency ${latency_ms} ms.${RESET}"
         fi
     done
 }
@@ -1093,11 +1127,20 @@ function are_hosts_tcp_port_443_reachable() {
         peer_hostname=$(printf '%s\n' "$peer" | jq -r '.hostname')
 
         log_echo "${BLUE} - $peer_hostname ($peer_ip)${RESET}"
+        local started_at="${EPOCHREALTIME:-$(date +%s)}"
+        local finished_at
+        local latency_ms
         if ! nc -z -w 2 "$peer_ip" 443 &>/dev/null; then
-            log_echo "${RED}   - TCP port 443 is not available.${RESET}"
+            finished_at="${EPOCHREALTIME:-$(date +%s)}"
+            latency_ms=$(awk -v started_at="$started_at" -v finished_at="$finished_at" \
+                'BEGIN { printf "%.3f", (finished_at - started_at) * 1000 }')
+            log_echo "${RED}   - TCP port 443 is not available; latency ${latency_ms} ms.${RESET}"
             return 1
         else
-            log_echo "${GREEN}   - TCP port 443 is available.${RESET}"
+            finished_at="${EPOCHREALTIME:-$(date +%s)}"
+            latency_ms=$(awk -v started_at="$started_at" -v finished_at="$finished_at" \
+                'BEGIN { printf "%.3f", (finished_at - started_at) * 1000 }')
+            log_echo "${GREEN}   - TCP port 443 is available; latency ${latency_ms} ms.${RESET}"
         fi
     done
 }

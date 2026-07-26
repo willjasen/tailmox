@@ -382,7 +382,8 @@ button {
     font-size: 0.82rem;
 }
 
-.issue-list {
+.issue-list,
+.measurement-list {
     display: grid;
     gap: 7px;
     margin-top: 10px;
@@ -390,18 +391,28 @@ button {
     font-size: 0.72rem;
 }
 
-.issue-row {
+.issue-row,
+.measurement-row {
     padding-top: 7px;
     border-top: 1px solid rgba(43, 60, 55, 0.7);
 }
 
-.issue-row:first-child {
+.issue-row:first-child,
+.measurement-row:first-child {
     padding-top: 0;
     border-top: 0;
 }
 
 .issue-row.is-run-level {
     color: var(--red);
+}
+
+.measurement-row.is-failed {
+    color: var(--red);
+}
+
+.measurement-row.is-warning {
+    color: var(--amber);
 }
 
 .node-list {

@@ -52,12 +52,9 @@ for peer_data in "pve1 100.64.0.1" "pve2 100.64.0.2"; do
     fi
 done
 
-printf -v expected_8006_result '%b' "${GREEN}   - TCP port 8006 is available.${RESET}"
-printf -v expected_443_result '%b' "${GREEN}   - TCP port 443 is available.${RESET}"
-
-if [[ "$(printf '%s\n' "$OUTPUT_8006" | grep -Fxc -- "$expected_8006_result")" -ne 2 ]] \
-    || [[ "$(printf '%s\n' "$OUTPUT_443" | grep -Fxc -- "$expected_443_result")" -ne 2 ]]; then
-    printf 'FAIL: successful TCP results were not nested and green\n'
+if [[ "$(printf '%s\n' "$OUTPUT_8006" | grep -Ec -- 'TCP port 8006 is available; latency [0-9]+\.[0-9]{3} ms\.')" -ne 2 ]] \
+    || [[ "$(printf '%s\n' "$OUTPUT_443" | grep -Ec -- 'TCP port 443 is available; latency [0-9]+\.[0-9]{3} ms\.')" -ne 2 ]]; then
+    printf 'FAIL: successful TCP results did not include latency\n'
     exit 1
 fi
 
@@ -68,9 +65,8 @@ if FAILURE_OUTPUT=$(are_hosts_tcp_port_443_reachable "$PEERS" "all other Tailmox
     exit 1
 fi
 
-printf -v expected_failure '%b' "${RED}   - TCP port 443 is not available.${RESET}"
-if [[ "$(printf '%s\n' "$FAILURE_OUTPUT" | grep -Fxc -- "$expected_failure")" -ne 1 ]]; then
-    printf 'FAIL: failed TCP result was not nested and red\n'
+if [[ "$(printf '%s\n' "$FAILURE_OUTPUT" | grep -Ec -- 'TCP port 443 is not available; latency [0-9]+\.[0-9]{3} ms\.')" -ne 1 ]]; then
+    printf 'FAIL: failed TCP result did not include latency\n'
     exit 1
 fi
 

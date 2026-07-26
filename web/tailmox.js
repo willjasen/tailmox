@@ -25,6 +25,8 @@ const monitorRunHeading = document.querySelector("#monitor-run-heading");
 const monitorRunSummary = document.querySelector("#monitor-run-summary");
 const monitorRunDialog = document.querySelector("#monitor-run-dialog");
 const monitorDialogClose = document.querySelector("#monitor-dialog-close");
+const monitorDialogCheckCount = document.querySelector("#monitor-dialog-check-count");
+const monitorDialogChecks = document.querySelector("#monitor-dialog-checks");
 const monitorDialogIssueCount = document.querySelector("#monitor-dialog-issue-count");
 const monitorDialogIssues = document.querySelector("#monitor-dialog-issues");
 const monitorDialogNodeCount = document.querySelector("#monitor-dialog-node-count");
@@ -163,6 +165,7 @@ function renderMonitorNodes(run) {
 function openMonitorRunDialog(run) {
     const nodes = Array.isArray(run.nodes) ? run.nodes : [];
     const issues = Array.isArray(run.issues) ? run.issues : [];
+    const checks = Array.isArray(run.checks) ? run.checks : [];
     const failureReasons = Array.isArray(run.failureReasons) ? run.failureReasons : [];
     const issueCount = issues.length + failureReasons.length;
     monitorDialogSummary.textContent = [
@@ -172,12 +175,43 @@ function openMonitorRunDialog(run) {
         formatMonitorDuration(run.durationMs),
     ].join(" · ");
     monitorDialogNodeCount.textContent = `${nodes.length} node${nodes.length === 1 ? "" : "s"}`;
+    monitorDialogCheckCount.textContent = `${checks.length} check${checks.length === 1 ? "" : "s"}`;
     monitorDialogIssueCount.textContent = `${issueCount} issue${issueCount === 1 ? "" : "s"}`;
 
     const nodeRows = createMonitorNodeRows(run);
     monitorDialogNodes.replaceChildren(...nodeRows);
     if (!nodeRows.length) {
         monitorDialogNodes.textContent = "No Tailmox nodes were present in this snapshot.";
+    }
+
+    const measurementRows = checks.map((check) => {
+        const row = document.createElement("div");
+        row.className = `measurement-row is-${check.status}`;
+        const target = check.hostname || "Host-wide check";
+        let label = check.category;
+        if (check.category === "tcp" && check.port) {
+            label = `TCP ${check.port}`;
+        } else if (check.category === "icmp" && check.packetSizeBytes) {
+            label = `ICMP ${check.packetSizeBytes}-byte`;
+        } else if (check.category === "tailscale") {
+            label = "Tailscale path";
+        }
+        const hasLatency = check.latencyAverageMs !== null
+            && check.latencyAverageMs !== undefined
+            && check.latencyMaximumMs !== null
+            && check.latencyMaximumMs !== undefined;
+        const latency = hasLatency
+            ? `avg ${Number(check.latencyAverageMs).toFixed(3)} ms · max ${Number(check.latencyMaximumMs).toFixed(3)} ms`
+            : "latency unavailable";
+        const packets = check.packetsSent !== null && check.packetsSent !== undefined
+            ? ` · ${check.packetsReceived}/${check.packetsSent} replies`
+            : "";
+        row.textContent = `${target} · ${label} · ${latency}${packets}`;
+        return row;
+    });
+    monitorDialogChecks.replaceChildren(...measurementRows);
+    if (!measurementRows.length) {
+        monitorDialogChecks.textContent = "No network measurements were recorded for this run.";
     }
 
     const failureRows = failureReasons.map((reason) => {
