@@ -158,9 +158,9 @@ for peer in pve1 pve2 pve3; do
 done
 
 printf -v expected_tailscale_line '%b' \
-    "${BLUE}   - Tailscale path: 20 of 20 Tailscale pings succeeded (80% required).${RESET}"
+    "${GREEN}   - Tailscale path: 20 of 20 Tailscale pings succeeded (80% required).${RESET}"
 if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_tailscale_line")" -ne 3 ]]; then
-    printf 'FAIL: successful Tailscale path results were not nested and blue\n'
+    printf 'FAIL: successful Tailscale path results were not nested and green\n'
     exit 1
 fi
 

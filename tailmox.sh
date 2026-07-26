@@ -925,7 +925,7 @@ function ensure_ping_reachability() {
             log_echo "${BLUE} - $peer_hostname ($peer_dns_name)${RESET}"
             tailscale_result=$(tail -1 "$result_file")
             if [[ "$command_succeeded" == true ]]; then
-                log_echo "${BLUE}   - Tailscale path: ${tailscale_result:-reachable}.${RESET}"
+                log_echo "${GREEN}   - Tailscale path: ${tailscale_result:-reachable}.${RESET}"
             else
                 log_echo "${RED}   - Tailscale path check failed: ${tailscale_result:-no result}. No cluster changes will be made.${RESET}"
                 all_reachable=false
@@ -995,12 +995,12 @@ function are_hosts_tcp_port_8006_reachable() {
         peer_ip=$(printf '%s\n' "$peer" | jq -r '.ip')
         peer_hostname=$(printf '%s\n' "$peer" | jq -r '.hostname')
 
-        log_echo "${BLUE} - Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
+        log_echo "${BLUE} - $peer_hostname ($peer_ip)${RESET}"
         if ! nc -z -w 2 "$peer_ip" 8006 &>/dev/null; then
-            log_echo "${RED} - TCP port 8006 is not available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${RED}   - TCP port 8006 is not available.${RESET}"
             return 1
         else
-            log_echo "${GREEN} - TCP port 8006 is available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${GREEN}   - TCP port 8006 is available.${RESET}"
         fi
     done
 }
@@ -1019,12 +1019,12 @@ function are_hosts_tcp_port_443_reachable() {
         peer_ip=$(printf '%s\n' "$peer" | jq -r '.ip')
         peer_hostname=$(printf '%s\n' "$peer" | jq -r '.hostname')
 
-        log_echo "${BLUE} - Checking TCP port 443 on $peer_hostname ($peer_ip)...${RESET}"
+        log_echo "${BLUE} - $peer_hostname ($peer_ip)${RESET}"
         if ! nc -z -w 2 "$peer_ip" 443 &>/dev/null; then
-            log_echo "${RED} - TCP port 443 is not available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${RED}   - TCP port 443 is not available.${RESET}"
             return 1
         else
-            log_echo "${GREEN} - TCP port 443 is available on $peer_hostname ($peer_ip).${RESET}"
+            log_echo "${GREEN}   - TCP port 443 is available.${RESET}"
         fi
     done
 }
