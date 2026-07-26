@@ -428,15 +428,17 @@ function require_hostnames_in_cluster() {
 # Require an explicit acknowledgement before continuing after an ICMP warning.
 function confirm_icmp_warning_override() {
     local confirmation
+    local confirmation_device="${TAILMOX_CONFIRMATION_DEVICE:-/dev/tty}"
+    local confirmation_timeout="${TAILMOX_CONFIRMATION_TIMEOUT_SECONDS:-10}"
 
-    if [[ ! -r /dev/tty ]]; then
+    if [[ ! -r "$confirmation_device" ]]; then
         log_echo "${RED}ICMP warnings require interactive confirmation, but no terminal is available. No cluster changes will be made.${RESET}"
         return 1
     fi
 
     log_echo "${YELLOW}WARNING: One or more Tailmox peers did not answer every ICMP probe within 50 ms.${RESET}"
-    if ! read -r -p "Type 'PROCEED' to continue despite the ICMP warning: " confirmation < /dev/tty; then
-        log_echo "${RED}Unable to read interactive confirmation. No cluster changes will be made.${RESET}"
+    if ! read -r -t "$confirmation_timeout" -p "Type 'PROCEED' within ${confirmation_timeout} seconds to continue despite the ICMP warning: " confirmation < "$confirmation_device"; then
+        log_echo "${RED}Confirmation timed out after ${confirmation_timeout} seconds. Setup cancelled; no cluster changes will be made.${RESET}"
         return 1
     fi
 
