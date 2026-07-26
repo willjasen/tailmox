@@ -366,8 +366,8 @@ function start_web_terminal() {
             return 1
         fi
 
-        printf 'Tailmox web server is already running.\n'
-        printf 'https://%s:%s/\n' "$dns_name" "$TAILMOX_WEB_PORT"
+        printf 'Tailmox web server is already running. %bhttps://%s:%s/%b\n' \
+            "$BLUE" "$dns_name" "$TAILMOX_WEB_PORT" "$RESET"
         return 0
     fi
 
@@ -407,8 +407,8 @@ function start_web_terminal() {
         return 1
     fi
 
-    printf 'Tailmox web server started.\n'
-    printf 'https://%s:%s/\n' "$dns_name" "$TAILMOX_WEB_PORT"
+    printf 'Tailmox web server started. %bhttps://%s:%s/%b\n' \
+        "$BLUE" "$dns_name" "$TAILMOX_WEB_PORT" "$RESET"
 }
 
 # Stop only the Tailmox-owned web service and its dedicated Tailscale listener.
@@ -1632,8 +1632,8 @@ function add_local_node_to_cluster() {
                 # Check if successful
                 if [ $? -eq 0 ]; then
                     log_echo "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
-                    log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
-                    log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
+                    log_echo "${GREEN}You can now access your tailmox server directly at: ${BLUE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+                    log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
                     exit 0
                 else
                     log_echo "${RED}Failed to join cluster with $TARGET_HOSTNAME. Check the password and try again.${RESET}"
@@ -1926,8 +1926,8 @@ else
         log_echo "${RED}The existing cluster was preserved but is not yet ready for a new Tailmox host.${RESET}"
         exit 1
     fi
-    log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
-    log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
+    log_echo "${GREEN}You can now access your tailmox server directly at: ${BLUE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+    log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     exit 0
 fi
@@ -1940,8 +1940,8 @@ if ! check_local_node_cluster_status; then
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
         if create_cluster; then
             log_echo "${GREEN}Cluster created successfully.${RESET}"
-            log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
-            log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
+            log_echo "${GREEN}You can now access your tailmox server directly at: ${BLUE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+            log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
             log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
         else
             log_echo "${RED}Cluster creation failed or was blocked by the peer safety check.${RESET}"

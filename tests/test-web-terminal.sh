@@ -42,10 +42,10 @@ function tailscale() {
 }
 
 OUTPUT=$(start_web_terminal)
-EXPECTED_OUTPUT=$'Tailmox web server started.\nhttps://prox1.risk-mermaid.ts.net:8669/'
+EXPECTED_OUTPUT=$'Tailmox web server started. \033[0;34mhttps://prox1.risk-mermaid.ts.net:8669/\033[0m'
 
 if [[ "$OUTPUT" != "$EXPECTED_OUTPUT" ]]; then
-    printf 'FAIL: launcher output did not contain only the status and service URL\n'
+    printf 'FAIL: launcher did not show the blue service URL on the status line\n'
     printf 'Actual output:\n%s\n' "$OUTPUT"
     exit 1
 fi
@@ -82,12 +82,23 @@ WEB_SERVICE_ACTIVE=true
 SYSTEMCTL_CALL_COUNT=$(wc -l < "$SYSTEMCTL_CALLS")
 TAILSCALE_SERVE_CALL_COUNT=$(grep -c '^serve ' "$TAILSCALE_CALLS")
 OUTPUT=$(start_web_terminal)
-EXPECTED_OUTPUT=$'Tailmox web server is already running.\nhttps://prox1.risk-mermaid.ts.net:8669/'
+EXPECTED_OUTPUT=$'Tailmox web server is already running. \033[0;34mhttps://prox1.risk-mermaid.ts.net:8669/\033[0m'
 
 if [[ "$OUTPUT" != "$EXPECTED_OUTPUT" ]]; then
     printf 'FAIL: start did not report the URL of the already-running web server\n'
     exit 1
 fi
+
+if grep -Fq '${PURPLE}https://' "$TEST_ROOT/tailmox.sh"; then
+    printf 'FAIL: a user-facing Tailmox HTTPS URL is still purple\n'
+    exit 1
+fi
+if grep -E 'log_echo .*https://' "$TEST_ROOT/tailmox.sh" |
+    grep -Fvq '${BLUE}https://'; then
+    printf 'FAIL: a clustering completion URL is not blue\n'
+    exit 1
+fi
+
 if [[ "$(wc -l < "$SYSTEMCTL_CALLS")" -ne $((SYSTEMCTL_CALL_COUNT + 1)) ||
     "$(grep -c '^serve ' "$TAILSCALE_CALLS")" -ne "$TAILSCALE_SERVE_CALL_COUNT" ]]; then
     printf 'FAIL: starting an already-running web server changed its state\n'
