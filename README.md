@@ -56,7 +56,7 @@ The script will check that the following TCP ports are available:
 
  - TCP 22
  - TCP 443
- - TCP 8669 (the Tailmox web terminal; `TMOX` on a telephone keypad)
+ - TCP 8669 (the Tailmox dashboard and web terminal; `TMOX` on a telephone keypad)
  - TCP 8006
 
 The script will exit if any of the ports aren't available.
@@ -70,7 +70,7 @@ This script uses the tag of "tailmox" to determine which Tailscale machines are 
 }
 ```
 
-Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. There is also an included rule at the end to allow all devices within the tailnet to access the web interface of the hosts with the tag.
+Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412. Using the now established tag of "tailmox", create access control rules that allow all hosts with this tag to communicate with all other hosts with the tag as well. The rule at the end restricts the Tailmox dashboard and its writable root terminal to tailnet administrators.
 ```
 "acls": [
 	/// ... ACL rules before
@@ -79,7 +79,7 @@ Proxmox clustering requires TCP 22, TCP 443, TCP 8006, and UDP 5405 through 5412
 	{"action": "accept", "proto": "tcp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:22"]},   // Tailmox SSH
 	{"action": "accept", "proto": "tcp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:443"]}, // Tailmox web
 	{"action": "accept", "proto": "tcp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:8006"]}, // Tailmox web
-	{"action": "accept", "proto": "tcp", "src": ["*"], "dst": ["tag:tailmox:8669"]}, // Tailmox terminal
+	{"action": "accept", "proto": "tcp", "src": ["autogroup:admin"], "dst": ["tag:tailmox:8669"]}, // Tailmox dashboard and terminal
 	{"action": "accept", "proto": "udp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:5405"]}, // Tailmox clustering
 	{"action": "accept", "proto": "udp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:5406"]}, // Tailmox clustering
 	{"action": "accept", "proto": "udp", "src": ["tag:tailmox"], "dst": ["tag:tailmox:5407"]}, // Tailmox clustering
@@ -128,19 +128,19 @@ then submit.
 2. Change into the install directory: `cd tailmox`
 3. Make sure that the script is executable: `chmod +x tailmox.sh`
 4. Bootstrap the `tailmox` command and start the installer: `./tailmox serve`
-5. Open the HTTPS URL printed by the script from a device on your tailnet. The installer runs interactively in the browser terminal.
+5. Open the HTTPS URL printed by the script from an administrator's device on your tailnet. The dashboard includes the interactive installer terminal and a read-only configuration-backup inventory.
 
 ---
 
 ### 🖥️ Usage 🖥️
 
-`tailmox.sh` starts a persistent browser terminal on TCP 8669 and prints its tailnet-only HTTPS URL using the current Proxmox host's Tailscale MagicDNS name. The terminal service listens only on localhost; Tailscale Serve provides HTTPS and access over the tailnet. Opening the URL starts the interactive Tailmox installer.
+`tailmox.sh` starts a persistent dashboard on TCP 8669 and prints its tailnet-only HTTPS URL using the current Proxmox host's Tailscale MagicDNS name. The dashboard embeds the interactive Tailmox terminal at `/terminal/` and shows a read-only inventory of configuration backups. The terminal service listens only on localhost; Tailscale Serve provides HTTPS and access over the tailnet.
 
 The local `tailmox` command provides shortcuts for the main workflows:
 
 ```bash
 tailmox cluster             # Run the complete clustering workflow
-tailmox serve               # Start the browser-terminal launcher
+tailmox serve               # Start the dashboard and browser terminal
 tailmox stage               # Set up Tailscale and certificates only
 tailmox test                # Test setup without changing the host
 tailmox self-test           # Run the regression test suite
@@ -154,6 +154,13 @@ Tailmox preserves an existing Tailscale login instead of authenticating again. T
 During the running of the script, if there are existing hosts within the tailmox cluster, it is likely to ask for the password of one of the remote hosts in order to properly join the Proxmox cluster.
 
 Immediately before Tailmox creates or joins a Proxmox cluster, it archives the local `/etc/pve`, `/etc/corosync`, and `/etc/hosts` state under `/var/backups/tailmox`. The cluster change is blocked if `/etc/pve` is unavailable or the archive cannot be completed. Backup archives are readable only by root.
+
+The dashboard lists each Tailmox configuration backup's type, creation time,
+size, and basic integrity result. It publishes metadata only: backup contents
+and absolute host paths are not placed in the web directory, and the dashboard
+does not provide download, restore, or delete actions. This inventory covers
+Tailmox cluster-configuration safeguards rather than Proxmox guest backups
+created by `vzdump`.
 
 If Tailmox is run on a host that is already a member of a Proxmox cluster, it preserves the existing cluster name, membership, guests, storage configuration, and other cluster settings. Before a new host can join over Tailscale, every existing Corosync member must also be signed in to the same tailnet, online, and carry the exact `tag:tailmox` tag. Run `tailmox stage` on each existing member first.
 

@@ -65,7 +65,7 @@ show_usage() {
     cat <<'EOF'
 Usage:
   tailmox cluster [options]  Run the complete clustering workflow
-  tailmox serve [options]    Start the browser-terminal launcher
+  tailmox serve [options]    Start the dashboard and browser terminal
   tailmox stage [options]    Set up Tailscale and certificates only
   tailmox test               Safely test setup without changing the host
   tailmox self-test          Run the regression test suite

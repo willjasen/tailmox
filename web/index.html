@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+        http-equiv="Content-Security-Policy"
+        content="default-src 'self'; connect-src 'self'; frame-src 'self'; img-src 'self'; script-src 'self'; style-src 'self'"
+    >
+    <meta name="color-scheme" content="dark">
+    <title>Tailmox Console</title>
+    <link rel="stylesheet" href="tailmox.css">
+</head>
+<body>
+    <div class="page-shell">
+        <header class="topbar">
+            <a class="brand" href="./" aria-label="Tailmox console home">
+                <span class="brand-mark" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </span>
+                <span>
+                    <strong>Tailmox</strong>
+                    <small>Proxmox over Tailscale</small>
+                </span>
+            </a>
+
+            <div class="connection">
+                <span class="connection-dot" aria-hidden="true"></span>
+                <span>
+                    <strong>Private tailnet access</strong>
+                    <small id="host-name">This Proxmox host</small>
+                </span>
+            </div>
+        </header>
+
+        <main class="workspace">
+            <section class="terminal-panel" aria-labelledby="terminal-heading">
+                <div class="panel-heading terminal-heading">
+                    <div>
+                        <p class="eyebrow">Interactive workspace</p>
+                        <h1 id="terminal-heading">Tailmox terminal</h1>
+                    </div>
+                    <button class="button button-secondary" id="reload-terminal" type="button">
+                        Reload terminal
+                    </button>
+                </div>
+
+                <div class="terminal-frame">
+                    <div class="terminal-bar" aria-hidden="true">
+                        <span class="terminal-light terminal-light-red"></span>
+                        <span class="terminal-light terminal-light-yellow"></span>
+                        <span class="terminal-light terminal-light-green"></span>
+                        <span class="terminal-title">root · tailmox</span>
+                    </div>
+                    <iframe
+                        id="terminal"
+                        src="terminal/"
+                        title="Interactive Tailmox terminal"
+                        allow="clipboard-read; clipboard-write"
+                    ></iframe>
+                </div>
+            </section>
+
+            <aside class="backup-panel" aria-labelledby="backups-heading">
+                <div class="panel-heading backup-heading">
+                    <div>
+                        <p class="eyebrow">Recovery points</p>
+                        <h2 id="backups-heading">Configuration backups</h2>
+                    </div>
+                    <button
+                        class="icon-button"
+                        id="refresh-backups"
+                        type="button"
+                        aria-label="Refresh configuration backups"
+                        title="Refresh configuration backups"
+                    >
+                        <span aria-hidden="true">↻</span>
+                    </button>
+                </div>
+
+                <p class="panel-description">
+                    Private snapshots Tailmox created before changing cluster state.
+                </p>
+
+                <div class="summary-card" aria-live="polite">
+                    <div>
+                        <span class="summary-label">Available</span>
+                        <strong id="backup-count">—</strong>
+                    </div>
+                    <div>
+                        <span class="summary-label">Latest</span>
+                        <strong id="latest-backup">Checking…</strong>
+                    </div>
+                </div>
+
+                <div class="backup-list" id="backup-list" aria-live="polite">
+                    <div class="loading-state">
+                        <span class="loading-pulse" aria-hidden="true"></span>
+                        Reading backup inventory…
+                    </div>
+                </div>
+
+                <footer class="backup-footer">
+                    <span class="lock" aria-hidden="true"></span>
+                    Backup contents remain root-only and cannot be downloaded here.
+                </footer>
+            </aside>
+        </main>
+    </div>
+
+    <template id="backup-template">
+        <article class="backup-card">
+            <div class="backup-icon" aria-hidden="true"></div>
+            <div class="backup-details">
+                <div class="backup-title-row">
+                    <h3></h3>
+                    <span class="status-badge"></span>
+                </div>
+                <p class="backup-time"></p>
+                <div class="backup-meta">
+                    <span class="backup-size"></span>
+                    <span class="backup-file"></span>
+                </div>
+            </div>
+        </article>
+    </template>
+
+    <script src="tailmox.js"></script>
+</body>
+</html>

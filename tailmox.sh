@@ -50,7 +50,10 @@ fi
 TAILMOX_WEB_PORT="${TAILMOX_WEB_PORT:-8669}"
 TAILMOX_WEB_BACKEND_PORT="${TAILMOX_WEB_BACKEND_PORT:-8670}"
 TAILMOX_WEB_SERVICE="${TAILMOX_WEB_SERVICE:-tailmox-web.service}"
+TAILMOX_WEB_ROOT="${TAILMOX_WEB_ROOT:-/var/lib/tailmox/web}"
+TAILMOX_WEB_ASSET_DIR="${TAILMOX_WEB_ASSET_DIR:-$TAILMOX_SCRIPT_DIR/web}"
 TAILMOX_SYSTEMD_DIR="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
+TAILMOX_EXISTING_CLUSTER_BACKUP_DIR="${TAILMOX_EXISTING_CLUSTER_BACKUP_DIR:-/var/backups/tailmox}"
 TAILMOX_CLUSTER_BACKUP_DIR="${TAILMOX_CLUSTER_BACKUP_DIR:-/var/backups/tailmox}"
 TAILMOX_PVE_CONFIG_DIR="${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}"
 TAILMOX_COROSYNC_CONFIG_DIR="${TAILMOX_COROSYNC_CONFIG_DIR:-/etc/corosync}"
@@ -187,7 +190,145 @@ function install_ttyd() {
     rm -f "$ttyd_download"
 }
 
-# Start the persistent localhost terminal and expose it only through Tailscale.
+# Publish a metadata-only inventory for the dashboard. Backup contents and
+# absolute host paths are never copied into the web root.
+function refresh_web_backup_inventory() {
+    local backup_dir
+    local backup_path
+    local created_at
+    local filename
+    local generated_at
+    local integrity
+    local inventory_tmp
+    local previous_backup_dir=""
+    local records_file
+    local size_bytes
+    local type
+    local -a backup_dirs=(
+        "$TAILMOX_CLUSTER_BACKUP_DIR"
+        "$TAILMOX_EXISTING_CLUSTER_BACKUP_DIR"
+    )
+
+    if [[ ! -d "$TAILMOX_WEB_ROOT" ]]; then
+        return 1
+    fi
+
+    records_file=$(mktemp "${TMPDIR:-/tmp}/tailmox-backups.XXXXXX") || return 1
+    inventory_tmp=$(mktemp "$TAILMOX_WEB_ROOT/.backups.json.XXXXXX") || {
+        rm -f "$records_file"
+        return 1
+    }
+
+    for backup_dir in "${backup_dirs[@]}"; do
+        if [[ "$backup_dir" == "$previous_backup_dir" ]]; then
+            continue
+        fi
+        previous_backup_dir="$backup_dir"
+
+        if [[ ! -d "$backup_dir" ]]; then
+            continue
+        fi
+
+        while IFS= read -r -d '' backup_path; do
+            filename=$(basename "$backup_path")
+            if [[ "$filename" == proxmox-cluster-*.tar.gz ]]; then
+                type="cluster"
+                if tar -tzf "$backup_path" >/dev/null 2>&1; then
+                    integrity="valid"
+                else
+                    integrity="invalid"
+                fi
+            elif [[ "$filename" == corosync-*.conf ]]; then
+                type="corosync"
+                if [[ -s "$backup_path" ]]; then
+                    integrity="valid"
+                else
+                    integrity="invalid"
+                fi
+            else
+                continue
+            fi
+
+            if [[ "$filename" =~ ([0-9]{8}T[0-9]{6}Z) ]]; then
+                created_at="${BASH_REMATCH[1]}"
+            else
+                continue
+            fi
+
+            if ! size_bytes=$(stat -c '%s' "$backup_path" 2>/dev/null); then
+                size_bytes=$(stat -f '%z' "$backup_path" 2>/dev/null) || continue
+            fi
+
+            if ! jq -nc \
+                --arg type "$type" \
+                --arg filename "$filename" \
+                --arg createdAt "$created_at" \
+                --argjson sizeBytes "$size_bytes" \
+                --arg integrity "$integrity" \
+                '{
+                    type: $type,
+                    filename: $filename,
+                    createdAt: $createdAt,
+                    sizeBytes: $sizeBytes,
+                    integrity: $integrity
+                }' >> "$records_file"; then
+                rm -f "$records_file" "$inventory_tmp"
+                return 1
+            fi
+        done < <(
+            find -P "$backup_dir" -maxdepth 1 -type f \
+                \( -name 'proxmox-cluster-*.tar.gz' -o -name 'corosync-*.conf' \) \
+                -print0
+        )
+    done
+
+    generated_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    if ! jq -s --arg generatedAt "$generated_at" \
+        '{
+            generatedAt: $generatedAt,
+            backups: (sort_by(.createdAt) | reverse)
+        }' "$records_file" > "$inventory_tmp" ||
+        ! chmod 0644 "$inventory_tmp" ||
+        ! mv "$inventory_tmp" "$TAILMOX_WEB_ROOT/backups.json"; then
+        rm -f "$records_file" "$inventory_tmp"
+        return 1
+    fi
+
+    rm -f "$records_file"
+    return 0
+}
+
+# Install the static dashboard separately from the root-only backup directory.
+function install_web_dashboard() {
+    local asset
+
+    for asset in index.html tailmox.css tailmox.js; do
+        if [[ ! -f "$TAILMOX_WEB_ASSET_DIR/$asset" ]]; then
+            log_echo "${RED}Missing dashboard asset: $TAILMOX_WEB_ASSET_DIR/$asset${RESET}"
+            return 1
+        fi
+    done
+
+    if ! install -d -m 0755 "$TAILMOX_WEB_ROOT"; then
+        log_echo "${RED}Unable to create the Tailmox dashboard directory.${RESET}"
+        return 1
+    fi
+
+    for asset in index.html tailmox.css tailmox.js; do
+        if ! install -m 0644 "$TAILMOX_WEB_ASSET_DIR/$asset" "$TAILMOX_WEB_ROOT/$asset"; then
+            log_echo "${RED}Unable to install the Tailmox dashboard assets.${RESET}"
+            return 1
+        fi
+    done
+
+    if ! refresh_web_backup_inventory; then
+        log_echo "${RED}Unable to build the Tailmox backup inventory.${RESET}"
+        return 1
+    fi
+}
+
+# Start the persistent localhost terminal and expose it alongside the dashboard
+# only through Tailscale.
 function start_web_terminal() {
     local script_dir
     local dns_name
@@ -202,20 +343,28 @@ function start_web_terminal() {
         return 1
     fi
 
+    if ! install_web_dashboard; then
+        return 1
+    fi
+
     if ! install -m 0644 "$service_source" "$service_target"; then
         log_echo "${RED}Unable to install the Tailmox web service.${RESET}"
         return 1
     fi
 
     if ! systemctl daemon-reload >>"$LOG_FILE" 2>&1 ||
-        ! systemctl enable --now "$TAILMOX_WEB_SERVICE" >>"$LOG_FILE" 2>&1; then
+        ! systemctl enable "$TAILMOX_WEB_SERVICE" >>"$LOG_FILE" 2>&1 ||
+        ! systemctl restart "$TAILMOX_WEB_SERVICE" >>"$LOG_FILE" 2>&1; then
         log_echo "${RED}Unable to start the Tailmox web terminal service.${RESET}"
         return 1
     fi
 
     if ! tailscale serve --bg --yes --https="$TAILMOX_WEB_PORT" \
-        "http://127.0.0.1:$TAILMOX_WEB_BACKEND_PORT" >>"$LOG_FILE" 2>&1; then
-        log_echo "${RED}Unable to expose the Tailmox web terminal through Tailscale Serve.${RESET}"
+        --set-path=/ "$TAILMOX_WEB_ROOT" >>"$LOG_FILE" 2>&1 ||
+        ! tailscale serve --bg --yes --https="$TAILMOX_WEB_PORT" \
+            --set-path=/terminal \
+            "http://127.0.0.1:$TAILMOX_WEB_BACKEND_PORT" >>"$LOG_FILE" 2>&1; then
+        log_echo "${RED}Unable to expose the Tailmox dashboard through Tailscale Serve.${RESET}"
         return 1
     fi
 
@@ -435,6 +584,9 @@ function backup_proxmox_cluster_configuration() {
     fi
 
     TAILMOX_LAST_CLUSTER_BACKUP="$backup_archive"
+    if [[ -d "$TAILMOX_WEB_ROOT" ]] && ! refresh_web_backup_inventory; then
+        log_echo "${YELLOW}The backup succeeded, but the dashboard inventory could not be refreshed.${RESET}"
+    fi
     log_echo "${GREEN}Archived the current Proxmox cluster configuration at $backup_archive.${RESET}"
     return 0
 }
