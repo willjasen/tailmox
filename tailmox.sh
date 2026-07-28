@@ -1773,7 +1773,7 @@ function remote_cluster_is_ready_for_tailmox_join() {
     if ! jq -n -e \
         --argjson join_info "$REMOTE_CLUSTER_JOIN_JSON" \
         --argjson peers "$ALL_PEERS" '
-        ($join_info.data.corosync_conf.nodelist.node) as $nodes
+        ($join_info.data.nodelist) as $nodes
         | ($nodes | length) > 0
         and all($nodes[];
             . as $node
