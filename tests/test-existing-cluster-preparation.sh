@@ -93,11 +93,17 @@ ALL_PEERS='[
 
 write_config "100.64.0.1" "100.64.0.2"
 if prepare_existing_cluster_for_tailmox >/dev/null 2>&1 &&
-    [[ ! -d "$TAILMOX_CLUSTER_BACKUP_DIR" ]] &&
+    jq -e '
+        .schemaVersion == 1 and .cluster.name == "production"
+        and (.members == [
+            {name: "pve1", tailscaleIPv4: "100.64.0.1"},
+            {name: "pve2", tailscaleIPv4: "100.64.0.2"}
+        ])
+    ' "$TAILMOX_PVE_CONFIG_DIR/tailmox/state.json" >/dev/null &&
     grep -q 'config_version: 7' "$TAILMOX_COROSYNC_CONFIG"; then
-    pass "already prepared cluster is accepted without rewriting it"
+    pass "already prepared cluster records verified shared Tailmox state"
 else
-    fail "already prepared cluster is accepted without rewriting it"
+    fail "already prepared cluster records verified shared Tailmox state"
 fi
 
 write_config "192.0.2.1" "192.0.2.2"

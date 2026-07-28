@@ -61,6 +61,7 @@ TAILMOX_PVE_CONFIG_DIR="${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}"
 TAILMOX_COROSYNC_CONFIG_DIR="${TAILMOX_COROSYNC_CONFIG_DIR:-/etc/corosync}"
 TAILMOX_COROSYNC_COMMAND="${TAILMOX_COROSYNC_COMMAND:-corosync}"
 TAILMOX_HOSTS_FILE="${TAILMOX_HOSTS_FILE:-/etc/hosts}"
+TAILMOX_CLUSTER_STATE_FILE="${TAILMOX_CLUSTER_STATE_FILE:-$TAILMOX_PVE_CONFIG_DIR/tailmox/state.json}"
 
 # Create and rotate logs only during real setup.
 if [[ "$TAILMOX_EARLY_DRY_RUN" != "true" ]]; then
@@ -1272,6 +1273,90 @@ function check_local_node_cluster_status() {
     fi
 }
 
+# Record the Tailmox adoption of a quorate cluster in pmxcfs. This file is
+# deliberately descriptive rather than authoritative: live Tailscale state,
+# corosync.conf, and pvecm status are still required before any cluster change.
+function write_tailmox_cluster_state() {
+    local cluster_status=$1
+    local configured_nodes=$2
+    local cluster_name
+    local state_directory
+    local temporary_state
+    local members_json
+    local updated_at
+    local node_name
+    local current_address
+    local tailscale_address
+
+    cluster_name=$(printf '%s\n' "$cluster_status" | awk '/^[[:space:]]*Name:[[:space:]]*/ { print $2; exit }')
+    if [[ -z "$cluster_name" ]]; then
+        log_echo "${RED}Unable to determine the Proxmox cluster name for Tailmox state. No state file was written.${RESET}"
+        return 1
+    fi
+
+    if ! members_json=$(while IFS=$'\t' read -r node_name current_address; do
+        tailscale_address=$(printf '%s\n' "$ALL_PEERS" | jq -r \
+            --arg node "$node_name" \
+            '[.[] | select(.hostname == $node and .online == true) | .ip]
+             | if length == 1 then .[0] else empty end')
+        [[ -n "$tailscale_address" ]] || exit 1
+        printf '%s\t%s\n' "$node_name" "$tailscale_address"
+    done <<< "$configured_nodes" | jq -Rsc '
+        split("\n")
+        | map(select(length > 0) | split("\t")
+              | select(length == 2)
+              | {name: .[0], tailscaleIPv4: .[1]})
+    '); then
+        log_echo "${RED}Unable to build complete Tailmox cluster state from verified members. No state file was written.${RESET}"
+        return 1
+    fi
+
+    if ! printf '%s\n' "$members_json" | jq -e --argjson expected_count "$(printf '%s\n' "$configured_nodes" | wc -l | tr -d ' ')" '
+        (type == "array")
+        and (length == $expected_count)
+        and (all(.[]; (.name | type == "string") and (.name | length > 0)
+                       and (.tailscaleIPv4 | type == "string") and (.tailscaleIPv4 | length > 0)))
+    ' >/dev/null; then
+        log_echo "${RED}Tailmox cluster state is incomplete. No state file was written.${RESET}"
+        return 1
+    fi
+
+    state_directory=$(dirname "$TAILMOX_CLUSTER_STATE_FILE")
+    if [[ -L "$TAILMOX_CLUSTER_STATE_FILE" || -d "$TAILMOX_CLUSTER_STATE_FILE" ]]; then
+        log_echo "${RED}Tailmox state path is not a regular file: $TAILMOX_CLUSTER_STATE_FILE${RESET}"
+        return 1
+    fi
+    if [[ -e "$TAILMOX_CLUSTER_STATE_FILE" ]] &&
+        ! jq -e '.schemaVersion == 1 and (.members | type == "array")' \
+            "$TAILMOX_CLUSTER_STATE_FILE" >/dev/null 2>&1; then
+        log_echo "${RED}Existing Tailmox state is invalid and will not be overwritten: $TAILMOX_CLUSTER_STATE_FILE${RESET}"
+        return 1
+    fi
+    if ! mkdir -p "$state_directory"; then
+        log_echo "${RED}Unable to create the shared Tailmox state directory: $state_directory${RESET}"
+        return 1
+    fi
+
+    temporary_state=$(mktemp "$state_directory/.state.json.XXXXXX") || {
+        log_echo "${RED}Unable to create temporary Tailmox cluster state.${RESET}"
+        return 1
+    }
+    updated_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    if ! jq -n \
+        --arg cluster_name "$cluster_name" \
+        --arg updated_at "$updated_at" \
+        --argjson members "$members_json" \
+        '{schemaVersion: 1, cluster: {name: $cluster_name}, members: $members,
+          updatedAt: $updated_at}' > "$temporary_state" ||
+        ! mv "$temporary_state" "$TAILMOX_CLUSTER_STATE_FILE"; then
+        rm -f "$temporary_state"
+        log_echo "${RED}Unable to write shared Tailmox cluster state. No state file was written.${RESET}"
+        return 1
+    fi
+    chmod 0640 "$TAILMOX_CLUSTER_STATE_FILE" 2>/dev/null || true
+    log_echo "${GREEN}Recorded verified Tailmox cluster members at $TAILMOX_CLUSTER_STATE_FILE.${RESET}"
+}
+
 # Prepare an existing Proxmox cluster for Tailmox without changing its
 # membership. Corosync is a full-mesh protocol, so moving only the local node
 # to Tailscale would isolate it from the other members. Require an online,
@@ -1289,7 +1374,7 @@ function prepare_existing_cluster_for_tailmox() {
     local new_config="${TAILMOX_COROSYNC_CONFIG}.new"
     local peer_map
 
-    TAILMOX_COROSYNC_CONFIG="${TAILMOX_COROSYNC_CONFIG:-/etc/pve/corosync.conf}"
+    TAILMOX_COROSYNC_CONFIG="${TAILMOX_COROSYNC_CONFIG:-$TAILMOX_PVE_CONFIG_DIR/corosync.conf}"
 
     if ! cluster_status=$(pvecm status 2>&1) ||
         ! printf '%s\n' "$cluster_status" | grep -q "Cluster information"; then
@@ -1353,6 +1438,9 @@ function prepare_existing_cluster_for_tailmox() {
     done <<< "$configured_nodes"
 
     if [[ "$migration_required" != "true" ]]; then
+        if ! write_tailmox_cluster_state "$cluster_status" "$configured_nodes"; then
+            return 1
+        fi
         log_echo "${GREEN}The existing cluster already uses Tailscale for every Corosync link-0 address.${RESET}"
         log_echo "${GREEN}Cluster membership was preserved and this cluster is ready for new Tailmox hosts.${RESET}"
         return 0
@@ -1461,6 +1549,11 @@ function prepare_existing_cluster_for_tailmox() {
 
     if ! mv "$new_config" "$TAILMOX_COROSYNC_CONFIG"; then
         log_echo "${RED}Unable to activate the Tailmox Corosync configuration. The original is archived at $TAILMOX_LAST_CLUSTER_BACKUP.${RESET}"
+        return 1
+    fi
+
+    if ! write_tailmox_cluster_state "$cluster_status" "$configured_nodes"; then
+        log_echo "${RED}Corosync was migrated, but Tailmox state could not be recorded. Verify $TAILMOX_CLUSTER_STATE_FILE before adding hosts.${RESET}"
         return 1
     fi
 

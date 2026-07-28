@@ -45,6 +45,7 @@ function pvecm() {
         printf '%s\n' \
             'Cluster information' \
             '-------------------' \
+            'Name:             production' \
             'Quorate:          Yes'
     fi
 
