@@ -118,8 +118,8 @@ is this node part of a cluster?'
 STANDALONE_OUTPUT=$(test_setup_safely)
 STANDALONE_OUTPUT_ORDER=$(printf '%s\n' "$STANDALONE_OUTPUT" |
     sed $'s/\033\\[[0-9;]*m//g' |
-    grep -Eo '4\. Peer connectivity|This node is not part of any cluster\.|RESULT: Setup test passed')
-EXPECTED_STANDALONE_OUTPUT_ORDER=$'4. Peer connectivity\nThis node is not part of any cluster.\nRESULT: Setup test passed'
+    grep -Eo '4\. Peer connectivity|5\. Proxmox cluster status|This node is not part of any cluster\.|RESULT: Setup test passed')
+EXPECTED_STANDALONE_OUTPUT_ORDER=$'4. Peer connectivity\n5. Proxmox cluster status\nThis node is not part of any cluster.\nRESULT: Setup test passed'
 if [[ "$STANDALONE_OUTPUT_ORDER" == "$EXPECTED_STANDALONE_OUTPUT_ORDER" ]]; then
     printf 'PASS: setup test reports standalone host state after network checks\n'
     PASS_COUNT=$((PASS_COUNT + 1))
@@ -132,10 +132,10 @@ MOCK_CLUSTER_STATUS='Cluster information
 Name:             production
 Quorate:          Yes'
 
-EXPECTED_SECTION_ORDER=$'1. Host readiness\n2. Tailscale identity\n3. Local host connectivity\n4. Peer connectivity\nRESULT: Setup test passed'
+EXPECTED_SECTION_ORDER=$'1. Host readiness\n2. Tailscale identity\n3. Local host connectivity\n4. Peer connectivity\n5. Proxmox cluster status\nRESULT: Setup test passed'
 ACTUAL_SECTION_ORDER=$(printf '%s\n' "$SETUP_OUTPUT" |
     sed $'s/\033\\[[0-9;]*m//g' |
-    grep -Eo '1\. Host readiness|2\. Tailscale identity|3\. Local host connectivity|4\. Peer connectivity|RESULT: Setup test passed')
+    grep -Eo '1\. Host readiness|2\. Tailscale identity|3\. Local host connectivity|4\. Peer connectivity|5\. Proxmox cluster status|RESULT: Setup test passed')
 if [[ "$ACTUAL_SECTION_ORDER" == "$EXPECTED_SECTION_ORDER" ]]; then
     printf 'PASS: setup test output separates its major phases in order\n'
     PASS_COUNT=$((PASS_COUNT + 1))

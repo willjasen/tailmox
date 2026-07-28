@@ -1907,7 +1907,7 @@ function test_setup_safely() {
     are_hosts_tcp_port_8006_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
     are_hosts_tcp_port_443_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
 
-    # Report both clustered and standalone host state after network checks.
+    log_test_section 5 "Proxmox cluster status"
     check_local_node_cluster_status true || true
 
     log_echo ""
