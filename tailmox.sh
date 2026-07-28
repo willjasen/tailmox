@@ -1832,16 +1832,13 @@ function create_cluster() {
 
 # Proxmox requires a joining node to have no existing virtual guests.
 function require_local_node_empty_for_join() {
-    local node_name=${HOSTNAME%%.*}
-    local qemu_directory="$TAILMOX_PVE_CONFIG_DIR/nodes/$node_name/qemu-server"
-    local lxc_directory="$TAILMOX_PVE_CONFIG_DIR/nodes/$node_name/lxc"
+    local nodes_directory="$TAILMOX_PVE_CONFIG_DIR/nodes"
     local guest_count=0
 
-    if [[ -d "$qemu_directory" ]]; then
-        guest_count=$((guest_count + $(find "$qemu_directory" -type f -name '*.conf' -print 2>/dev/null | wc -l | tr -d ' ')))
-    fi
-    if [[ -d "$lxc_directory" ]]; then
-        guest_count=$((guest_count + $(find "$lxc_directory" -type f -name '*.conf' -print 2>/dev/null | wc -l | tr -d ' ')))
+    if [[ -d "$nodes_directory" ]]; then
+        guest_count=$(find "$nodes_directory" -type f \
+            \( -path '*/qemu-server/*.conf' -o -path '*/lxc/*.conf' \) \
+            -print 2>/dev/null | wc -l | tr -d ' ')
     fi
 
     if [[ "$guest_count" -gt 0 ]]; then
