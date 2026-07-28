@@ -51,6 +51,10 @@ function pvecm() {
     return 0
 }
 
+function corosync() {
+    [[ "$*" == "-t -c ${TAILMOX_COROSYNC_CONFIG}.new" ]]
+}
+
 function pass() {
     printf 'PASS: %s\n' "$1"
     PASS_COUNT=$((PASS_COUNT + 1))

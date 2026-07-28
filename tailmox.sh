@@ -59,6 +59,7 @@ TAILMOX_EXISTING_CLUSTER_BACKUP_DIR="${TAILMOX_EXISTING_CLUSTER_BACKUP_DIR:-/var
 TAILMOX_CLUSTER_BACKUP_DIR="${TAILMOX_CLUSTER_BACKUP_DIR:-/var/backups/tailmox}"
 TAILMOX_PVE_CONFIG_DIR="${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}"
 TAILMOX_COROSYNC_CONFIG_DIR="${TAILMOX_COROSYNC_CONFIG_DIR:-/etc/corosync}"
+TAILMOX_COROSYNC_COMMAND="${TAILMOX_COROSYNC_COMMAND:-corosync}"
 TAILMOX_HOSTS_FILE="${TAILMOX_HOSTS_FILE:-/etc/hosts}"
 
 # Create and rotate logs only during real setup.
@@ -1448,6 +1449,15 @@ function prepare_existing_cluster_for_tailmox() {
         return 1
     fi
     rm -f "$peer_map"
+
+    # Ask Corosync itself to parse and validate the complete candidate before
+    # replacing the live configuration in pmxcfs. A missing validator, invalid
+    # candidate, or other validation error must leave the shared file untouched.
+    if ! "$TAILMOX_COROSYNC_COMMAND" -t -c "$new_config" >/dev/null 2>&1; then
+        rm -f "$new_config"
+        log_echo "${RED}Corosync rejected the generated configuration. The shared configuration was not changed.${RESET}"
+        return 1
+    fi
 
     if ! mv "$new_config" "$TAILMOX_COROSYNC_CONFIG"; then
         log_echo "${RED}Unable to activate the Tailmox Corosync configuration. The original is archived at $TAILMOX_LAST_CLUSTER_BACKUP.${RESET}"

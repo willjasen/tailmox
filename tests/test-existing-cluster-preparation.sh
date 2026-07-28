@@ -24,6 +24,8 @@ PASS_COUNT=0
 FAIL_COUNT=0
 MOCK_CLUSTER_STATUS=""
 MOCK_ALL_PEERS_ONLINE=true
+MOCK_COROSYNC_VALID=true
+COROSYNC_CALL_COUNT=0
 
 function pvecm() {
     if [[ "${1:-}" == "status" ]]; then
@@ -35,6 +37,12 @@ function pvecm() {
 
 function check_all_peers_online() {
     [[ "$MOCK_ALL_PEERS_ONLINE" == "true" ]]
+}
+
+function corosync() {
+    COROSYNC_CALL_COUNT=$((COROSYNC_CALL_COUNT + 1))
+    [[ "$*" == "-t -c ${TAILMOX_COROSYNC_CONFIG}.new" ]] &&
+        [[ "$MOCK_COROSYNC_VALID" == "true" ]]
 }
 
 function pass() {
@@ -94,15 +102,30 @@ fi
 
 write_config "192.0.2.1" "192.0.2.2"
 printf '%s\n' 'MIGRATE' > "$TAILMOX_EXISTING_CLUSTER_CONFIRMATION_DEVICE"
+COROSYNC_CALL_COUNT=0
 if prepare_existing_cluster_for_tailmox >/dev/null 2>&1 &&
     grep -q 'ring0_addr: 100.64.0.1' "$TAILMOX_COROSYNC_CONFIG" &&
     grep -q 'ring0_addr: 100.64.0.2' "$TAILMOX_COROSYNC_CONFIG" &&
     grep -q 'config_version: 8' "$TAILMOX_COROSYNC_CONFIG" &&
+    [[ "$COROSYNC_CALL_COUNT" -eq 1 ]] &&
     [[ -n "$(find "$TAILMOX_CLUSTER_BACKUP_DIR" -type f -name '*.tar.gz' -print -quit)" ]]; then
-    pass "confirmed migration updates every member and keeps a backup"
+    pass "confirmed migration validates and updates every member with a backup"
 else
-    fail "confirmed migration updates every member and keeps a backup"
+    fail "confirmed migration validates and updates every member with a backup"
 fi
+
+write_config "192.0.2.1" "192.0.2.2"
+MOCK_COROSYNC_VALID=false
+printf '%s\n' 'MIGRATE' > "$TAILMOX_EXISTING_CLUSTER_CONFIRMATION_DEVICE"
+if ! prepare_existing_cluster_for_tailmox >/dev/null 2>&1 &&
+    grep -q 'ring0_addr: 192.0.2.1' "$TAILMOX_COROSYNC_CONFIG" &&
+    grep -q 'config_version: 7' "$TAILMOX_COROSYNC_CONFIG" &&
+    [[ ! -e "${TAILMOX_COROSYNC_CONFIG}.new" ]]; then
+    pass "Corosync validation failure leaves shared configuration unchanged"
+else
+    fail "Corosync validation failure leaves shared configuration unchanged"
+fi
+MOCK_COROSYNC_VALID=true
 
 write_config "192.0.2.1" "192.0.2.2"
 printf '%s\n' 'NO' > "$TAILMOX_EXISTING_CLUSTER_CONFIRMATION_DEVICE"
