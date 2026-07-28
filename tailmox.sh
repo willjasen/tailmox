@@ -1830,12 +1830,37 @@ function create_cluster() {
     pvecm create tailmox --link0 "address=$TAILSCALE_IP"
 }
 
+# Proxmox requires a joining node to have no existing virtual guests.
+function require_local_node_empty_for_join() {
+    local node_name=${HOSTNAME%%.*}
+    local qemu_directory="$TAILMOX_PVE_CONFIG_DIR/nodes/$node_name/qemu-server"
+    local lxc_directory="$TAILMOX_PVE_CONFIG_DIR/nodes/$node_name/lxc"
+    local guest_count=0
+
+    if [[ -d "$qemu_directory" ]]; then
+        guest_count=$((guest_count + $(find "$qemu_directory" -type f -name '*.conf' -print 2>/dev/null | wc -l | tr -d ' ')))
+    fi
+    if [[ -d "$lxc_directory" ]]; then
+        guest_count=$((guest_count + $(find "$lxc_directory" -type f -name '*.conf' -print 2>/dev/null | wc -l | tr -d ' ')))
+    fi
+
+    if [[ "$guest_count" -gt 0 ]]; then
+        log_echo "${RED}Cluster join blocked: this node contains $guest_count virtual guest configuration(s).${RESET}"
+        log_echo "${RED}Move or remove all VMs and containers before joining the existing Proxmox cluster.${RESET}"
+        return 1
+    fi
+}
+
 # Add this local node into a cluster if it exists
 function add_local_node_to_cluster() {
     if check_local_node_cluster_status; then
         log_echo "${PURPLE}This node is already in a cluster.${RESET}"
     else
         log_echo "${BLUE}This node is not in a cluster. Creating or joining a cluster is required.${RESET}"
+
+        if ! require_local_node_empty_for_join; then
+            return 1
+        fi
 
         # Find if a cluster amongst peers already exists
         echo "$OTHER_PEERS" | jq -c '.[]' | while read -r target_peer; do
@@ -1906,7 +1931,7 @@ function add_local_node_to_cluster() {
                 "
                 
                 # Check if successful
-                if [ $? -eq 0 ]; then
+                if [ $? -eq 0 ] && check_local_node_cluster_status; then
                     log_echo "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
                     log_echo "${GREEN}You can now access your tailmox server directly at: ${BLUE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
                     log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
