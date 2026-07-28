@@ -16,12 +16,16 @@ HOSTNAME="pve-local"
 MOCK_TAGS='["tag:tailmox"]'
 MOCK_MISSING_DEPENDENCY=""
 MOCK_ICMP_WARNING=false
+MOCK_CLUSTER_STATUS='Cluster information
+-------------------
+Name:             production
+Quorate:          Yes'
 CHECK_LOG=""
 
 function check_if_supported_proxmox_is_installed() { return 0; }
 function check_script_directory() { return 0; }
 function command() {
-    [[ "${2:-}" != "$MOCK_MISSING_DEPENDENCY" ]]
+    [[ "${1:-}" == "-v" && "${2:-}" != "$MOCK_MISSING_DEPENDENCY" ]]
 }
 function check_all_peers_online() {
     CHECK_LOG+="peer-online "
@@ -42,7 +46,13 @@ function are_hosts_tcp_port_443_reachable() {
     CHECK_LOG+="443:$2 "
     return 0
 }
-function check_local_node_cluster_status() { return 0; }
+function pvecm() {
+    if [[ "${1:-}" == "status" ]]; then
+        printf '%s\n' "$MOCK_CLUSTER_STATUS"
+        return 0
+    fi
+    return 2
+}
 function tailscale() {
     if [[ "${1:-}" == "status" && "${2:-}" == "--json" ]]; then
         jq -n --argjson tags "$MOCK_TAGS" '{
@@ -93,6 +103,14 @@ if [[ "$SETUP_OUTPUT" == *"is available."* ]]; then
 else
     printf 'PASS: setup test does not report dependencies that are already available\n'
     PASS_COUNT=$((PASS_COUNT + 1))
+fi
+
+if [[ "$SETUP_OUTPUT" == *"This node is already part of the Proxmox cluster named: production."* ]]; then
+    printf 'PASS: setup test reports existing Proxmox cluster membership\n'
+    PASS_COUNT=$((PASS_COUNT + 1))
+else
+    printf 'FAIL: setup test reports existing Proxmox cluster membership\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
 fi
 
 EXPECTED_SECTION_ORDER=$'1. Host readiness\n2. Tailscale identity\n3. Local host connectivity\n4. Peer connectivity\nRESULT: Setup test passed'

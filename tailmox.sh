@@ -1237,24 +1237,33 @@ function check_udp_ports_5405_to_5412() {
 # Check if this node is already part of a Proxmox cluster
 # Returns true/false ?
 function check_local_node_cluster_status() {
-    # log_echo "${YELLOW}Checking if this node is already part of a Proxmox cluster...${RESET}"
-    
+    local report_cluster_membership="${1:-false}"
+
     # Check if the pvecm command exists (should be installed with Proxmox)
     if ! command -v pvecm &>/dev/null; then
         log_echo "${RED}pvecm command not found. Is this a Proxmox VE node?${RESET}"
         return 1
     fi
-    
+
     # Get cluster status
-    local cluster_status=$(pvecm status 2>&1)
-    
+    local cluster_status
+    local cluster_name
+    cluster_status=$(pvecm status 2>&1)
+
     # Check if the node is part of a cluster
-    if echo "$cluster_status" | grep -q "is this node part of a cluster"; then
+    if printf '%s\n' "$cluster_status" | grep -q "is this node part of a cluster"; then
         log_echo "${BLUE}This node is not part of any cluster.${RESET}"
         return 1
-    elif echo "$cluster_status" | grep -q "Cluster information"; then
-        local cluster_name=$(pvecm status | grep "Name:" | awk '{print $2}')
-        # log_echo "${GREEN}This node is already part of cluster named: $cluster_name${RESET}"
+    elif printf '%s\n' "$cluster_status" | grep -q "Cluster information"; then
+        cluster_name=$(printf '%s\n' "$cluster_status" |
+            awk '/^[[:space:]]*Name:[[:space:]]*/ { print $2; exit }')
+        if [[ "$report_cluster_membership" == "true" ]]; then
+            if [[ -n "$cluster_name" ]]; then
+                log_echo "${GREEN}This node is already part of the Proxmox cluster named: $cluster_name.${RESET}"
+            else
+                log_echo "${GREEN}This node is already part of a Proxmox cluster.${RESET}"
+            fi
+        fi
         return 0
     else
         log_echo "${RED}Unable to determine cluster status. Output: $cluster_status${RESET}"
@@ -1737,6 +1746,10 @@ function test_setup_safely() {
         log_echo "${RED}Setup cannot be fully tested until the missing tools are available.${RESET}"
         return 1
     fi
+
+    # Cluster membership does not change the network checks, but operators
+    # should know when the test is running on an existing Proxmox cluster.
+    check_local_node_cluster_status true || true
 
     log_test_section 2 "Tailscale identity"
     log_echo "${YELLOW}Reading current Tailscale state...${RESET}"
