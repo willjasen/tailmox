@@ -1441,7 +1441,7 @@ function verify_tailmox_cluster_members_reachable() {
             --arg node "$node_name" \
             '[.[] | select(.hostname == $node and .online == true) | .ip]
              | if length == 1 then .[0] else empty end')
-        if ! printf '%s\n' "$membership" | grep -Eq "^[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+${tailscale_address}([[:space:]]|$)"; then
+        if ! printf '%s\n' "$membership" | grep -Eq "^[[:space:]]+(0x[[:xdigit:]]+|[0-9]+)[[:space:]]+[0-9]+[[:space:]]+${tailscale_address}([[:space:]]|$)"; then
             log_echo "${RED}Proxmox does not report cluster member $node_name ($tailscale_address) as active. The shared Tailmox state remains pending.${RESET}"
             return 1
         fi
