@@ -180,6 +180,18 @@ else
     PASS_COUNT=$((PASS_COUNT + 1))
 fi
 
+CLUSTER_WORKFLOW=$(sed -n '/Running the read-only setup preflight before clustering\.\./,$p' "$TEST_ROOT/tailmox.sh")
+if [[ "$CLUSTER_WORKFLOW" != *'test_setup_safely'* ||
+    "$CLUSTER_WORKFLOW" == *'All Tailmox peers are reachable via ping.'* ||
+    "$CLUSTER_WORKFLOW" == *'All Tailmox peers have TCP port 8006 available.'* ||
+    "$CLUSTER_WORKFLOW" == *'All Tailmox peers have TCP port 443 available.'* ]]; then
+    printf 'FAIL: cluster workflow repeats connectivity checks after its preflight\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+else
+    printf 'PASS: cluster workflow uses the preflight connectivity checks once\n'
+    PASS_COUNT=$((PASS_COUNT + 1))
+fi
+
 MOCK_MISSING_DEPENDENCY="ttyd"
 if SETUP_OUTPUT=$(test_setup_safely 2>&1); then
     printf 'FAIL: missing dependency fails the self-test\n'

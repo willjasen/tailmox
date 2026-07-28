@@ -2100,45 +2100,6 @@ OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[]
 ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
 LOCAL_PEERS=$(jq -n --argjson localPeer "$LOCAL_PEER" '[$localPeer]');
 
-# Test this Proxmox host over Tailscale before relying on any remote peer.
-log_echo "${YELLOW}Testing the local Proxmox host first over its Tailscale address...${RESET}"
-if ! ensure_ping_reachability "$LOCAL_PEERS" "the local Proxmox host" ||
-    ! are_hosts_tcp_port_8006_reachable "$LOCAL_PEERS" "the local Proxmox host" ||
-    ! are_hosts_tcp_port_443_reachable "$LOCAL_PEERS" "the local Proxmox host"; then
-    log_echo "${RED}The local Proxmox host failed its Tailscale self-test. Exiting...${RESET}"
-    exit 1
-fi
-
-# Check that all Tailmox peers are online
-if ! check_all_peers_online; then
-    log_echo "${RED}Not all tailmox peers are online. Exiting...${RESET}"
-    exit 1
-fi
-
-# Ensure that all peers are pingable
-if ! ensure_ping_reachability; then
-    log_echo "${RED}Some peers are unreachable via ping. Please check the network configuration.${RESET}"
-    exit 1
-else 
-    log_echo "${GREEN}All Tailmox peers are reachable via ping.${RESET}"
-fi
-
-# Ensure that all peers are reachable via TCP port 8006
-if ! are_hosts_tcp_port_8006_reachable "$OTHER_PEERS" "all other Tailmox peers"; then
-    log_echo "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
-    exit 1
-else
-    log_echo "${GREEN}All Tailmox peers have TCP port 8006 available.${RESET}"
-fi
-
-# Ensure that all peers are reachable via TCP port 443
-if ! are_hosts_tcp_port_443_reachable "$OTHER_PEERS" "all other Tailmox peers"; then
-    log_echo "${RED}Some peers have TCP port 443 unavailable. Please check the network configuration.${RESET}"
-    exit 1
-else
-    log_echo "${GREEN}All Tailmox peers have TCP port 443 available.${RESET}"
-fi
-
 # Check if the local node is already in a cluster
 if ! check_local_node_cluster_status; then
     log_echo "${YELLOW}This node is not part of a cluster. Attempting to create or join a cluster...${RESET}"
