@@ -1850,10 +1850,6 @@ function test_setup_safely() {
         return 1
     fi
 
-    # Cluster membership does not change the network checks, but operators
-    # should know when the test is running on an existing Proxmox cluster.
-    check_local_node_cluster_status true || true
-
     log_test_section 2 "Tailscale identity"
     log_echo "${YELLOW}Reading current Tailscale state...${RESET}"
     if ! status_json=$(tailscale status --json 2>/dev/null) ||
@@ -1910,6 +1906,9 @@ function test_setup_safely() {
     ensure_ping_reachability "$OTHER_PEERS" "all other Tailmox peers" false || return 1
     are_hosts_tcp_port_8006_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
     are_hosts_tcp_port_443_reachable "$OTHER_PEERS" "all other Tailmox peers" || return 1
+
+    # Report both clustered and standalone host state after network checks.
+    check_local_node_cluster_status true || true
 
     log_echo ""
     if [[ "$TAILMOX_ICMP_WARNINGS_RECORDED" == true ]]; then
