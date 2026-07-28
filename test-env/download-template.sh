@@ -116,10 +116,18 @@ calculate_hash() {
 # Function: decompress xz file
 decompress_xz() {
   local src="$1" dst="$2"
+  local archive_member
+
+  archive_member=$(json_read ".template.versions.uncompressed.name" || true)
+  if [[ -z "$archive_member" || "$archive_member" == "null" ]]; then
+    echo "Unable to determine the expected image name inside $src" >&2
+    return 4
+  fi
+
   echo "Decompressing $src -> $dst"
   if [[ "$src" == *.tar.xz ]]; then
     if command -v tar >/dev/null 2>&1; then
-      if tar -xJOf "$src" >"$dst"; then
+      if tar -xJOf "$src" -- "$archive_member" >"$dst"; then
         return 0
       fi
       rm -f "$dst"
@@ -188,7 +196,7 @@ if [[ -f "$FINAL_OUTFILE" ]]; then
     ACTUAL=$(calculate_hash "$FINAL_OUTFILE")
     if [[ -n "$ACTUAL" && "$ACTUAL" == "$EXPECTED" ]]; then
       echo "Existing file hash matches. Skipping download."
-      return 0
+      return 0 2>/dev/null || exit 0
     else
       echo "Existing file hash mismatch. Will download fresh copy."
     fi
@@ -207,7 +215,7 @@ elif [[ "$XZ_FLAG" == "true" && -f "$DOWNLOAD_PATH" ]]; then
       if [[ -n "$ACTUAL" && "$ACTUAL" == "$EXPECTED" ]]; then
         echo "Existing (decompressed) file hash matches. Skipping download."
         # rm -f "$DOWNLOAD_PATH" || true
-        return 0
+        return 0 2>/dev/null || exit 0
       else
         echo "Existing decompressed hash mismatch. Will download fresh copy."
       fi

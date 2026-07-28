@@ -19,6 +19,8 @@ Options:
   --bridge NAME      Proxmox network bridge (default: vmbr0)
   --memory MIB       Template memory in MiB (default: 1024)
   --cores COUNT      Template CPU core count (default: 1)
+  --cpu TYPE         Template CPU type (default: host)
+  --onboot 0|1       Start clones when the host boots (default: 0)
   --clone-count N    Create N linked clones after the template (default: 0)
   --clone-prefix P   Clone name prefix (default: tailmox)
   --help              Show this help
@@ -77,6 +79,8 @@ STORAGE=""
 BRIDGE="vmbr0"
 MEMORY="1024"
 CORES="1"
+CPU_TYPE="host"
+ONBOOT="0"
 CLONE_COUNT="0"
 CLONE_PREFIX="tailmox"
 
@@ -117,6 +121,16 @@ while [[ $# -gt 0 ]]; do
       CORES="$2"
       shift 2
       ;;
+    --cpu)
+      [[ $# -ge 2 ]] || die "--cpu requires a value"
+      CPU_TYPE="$2"
+      shift 2
+      ;;
+    --onboot)
+      [[ $# -ge 2 ]] || die "--onboot requires a value"
+      ONBOOT="$2"
+      shift 2
+      ;;
     --clone-count)
       [[ $# -ge 2 ]] || die "--clone-count requires a value"
       CLONE_COUNT="$2"
@@ -147,6 +161,7 @@ require_command ip
 [[ -f "$JSON_PATH" ]] || die "Missing metadata file: $JSON_PATH"
 [[ -n "$NAME" ]] || die "--name cannot be empty"
 [[ -n "$BRIDGE" ]] || die "--bridge cannot be empty"
+[[ -n "$CPU_TYPE" ]] || die "--cpu cannot be empty"
 [[ -n "$CLONE_PREFIX" ]] || die "--clone-prefix cannot be empty"
 [[ "$NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
   die "--name contains unsupported characters"
@@ -159,6 +174,8 @@ if [[ -n "$STORAGE" && ! "$STORAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
 fi
 require_positive_integer "--memory" "$MEMORY"
 require_positive_integer "--cores" "$CORES"
+[[ "$ONBOOT" == "0" || "$ONBOOT" == "1" ]] ||
+  die "--onboot must be 0 or 1"
 require_nonnegative_integer "--clone-count" "$CLONE_COUNT"
 if [[ -n "$VMID" ]]; then
   require_positive_integer "--vmid" "$VMID"
@@ -237,10 +254,11 @@ qm create "$VMID" \
   --name "$NAME" \
   --memory "$MEMORY" \
   --cores "$CORES" \
+  --cpu "$CPU_TYPE" \
   --net0 "virtio,bridge=$BRIDGE" \
   --serial0 socket \
   --vga std \
-  --onboot 1 \
+  --onboot "$ONBOOT" \
   --boot c \
   --bootdisk scsi0 \
   --ostype l26 \
@@ -278,8 +296,7 @@ for ((index = 1; index <= CLONE_COUNT; index++)); do
 
   qm clone "$VMID" "$CLONE_VMID" \
     --name "$CLONE_NAME" \
-    --full 0 \
-    --storage "$STORAGE"
+    --full 0
   echo "Created linked clone $CLONE_VMID ($CLONE_NAME)."
 done
 

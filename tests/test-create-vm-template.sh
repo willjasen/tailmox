@@ -85,6 +85,10 @@ grep -q '^set 100 --scsi0 local-zfs:vm-100-disk-0$' "$TEST_STATE_DIR/qm-calls" |
   { echo "FAIL: imported disk was not discovered and attached" >&2; exit 1; }
 [[ "$(grep -c '^clone 100 ' "$TEST_STATE_DIR/qm-calls")" -eq 2 ]] ||
   { echo "FAIL: expected two linked clones" >&2; exit 1; }
+if grep -q '^clone 100 .* --storage ' "$TEST_STATE_DIR/qm-calls"; then
+  echo "FAIL: linked clone incorrectly specified target storage" >&2
+  exit 1
+fi
 grep -q 'Template and linked-clone deployment completed successfully.' <<<"$OUTPUT" ||
   { echo "FAIL: success summary was not emitted" >&2; exit 1; }
 

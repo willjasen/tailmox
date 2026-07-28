@@ -135,6 +135,9 @@ require_command mktemp
   die "--node contains unsupported characters"
 [[ "$NAME_PREFIX" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] ||
   die "--name-prefix contains unsupported characters"
+if [[ "$FULL_CLONE" == "0" && -n "$STORAGE" ]]; then
+  die "--storage can only be used with --full; linked clones inherit template storage"
+fi
 if [[ -n "$STORAGE" && ! "$STORAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
   die "--storage contains unsupported characters"
 fi

@@ -63,6 +63,7 @@ OUTPUT=$(
     "$TEST_ROOT/test-env/deploy-vms-api.sh" \
       --api-url https://pve4.example.ts.net \
       --node pve4 \
+      --full \
       --storage local-zfs \
       --bridge vmbr0 \
       --count 2 \
@@ -96,3 +97,15 @@ fi
   { echo "FAIL: deployment wrote to Proxmox before validating all VM names" >&2; exit 1; }
 
 echo "PASS: API deployment validates every planned VM name before cloning"
+
+if PVE_API_TOKEN_ID='root@pam!tailmox' \
+  PVE_API_TOKEN_SECRET='test-secret' \
+    "$TEST_ROOT/test-env/deploy-vms-api.sh" \
+      --api-url https://pve4.example.ts.net \
+      --node pve4 \
+      --storage local-zfs >/dev/null 2>&1; then
+  echo "FAIL: linked clone accepted an unsupported target storage" >&2
+  exit 1
+fi
+
+echo "PASS: API deployment rejects target storage for linked clones"
