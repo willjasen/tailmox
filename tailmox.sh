@@ -1879,16 +1879,16 @@ function add_local_node_to_cluster() {
                 fi
 
                  # Use expect to handle the password prompt with proper authentication
-                expect -c "
+                TAILMOX_EXPECT_PASSWORD="$ROOT_PASSWORD" expect -c "
                 set timeout 60
                 spawn pvecm add \"$TARGET_HOSTNAME.$MAGICDNS_DOMAIN_NAME\" --link0 address=$LOCAL_TAILSCALE_IP --fingerprint $target_fingerprint
                 expect {
                     \"*?assword:*\" {
-                        send \"$ROOT_PASSWORD\r\"
+                        send -- \"\$env(TAILMOX_EXPECT_PASSWORD)\r\"
                         exp_continue
                     }
                     \"*?assword for*\" {
-                        send \"$ROOT_PASSWORD\r\"
+                        send -- \"\$env(TAILMOX_EXPECT_PASSWORD)\r\"
                         exp_continue
                     }
                     \"*authentication failure*\" {
