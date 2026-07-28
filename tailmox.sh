@@ -1265,11 +1265,48 @@ function check_local_node_cluster_status() {
             else
                 log_echo "${GREEN}This node is already part of a Proxmox cluster.${RESET}"
             fi
+            report_tailmox_cluster_state
         fi
         return 0
     else
         log_echo "${RED}Unable to determine cluster status. Output: $cluster_status${RESET}"
         return 1
+    fi
+}
+
+# Display the non-secret Tailmox adoption metadata shared through pmxcfs.
+function report_tailmox_cluster_state() {
+    local state_cluster
+    local state_updated
+    local state_members
+
+    if [[ ! -f "$TAILMOX_CLUSTER_STATE_FILE" ]]; then
+        log_echo "${YELLOW}No Tailmox cluster state file was found at $TAILMOX_CLUSTER_STATE_FILE.${RESET}"
+        return 0
+    fi
+    if ! jq -e '
+        .schemaVersion == 1
+        and (.cluster.name | type == "string")
+        and (.members | type == "array")
+        and (.updatedAt | type == "string")
+    ' "$TAILMOX_CLUSTER_STATE_FILE" >/dev/null 2>&1; then
+        log_echo "${RED}Tailmox cluster state at $TAILMOX_CLUSTER_STATE_FILE is invalid.${RESET}"
+        return 1
+    fi
+
+    state_cluster=$(jq -r '.cluster.name' "$TAILMOX_CLUSTER_STATE_FILE")
+    state_updated=$(jq -r '.updatedAt' "$TAILMOX_CLUSTER_STATE_FILE")
+    state_members=$(jq -r '.members[] | "    - \(.name): \(.tailscaleIPv4)"' "$TAILMOX_CLUSTER_STATE_FILE")
+    log_echo "${GREEN}Tailmox cluster state: $TAILMOX_CLUSTER_STATE_FILE${RESET}"
+    log_echo "${GREEN}  Cluster: $state_cluster${RESET}"
+    log_echo "${GREEN}  Updated: $state_updated${RESET}"
+    if [[ -n "$state_members" ]]; then
+        log_echo "${GREEN}  Members:${RESET}"
+        while IFS= read -r state_member; do
+            log_echo "${GREEN}$state_member${RESET}"
+        done <<< "$state_members"
+    else
+        log_echo "${YELLOW}  Members: none${RESET}"
     fi
 }
 

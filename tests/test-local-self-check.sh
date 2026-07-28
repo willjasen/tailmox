@@ -9,6 +9,7 @@ trap 'rm -rf "$TEST_LOG_DIR"' EXIT
 export TAILMOX_LIBRARY_MODE=true
 export TAILMOX_LOG_DIR="$TEST_LOG_DIR"
 export TAILMOX_WEB_ROOT="$TEST_LOG_DIR/web"
+export TAILMOX_CLUSTER_STATE_FILE="$TEST_LOG_DIR/tailmox/state.json"
 
 source "$TEST_ROOT/tailmox.sh"
 
@@ -20,6 +21,13 @@ MOCK_CLUSTER_STATUS='Cluster information
 -------------------
 Name:             production
 Quorate:          Yes'
+mkdir -p "$(dirname "$TAILMOX_CLUSTER_STATE_FILE")"
+printf '%s\n' '{
+  "schemaVersion": 1,
+  "cluster": {"name": "production"},
+  "members": [{"name": "pve-local", "tailscaleIPv4": "100.64.0.1"}],
+  "updatedAt": "2026-07-28T12:00:00Z"
+}' > "$TAILMOX_CLUSTER_STATE_FILE"
 CHECK_LOG=""
 
 function check_if_supported_proxmox_is_installed() { return 0; }
@@ -110,6 +118,15 @@ if [[ "$SETUP_OUTPUT" == *"This node is already part of the Proxmox cluster name
     PASS_COUNT=$((PASS_COUNT + 1))
 else
     printf 'FAIL: setup test reports existing Proxmox cluster membership\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+fi
+if [[ "$SETUP_OUTPUT" == *"Cluster: production"* &&
+    "$SETUP_OUTPUT" == *"- pve-local: 100.64.0.1"* &&
+    "$SETUP_OUTPUT" == *"Updated: 2026-07-28T12:00:00Z"* ]]; then
+    printf 'PASS: setup test reports Tailmox cluster state details\n'
+    PASS_COUNT=$((PASS_COUNT + 1))
+else
+    printf 'FAIL: setup test reports Tailmox cluster state details\n'
     FAIL_COUNT=$((FAIL_COUNT + 1))
 fi
 
