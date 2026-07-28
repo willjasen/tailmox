@@ -1414,7 +1414,7 @@ function verify_tailmox_cluster_members_reachable() {
             log_echo "${RED}Unable to verify connectivity for cluster member $node_name. The shared Tailmox state remains pending.${RESET}"
             return 1
         fi
-        if ! tailscale ping --c 1 --timeout=2 "$tailscale_address" >/dev/null 2>&1; then
+        if ! tailscale ping --c 1 --timeout=2s "$tailscale_address" >/dev/null 2>&1; then
             log_echo "${RED}Tailscale connectivity to cluster member $node_name ($tailscale_address) failed. The shared Tailmox state remains pending.${RESET}"
             return 1
         fi
