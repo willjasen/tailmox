@@ -2081,6 +2081,15 @@ if [[ "$STAGING" == "true" ]]; then
     exit 0
 fi
 
+# Run the same read-only setup preflight exposed by `tailmox test` before
+# discovering or changing Proxmox cluster state. This keeps the two entry
+# points aligned and fails closed when the baseline checks do not pass.
+log_echo "${YELLOW}Running the read-only setup preflight before clustering...${RESET}"
+if ! test_setup_safely; then
+    log_echo "${RED}The Tailmox setup preflight failed. No cluster changes will be made.${RESET}"
+    exit 1
+fi
+
 # Get all nodes with the "tailmox" tag as a JSON array
 TAILSCALE_IP=$(tailscale ip -4)
 MAGICDNS_DOMAIN_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | cut -d'.' -f2- | sed 's/\.$//');
