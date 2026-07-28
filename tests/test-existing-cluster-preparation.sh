@@ -226,6 +226,10 @@ REMOTE_CLUSTER_STATUS_JSON='{"data":[
   {"type":"node","name":"pve1","ip":"100.64.0.1"},
   {"type":"node","name":"pve2","ip":"100.64.0.2"}
 ]}'
+REMOTE_CLUSTER_JOIN_JSON='{"data":{"corosync_conf":{"nodelist":{"node":[
+  {"name":"pve1","ring0_addr":"100.64.0.1"},
+  {"name":"pve2","ring0_addr":"100.64.0.2"}
+]}}}}'
 if remote_cluster_is_ready_for_tailmox_join >/dev/null 2>&1; then
     pass "new host accepts a fully prepared remote cluster"
 else
@@ -237,6 +241,10 @@ REMOTE_CLUSTER_STATUS_JSON='{"data":[
   {"type":"node","name":"pve1","ip":"100.64.0.1"},
   {"type":"node","name":"pve2","ip":"192.0.2.2"}
 ]}'
+REMOTE_CLUSTER_JOIN_JSON='{"data":{"corosync_conf":{"nodelist":{"node":[
+  {"name":"pve1","ring0_addr":"100.64.0.1"},
+  {"name":"pve2","ring0_addr":"192.0.2.2"}
+]}}}}'
 if ! remote_cluster_is_ready_for_tailmox_join >/dev/null 2>&1; then
     pass "new host rejects a partially prepared remote cluster"
 else

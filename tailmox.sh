@@ -1703,6 +1703,7 @@ function check_remote_node_cluster_status_via_api() {
     local password=$3
 
     REMOTE_CLUSTER_STATUS_JSON=""
+    REMOTE_CLUSTER_JOIN_JSON=""
     
     log_echo "${YELLOW}Checking if remote node $node_hostname is part of a Proxmox cluster via API...${RESET}"
     
@@ -1734,6 +1735,11 @@ function check_remote_node_cluster_status_via_api() {
         log_echo "${RED}Failed to get cluster status from $node_hostname API${RESET}"
         return 1
     fi
+
+    REMOTE_CLUSTER_JOIN_JSON=$(curl -k -s \
+        -H "Cookie: PVEAuthCookie=$ticket" \
+        -H "CSRFPreventionToken: $csrf_token" \
+        "https://$node_hostname:8006/api2/json/cluster/config/join" 2>/dev/null) || return 1
     
     # Check if the response indicates a cluster exists
     local cluster_data=$(echo "$cluster_response" | jq -r '.data // empty')
@@ -1759,15 +1765,15 @@ function check_remote_node_cluster_status_via_api() {
 # verified Tailscale addresses known to this host. Finding one tagged member is
 # not sufficient: a new Corosync member must be able to reach the full mesh.
 function remote_cluster_is_ready_for_tailmox_join() {
-    if [[ -z "${REMOTE_CLUSTER_STATUS_JSON:-}" ]]; then
+    if [[ -z "${REMOTE_CLUSTER_STATUS_JSON:-}" || -z "${REMOTE_CLUSTER_JOIN_JSON:-}" ]]; then
         log_echo "${RED}Remote cluster status is unavailable. The join will not be attempted.${RESET}"
         return 1
     fi
 
     if ! jq -n -e \
-        --argjson status "$REMOTE_CLUSTER_STATUS_JSON" \
+        --argjson join_info "$REMOTE_CLUSTER_JOIN_JSON" \
         --argjson peers "$ALL_PEERS" '
-        ($status.data | map(select(.type == "node"))) as $nodes
+        ($join_info.data.corosync_conf.nodelist.node) as $nodes
         | ($nodes | length) > 0
         and all($nodes[];
             . as $node
@@ -1775,7 +1781,7 @@ function remote_cluster_is_ready_for_tailmox_join() {
                 | select(
                     .online == true
                     and .hostname == $node.name
-                    and .ip == $node.ip
+                    and .ip == $node.ring0_addr
                 )] | length) == 1
         )
     ' >/dev/null 2>&1; then
