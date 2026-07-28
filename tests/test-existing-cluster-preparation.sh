@@ -35,6 +35,10 @@ function pvecm() {
     return 2
 }
 
+function tailscale() {
+    [[ "${1:-}" == "ping" ]]
+}
+
 function check_all_peers_online() {
     [[ "$MOCK_ALL_PEERS_ONLINE" == "true" ]]
 }
@@ -84,7 +88,11 @@ function write_config() {
 MOCK_CLUSTER_STATUS='Cluster information
 -------------------
 Name:             production
-Quorate:          Yes'
+Quorate:          Yes
+Membership information
+----------------------
+         1          1 100.64.0.1 (local)
+         2          1 100.64.0.2'
 
 ALL_PEERS='[
   {"hostname":"pve1","ip":"100.64.0.1","online":true},
@@ -96,8 +104,8 @@ if prepare_existing_cluster_for_tailmox >/dev/null 2>&1 &&
     jq -e '
         .schemaVersion == 1 and .cluster.name == "production"
         and (.members == [
-            {name: "pve1", tailscaleIPv4: "100.64.0.1"},
-            {name: "pve2", tailscaleIPv4: "100.64.0.2"}
+            {name: "pve1", tailscaleIPv4: "100.64.0.1", status: "active"},
+            {name: "pve2", tailscaleIPv4: "100.64.0.2", status: "active"}
         ])
     ' "$TAILMOX_PVE_CONFIG_DIR/tailmox/state.json" >/dev/null &&
     grep -q 'config_version: 7' "$TAILMOX_COROSYNC_CONFIG"; then
@@ -112,12 +120,20 @@ COROSYNC_CALL_COUNT=0
 if prepare_existing_cluster_for_tailmox >/dev/null 2>&1 &&
     grep -q 'ring0_addr: 100.64.0.1' "$TAILMOX_COROSYNC_CONFIG" &&
     grep -q 'ring0_addr: 100.64.0.2' "$TAILMOX_COROSYNC_CONFIG" &&
+    jq -e 'all(.members[]; .status == "active")' "$TAILMOX_PVE_CONFIG_DIR/tailmox/state.json" >/dev/null &&
     grep -q 'config_version: 8' "$TAILMOX_COROSYNC_CONFIG" &&
     [[ "$COROSYNC_CALL_COUNT" -eq 1 ]] &&
     [[ -n "$(find "$TAILMOX_CLUSTER_BACKUP_DIR" -type f -name '*.tar.gz' -print -quit)" ]]; then
     pass "confirmed migration validates and updates every member with a backup"
 else
     fail "confirmed migration validates and updates every member with a backup"
+fi
+
+if write_tailmox_cluster_state "$MOCK_CLUSTER_STATUS" $'pve1\t192.0.2.1\npve2\t192.0.2.2' pending >/dev/null 2>&1 &&
+    jq -e '(.members | length) == 2 and all(.members[]; .status == "pending")' "$TAILMOX_PVE_CONFIG_DIR/tailmox/state.json" >/dev/null; then
+    pass "pending state records every existing member"
+else
+    fail "pending state records every existing member"
 fi
 
 write_config "192.0.2.1" "192.0.2.2"

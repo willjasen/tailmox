@@ -30,6 +30,9 @@ function check_all_peers_online() {
 }
 
 function tailscale() {
+    if [[ "${1:-}" == "ping" ]]; then
+        return 0
+    fi
     if [[ "${1:-}" == "ip" && "${2:-}" == "-4" ]]; then
         printf '%s\n' '100.64.0.1'
         return 0
@@ -46,7 +49,11 @@ function pvecm() {
             'Cluster information' \
             '-------------------' \
             'Name:             production' \
-            'Quorate:          Yes'
+            'Quorate:          Yes' \
+            'Membership information' \
+            '----------------------' \
+            '         1          1 100.64.0.1 (local)' \
+            '         2          1 100.64.0.2'
     fi
 
     return 0

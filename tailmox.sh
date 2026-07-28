@@ -1296,7 +1296,7 @@ function report_tailmox_cluster_state() {
 
     state_cluster=$(jq -r '.cluster.name' "$TAILMOX_CLUSTER_STATE_FILE")
     state_updated=$(jq -r '.updatedAt' "$TAILMOX_CLUSTER_STATE_FILE")
-    state_members=$(jq -r '.members[] | "    - \(.name): \(.tailscaleIPv4)"' "$TAILMOX_CLUSTER_STATE_FILE")
+    state_members=$(jq -r '.members[] | "    - \(.name): \(.tailscaleIPv4) [\(.status // "unknown")]"' "$TAILMOX_CLUSTER_STATE_FILE")
     log_echo "${GREEN}Tailmox cluster state: $TAILMOX_CLUSTER_STATE_FILE${RESET}"
     log_echo "${GREEN}  Cluster: $state_cluster${RESET}"
     log_echo "${GREEN}  Updated: $state_updated${RESET}"
@@ -1316,13 +1316,13 @@ function report_tailmox_cluster_state() {
 function write_tailmox_cluster_state() {
     local cluster_status=$1
     local configured_nodes=$2
+    local member_status=${3:-active}
     local cluster_name
     local state_directory
     local temporary_state
     local members_json
     local updated_at
     local node_name
-    local current_address
     local tailscale_address
 
     cluster_name=$(printf '%s\n' "$cluster_status" | awk '/^[[:space:]]*Name:[[:space:]]*/ { print $2; exit }')
@@ -1337,12 +1337,12 @@ function write_tailmox_cluster_state() {
             '[.[] | select(.hostname == $node and .online == true) | .ip]
              | if length == 1 then .[0] else empty end')
         [[ -n "$tailscale_address" ]] || exit 1
-        printf '%s\t%s\n' "$node_name" "$tailscale_address"
+        printf '%s\t%s\t%s\n' "$node_name" "$tailscale_address" "$member_status"
     done <<< "$configured_nodes" | jq -Rsc '
         split("\n")
         | map(select(length > 0) | split("\t")
-              | select(length == 2)
-              | {name: .[0], tailscaleIPv4: .[1]})
+              | select(length == 3)
+              | {name: .[0], tailscaleIPv4: .[1], status: .[2]})
     '); then
         log_echo "${RED}Unable to build complete Tailmox cluster state from verified members. No state file was written.${RESET}"
         return 1
@@ -1352,7 +1352,8 @@ function write_tailmox_cluster_state() {
         (type == "array")
         and (length == $expected_count)
         and (all(.[]; (.name | type == "string") and (.name | length > 0)
-                       and (.tailscaleIPv4 | type == "string") and (.tailscaleIPv4 | length > 0)))
+                       and (.tailscaleIPv4 | type == "string") and (.tailscaleIPv4 | length > 0)
+                       and (.status == "pending" or .status == "active")))
     ' >/dev/null; then
         log_echo "${RED}Tailmox cluster state is incomplete. No state file was written.${RESET}"
         return 1
@@ -1392,6 +1393,59 @@ function write_tailmox_cluster_state() {
     fi
     chmod 0640 "$TAILMOX_CLUSTER_STATE_FILE" 2>/dev/null || true
     log_echo "${GREEN}Recorded verified Tailmox cluster members at $TAILMOX_CLUSTER_STATE_FILE.${RESET}"
+}
+
+# Confirm that every configured member is still represented by exactly one
+# online Tailmox peer before marking the shared adoption state active.
+function verify_tailmox_cluster_members_reachable() {
+    local configured_nodes=$1
+    local node_name
+    local current_address
+    local tailscale_address
+    local cluster_status
+    local membership
+
+    while IFS=$'\t' read -r node_name _; do
+        tailscale_address=$(printf '%s\n' "$ALL_PEERS" | jq -r \
+            --arg node "$node_name" \
+            '[.[] | select(.hostname == $node and .online == true) | .ip]
+             | if length == 1 then .[0] else empty end')
+        if [[ -z "$tailscale_address" ]]; then
+            log_echo "${RED}Unable to verify connectivity for cluster member $node_name. The shared Tailmox state remains pending.${RESET}"
+            return 1
+        fi
+        if ! tailscale ping --c 1 --timeout=2 "$tailscale_address" >/dev/null 2>&1; then
+            log_echo "${RED}Tailscale connectivity to cluster member $node_name ($tailscale_address) failed. The shared Tailmox state remains pending.${RESET}"
+            return 1
+        fi
+    done <<< "$configured_nodes"
+
+    if ! check_all_peers_online; then
+        log_echo "${RED}Not all Tailmox peers are reachable after the Corosync change. The shared Tailmox state remains pending.${RESET}"
+        return 1
+    fi
+
+    if ! cluster_status=$(pvecm status 2>&1) ||
+        ! printf '%s\n' "$cluster_status" | grep -q 'Cluster information' ||
+        ! printf '%s\n' "$cluster_status" | grep -Eq 'Quorate:[[:space:]]+Yes'; then
+        log_echo "${RED}The cluster is not quorate after the Corosync change. The shared Tailmox state remains pending.${RESET}"
+        return 1
+    fi
+
+    membership=$(printf '%s\n' "$cluster_status" | awk '
+        /Membership information/ { in_membership=1; next }
+        in_membership { print }
+    ')
+    while IFS=$'\t' read -r node_name _; do
+        tailscale_address=$(printf '%s\n' "$ALL_PEERS" | jq -r \
+            --arg node "$node_name" \
+            '[.[] | select(.hostname == $node and .online == true) | .ip]
+             | if length == 1 then .[0] else empty end')
+        if ! printf '%s\n' "$membership" | grep -Eq "^[[:space:]]+[0-9]+[[:space:]]+[0-9]+[[:space:]]+${tailscale_address}([[:space:]]|$)"; then
+            log_echo "${RED}Proxmox does not report cluster member $node_name ($tailscale_address) as active. The shared Tailmox state remains pending.${RESET}"
+            return 1
+        fi
+    done <<< "$configured_nodes"
 }
 
 # Prepare an existing Proxmox cluster for Tailmox without changing its
@@ -1475,7 +1529,8 @@ function prepare_existing_cluster_for_tailmox() {
     done <<< "$configured_nodes"
 
     if [[ "$migration_required" != "true" ]]; then
-        if ! write_tailmox_cluster_state "$cluster_status" "$configured_nodes"; then
+        if ! verify_tailmox_cluster_members_reachable "$configured_nodes" ||
+            ! write_tailmox_cluster_state "$cluster_status" "$configured_nodes" active; then
             return 1
         fi
         log_echo "${GREEN}The existing cluster already uses Tailscale for every Corosync link-0 address.${RESET}"
@@ -1510,6 +1565,11 @@ function prepare_existing_cluster_for_tailmox() {
 
     if ! backup_proxmox_cluster_configuration; then
         log_echo "${RED}Existing-cluster migration cancelled because the current configuration could not be archived.${RESET}"
+        return 1
+    fi
+
+    if ! write_tailmox_cluster_state "$cluster_status" "$configured_nodes" pending; then
+        log_echo "${RED}Existing-cluster migration cancelled because pending Tailmox state could not be recorded.${RESET}"
         return 1
     fi
 
@@ -1589,8 +1649,9 @@ function prepare_existing_cluster_for_tailmox() {
         return 1
     fi
 
-    if ! write_tailmox_cluster_state "$cluster_status" "$configured_nodes"; then
-        log_echo "${RED}Corosync was migrated, but Tailmox state could not be recorded. Verify $TAILMOX_CLUSTER_STATE_FILE before adding hosts.${RESET}"
+    if ! verify_tailmox_cluster_members_reachable "$configured_nodes" ||
+        ! write_tailmox_cluster_state "$cluster_status" "$configured_nodes" active; then
+        log_echo "${RED}Corosync was migrated, but Tailmox state could not be marked active. Verify $TAILMOX_CLUSTER_STATE_FILE before adding hosts.${RESET}"
         return 1
     fi
 
