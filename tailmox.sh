@@ -1929,6 +1929,11 @@ function add_local_node_to_cluster() {
                 
                 # Check if successful
                 if [ $? -eq 0 ] && check_local_node_cluster_status; then
+                    log_echo "${YELLOW}Refreshing Proxmox cluster services on the newly joined node...${RESET}"
+                    if ! systemctl restart pve-cluster pvestatd pveproxy; then
+                        log_echo "${RED}The node joined, but Proxmox service refresh failed. Check pve-cluster, pvestatd, and pveproxy.${RESET}"
+                        exit 1
+                    fi
                     log_echo "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
                     log_echo "${GREEN}You can now access your tailmox server directly at: ${BLUE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
                     log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
