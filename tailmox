@@ -150,6 +150,7 @@ show_usage() {
     cat <<'EOF'
 Usage:
   tailmox cluster [options]  Run the complete clustering workflow
+  tailmox info               Show current Tailmox cluster information
   tailmox serve [start] [options]
                              Start the dashboard and read-only command output
   tailmox serve stop         Stop the dashboard and command-output service
@@ -172,6 +173,14 @@ EOF
 bootstrap_command
 
 case "${1:-}" in
+    info)
+        shift
+        if [[ "$#" -ne 0 ]]; then
+            printf 'tailmox info does not accept arguments.\n' >&2
+            exit 2
+        fi
+        exec "$TAILMOX_ROOT/tailmox.sh" info
+        ;;
     cluster)
         shift
         exec "$TAILMOX_ROOT/tailmox.sh" --terminal "$@"
