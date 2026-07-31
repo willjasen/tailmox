@@ -156,16 +156,16 @@ show_usage() {
  "  tailmox ${blue}in${reset}${blue}fo${reset}               Show current Tailmox cluster information" \
  "  tailmox ${blue}serve${reset} [start] [options]" \
  '                             Start the dashboard and read-only command output' \
- "  tailmox ${blue}serve${reset} stop         Stop the dashboard and command-output service" \
- "  tailmox ${blue}serve${reset} restart      Stop and restart the dashboard and command-output service" \
+ "      ${blue}stop${reset}                     Stop the dashboard and command-output service" \
+ "      ${blue}restart${reset}                  Stop and restart the dashboard and command-output service" \
  "  tailmox ${blue}stage${reset} [options]    Set up Tailscale and certificates only" \
  "  tailmox ${blue}backups${reset} [list]     List Tailmox configuration backups" \
- "  tailmox ${blue}backups${reset} create     Create a configuration backup now" \
+ "      ${blue}create${reset}                   Create a configuration backup now" \
  "  tailmox ${blue}test${reset}               Safely test setup without changing the host" \
  "  tailmox ${blue}monitor${reset} [options]  Record test analytics every minute" \
- "  tailmox ${blue}monitor${reset} install    Install and start the background monitor" \
- "  tailmox ${blue}monitor${reset} restart    Restart the installed background monitor" \
- "  tailmox ${blue}monitor${reset} uninstall  Stop and remove the background monitor" \
+ "      ${blue}install${reset}                  Install and start the background monitor" \
+ "      ${blue}restart${reset}                  Restart the installed background monitor" \
+ "      ${blue}uninstall${reset}                Stop and remove the background monitor" \
  "  tailmox ${blue}self-test${reset}          Run the regression test suite" \
  "  tailmox ${blue}help${reset}               Show this help" \
  '' \
