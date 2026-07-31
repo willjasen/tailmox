@@ -147,7 +147,7 @@ uninstall_monitor_service() {
 }
 
 show_usage() {
-    local blue=$'\033[1;34m'
+    local blue=$'\033[94m'
     local reset=$'\033[0m'
 
     printf '%s\n' \
