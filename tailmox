@@ -154,8 +154,8 @@ show_usage() {
  'Usage:' \
  "  tailmox ${blue}cluster${reset} [options]  Run the complete clustering workflow" \
  "  tailmox ${blue}in${reset}${blue}fo${reset}               Show current Tailmox cluster information" \
- "  tailmox ${blue}serve${reset} [start] [options]" \
- '                             Start the dashboard and read-only command output' \
+ "  tailmox ${blue}serve${reset} [subcommand]" \
+ "      ${blue}start${reset} [options]          Start the dashboard and read-only command output (default)" \
  "      ${blue}stop${reset}                     Stop the dashboard and command-output service" \
  "      ${blue}restart${reset}                  Stop and restart the dashboard and command-output service" \
  "  tailmox ${blue}stage${reset} [options]    Set up Tailscale and certificates only" \
