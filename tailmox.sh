@@ -32,7 +32,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/.colors.sh"
 # /etc/pve to every cluster member.
 LOG_DIR="${TAILMOX_LOG_DIR:-/var/log}"
 LOG_FILE="$LOG_DIR/tailmox.log"
-STATE_FILE="${TAILMOX_STATE_FILE:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/tailmox/state.json}"
+STATE_FILE="${TAILMOX_STATE_FILE:-${TAILMOX_CLUSTER_STATE_FILE:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/tailmox/state.json}}"
 
 # `info` is intentionally usable from a non-Proxmox machine, so it must not
 # require write access to /var/log.
@@ -111,18 +111,45 @@ function show_info() {
         return 0
     fi
 
-    local host_count
-    host_count=$(jq -r '(.hosts // []) | length' "$STATE_FILE")
-    if [ "$host_count" -eq 0 ]; then
+    local local_hostname
+    local cluster_name
+    local host_records
+
+    local_hostname="${HOSTNAME:-$(hostname)}"
+    host_records=$(jq -c '
+        if ((.hosts // []) | length) > 0 then
+            [.hosts[] | {
+                hostname: (.hostname // ""),
+                ip: (.ip // ""),
+                dnsName: (.dnsName // ""),
+                date_joined: .date_joined,
+                status: (.status // "")
+            }]
+        else
+            [(.members // [])[] | {
+                hostname: (.name // .hostname // ""),
+                ip: (.tailscaleIPv4 // .ip // ""),
+                dnsName: (.dnsName // ""),
+                date_joined: .date_joined,
+                status: (.status // "")
+            }]
+        end
+    ' "$STATE_FILE")
+
+    if ! jq -e --arg hostname "$local_hostname" \
+        'any(.[]; .hostname == $hostname)' <<< "$host_records" >/dev/null; then
         echo "This host is not part of a Tailmox cluster."
         return 0
     fi
 
-    echo "Tailmox cluster"
-    jq -r '.hosts[] |
+    cluster_name=$(jq -r '.cluster.name // "tailmox"' "$STATE_FILE")
+    echo "Tailmox cluster: $cluster_name"
+    jq -r '.[] |
         "  \(.hostname // "unknown")" +
-        (if .ip then " (\(.ip))" else "" end) +
-        (if .date_joined then " — joined \(.date_joined)" else "" end)' "$STATE_FILE"
+        (if .ip != "" then " (\(.ip))" else "" end) +
+        (if .status != "" then " — \(.status)" else "" end) +
+        (if .date_joined then " — joined \(.date_joined)" else "" end)' \
+        <<< "$host_records"
 }
 
 function record_local_host() {

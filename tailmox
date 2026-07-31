@@ -172,7 +172,9 @@ show_usage() {
  'Options such as --auth-key are passed through to tailmox.sh.'
 }
 
-bootstrap_command
+if [[ "${1:-}" != "info" ]]; then
+    bootstrap_command
+fi
 
 case "${1:-}" in
     info)

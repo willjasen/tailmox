@@ -73,6 +73,36 @@ else
     fail "updating an existing host preserves its original join time"
 fi
 
+printf '%s\n' '{
+  "schemaVersion": 1,
+  "cluster": {"name": "production"},
+  "members": [
+    {"name": "pve1", "tailscaleIPv4": "100.64.0.1", "status": "active"},
+    {"name": "pve2", "tailscaleIPv4": "100.64.0.2", "status": "active",
+     "date_joined": "2026-07-30T20:05:00Z"}
+  ]
+}' > "$STATE_FILE"
+
+HOSTNAME=pve1
+state_before=$(cksum "$STATE_FILE")
+info_output=$(show_info)
+state_after=$(cksum "$STATE_FILE")
+if [[ "$info_output" == *"Tailmox cluster: production"* ]] &&
+    [[ "$info_output" == *"pve1 (100.64.0.1) — active"* ]] &&
+    [[ "$info_output" == *"pve2 (100.64.0.2) — active — joined 2026-07-30T20:05:00Z"* ]] &&
+    [[ "$state_before" == "$state_after" ]]; then
+    pass "info reads members-based shared state without modifying it"
+else
+    fail "info reads members-based shared state without modifying it"
+fi
+
+HOSTNAME=pve3
+if [[ "$(show_info)" == "This host is not part of a Tailmox cluster." ]]; then
+    pass "info rejects a host absent from shared cluster state"
+else
+    fail "info rejects a host absent from shared cluster state"
+fi
+
 printf '%s\n' '{malformed state' > "$STATE_FILE"
 if ! write_state "pve-c2" "100.64.0.12" "pve-c2.example.ts.net" \
         "2026-07-30T21:05:00Z" &&
