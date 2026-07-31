@@ -149,11 +149,12 @@ uninstall_monitor_service() {
 show_usage() {
     local blue=$'\033[94m'
     local reset=$'\033[0m'
+    local word_break='⁠'
 
     printf '%s\n' \
  'Usage:' \
  "  tailmox ${blue}cluster${reset} [options]  Run the complete clustering workflow" \
- "  tailmox ${blue}in${reset}${blue}fo${reset}               Show current Tailmox cluster information" \
+ "  tailmox ${blue}in${word_break}fo${reset}               Show current Tailmox cluster information" \
  "  tailmox ${blue}serve${reset} [subcommand]" \
  "      ${blue}start${reset} [options]          Start the dashboard and read-only command output (default)" \
  "      ${blue}stop${reset}                     Stop the dashboard and command-output service" \
