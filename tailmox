@@ -147,27 +147,29 @@ uninstall_monitor_service() {
 }
 
 show_usage() {
-    cat <<'EOF'
-Usage:
-  tailmox cluster [options]  Run the complete clustering workflow
-  tailmox info               Show current Tailmox cluster information
-  tailmox serve [start] [options]
-                             Start the dashboard and read-only command output
-  tailmox serve stop         Stop the dashboard and command-output service
-  tailmox serve restart      Stop and restart the dashboard and command-output service
-  tailmox stage [options]    Set up Tailscale and certificates only
-  tailmox backups [list]     List Tailmox configuration backups
-  tailmox backups create     Create a configuration backup now
-  tailmox test               Safely test setup without changing the host
-  tailmox monitor [options]  Record test analytics every minute
-  tailmox monitor install    Install and start the background monitor
-  tailmox monitor restart    Restart the installed background monitor
-  tailmox monitor uninstall  Stop and remove the background monitor
-  tailmox self-test          Run the regression test suite
-  tailmox help               Show this help
+    local blue=$'\033[0;34m'
+    local reset=$'\033[0m'
 
-Options such as --auth-key are passed through to tailmox.sh.
-EOF
+    printf '%s\n' \
+ 'Usage:' \
+ "  tailmox ${blue}cluster${reset} [options]  Run the complete clustering workflow" \
+ "  tailmox ${blue}info${reset}               Show current Tailmox cluster information" \
+ "  tailmox ${blue}serve${reset} [start] [options]" \
+ '                             Start the dashboard and read-only command output' \
+ "  tailmox ${blue}serve${reset} stop         Stop the dashboard and command-output service" \
+ "  tailmox ${blue}serve${reset} restart      Stop and restart the dashboard and command-output service" \
+ "  tailmox ${blue}stage${reset} [options]    Set up Tailscale and certificates only" \
+ "  tailmox ${blue}backups${reset} [list]     List Tailmox configuration backups" \
+ "  tailmox ${blue}backups${reset} create     Create a configuration backup now" \
+ "  tailmox ${blue}test${reset}               Safely test setup without changing the host" \
+ "  tailmox ${blue}monitor${reset} [options]  Record test analytics every minute" \
+ "  tailmox ${blue}monitor${reset} install    Install and start the background monitor" \
+ "  tailmox ${blue}monitor${reset} restart    Restart the installed background monitor" \
+ "  tailmox ${blue}monitor${reset} uninstall  Stop and remove the background monitor" \
+ "  tailmox ${blue}self-test${reset}          Run the regression test suite" \
+ "  tailmox ${blue}help${reset}               Show this help" \
+ '' \
+ 'Options such as --auth-key are passed through to tailmox.sh.'
 }
 
 bootstrap_command
