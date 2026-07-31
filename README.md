@@ -159,8 +159,11 @@ To display the Tailmox membership recorded on the cluster, run:
 
 The command reports that the host is not part of a Tailmox cluster when the
 state file is missing or contains no hosts. Hosts added by Tailmox are stored
-in `state.json` with a UTC `date_joined` timestamp. Older hosts without that
-key are still displayed and simply omit the date.
+in `/etc/pve/tailmox/state.json`, so Proxmox replicates the membership record
+to every cluster member. Each entry includes a UTC `date_joined` timestamp.
+Older hosts without that key are still displayed and simply omit the date.
+Running the cluster workflow again on an existing member repairs a missing
+entry for that host without recreating or rejoining the cluster.
 
 `tailmox.sh` -  this is the main script of the project
 - checks that the host is Proxmox v8 or v9, installs dependencies and Tailscale, then starts Tailscale

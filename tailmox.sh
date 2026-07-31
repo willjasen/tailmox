@@ -28,14 +28,15 @@
 # Source color definitions
 source "$(dirname "${BASH_SOURCE[0]}")/.colors.sh"
 
-# Define log file
-LOG_DIR="/var/log"
+# Define log and shared cluster-state files. Proxmox replicates files under
+# /etc/pve to every cluster member.
+LOG_DIR="${TAILMOX_LOG_DIR:-/var/log}"
 LOG_FILE="$LOG_DIR/tailmox.log"
-STATE_FILE="${TAILMOX_STATE_FILE:-$(dirname "${BASH_SOURCE[0]}")/state.json}"
+STATE_FILE="${TAILMOX_STATE_FILE:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/tailmox/state.json}"
 
 # `info` is intentionally usable from a non-Proxmox machine, so it must not
 # require write access to /var/log.
-if [ "${1:-}" != "info" ]; then
+if [ "${1:-}" != "info" ] && [ "${TAILMOX_LIBRARY_MODE:-false}" != "true" ]; then
     mkdir -p "$LOG_DIR"
 
     # Rotate log if it's larger than 10MB
@@ -69,11 +70,19 @@ function write_state() {
     local dns_name="$3"
     local joined_at="$4"
     local state_dir
+    local temporary_state
 
     state_dir=$(dirname "$STATE_FILE")
     mkdir -p "$state_dir" || return 1
+    temporary_state="${STATE_FILE}.tmp.${hostname}.$$"
 
-    if [ -f "$STATE_FILE" ] && jq empty "$STATE_FILE" >/dev/null 2>&1; then
+    if [ -e "$STATE_FILE" ] && {
+        [ ! -f "$STATE_FILE" ] || ! jq empty "$STATE_FILE" >/dev/null 2>&1
+    }; then
+        return 1
+    fi
+
+    if [ -f "$STATE_FILE" ]; then
         jq --arg hostname "$hostname" --arg ip "$ip" --arg dns_name "$dns_name" \
            --arg joined_at "$joined_at" '
             .hosts = (.hosts // []) |
@@ -81,12 +90,18 @@ function write_state() {
                       [(.hosts[] | select(.hostname == $hostname) | .) //
                        {hostname: $hostname, ip: $ip, dnsName: $dns_name, date_joined: $joined_at} |
                        .hostname = $hostname | .ip = $ip | .dnsName = $dns_name])
-        ' "$STATE_FILE" > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+        ' "$STATE_FILE" > "$temporary_state" && mv "$temporary_state" "$STATE_FILE"
     else
         jq -n --arg hostname "$hostname" --arg ip "$ip" --arg dns_name "$dns_name" \
            --arg joined_at "$joined_at" \
            '{hosts: [{hostname: $hostname, ip: $ip, dnsName: $dns_name, date_joined: $joined_at}]}' \
-           > "${STATE_FILE}.tmp" && mv "${STATE_FILE}.tmp" "$STATE_FILE"
+           > "$temporary_state" && mv "$temporary_state" "$STATE_FILE"
+    fi
+
+    local write_status=$?
+    if [ "$write_status" -ne 0 ]; then
+        rm -f "$temporary_state"
+        return "$write_status"
     fi
 }
 
@@ -111,7 +126,15 @@ function show_info() {
 }
 
 function record_local_host() {
-    write_state "$HOSTNAME" "$(tailscale ip -4)" "${TAILSCALE_DNS_NAME:-}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    local tailscale_ip
+
+    tailscale_ip=$(tailscale ip -4) || return 1
+    if [ -z "$tailscale_ip" ]; then
+        return 1
+    fi
+
+    write_state "$HOSTNAME" "$tailscale_ip" "${TAILSCALE_DNS_NAME:-}" \
+        "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 }
 
 # Check if Proxmox is installed
@@ -649,7 +672,10 @@ function add_local_node_to_cluster() {
                 
                 # Check if successful
                 if [ $? -eq 0 ]; then
-                    record_local_host
+                    if ! record_local_host; then
+                        log_echo "${RED}The node joined the Proxmox cluster, but Tailmox could not record $HOSTNAME in $STATE_FILE.${RESET}"
+                        exit 1
+                    fi
                     log_echo "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
                     log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
                     log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
@@ -669,6 +695,10 @@ function add_local_node_to_cluster() {
 ####
 #### ---MAIN SCRIPT---
 ####
+
+if [ "${TAILMOX_LIBRARY_MODE:-false}" = "true" ]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 if [ "${1:-}" != "info" ]; then
     log_echo "${GREEN}--- TAILMOX SCRIPT RUNNING ---${RESET}"
@@ -762,11 +792,15 @@ if ! check_local_node_cluster_status; then
     # Add this local node to a cluster if it exists
     add_local_node_to_cluster
 else
+    if ! record_local_host; then
+        log_echo "${RED}This node is in the Proxmox cluster, but Tailmox could not record $HOSTNAME in $STATE_FILE.${RESET}"
+        exit 1
+    fi
     log_echo "${GREEN}This node is already part of a cluster, nothing further to do.${RESET}"
     log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
-    exit 1
+    exit 0
 fi
 
 # If local node is now in the cluster...
@@ -776,7 +810,10 @@ if ! check_local_node_cluster_status; then
     read -p "Enter 'y' to create a new cluster or 'n' to exit: " choice
     if [[ "$choice" == "y" || "$choice" == "Y" ]]; then
         create_cluster
-        record_local_host
+        if ! record_local_host; then
+            log_echo "${RED}The Proxmox cluster was created, but Tailmox could not record $HOSTNAME in $STATE_FILE.${RESET}"
+            exit 1
+        fi
         log_echo "${GREEN}Cluster created successfully.${RESET}"
         log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
         log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
