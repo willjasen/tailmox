@@ -127,6 +127,16 @@ then submit.
 3. Make sure that the script is executable: `chmod +x tailmox.sh`
 4. Run the script: `./tailmox.sh`
 
+#### All in One Installation
+```shell
+apt install -y git
+cd /opt
+git clone https://github.com/willjasen/tailmox
+cd tailmox
+chmod +x tailmox.sh
+./tailmox.sh
+```
+
 ---
 
 ### 🖥️ Usage 🖥️
