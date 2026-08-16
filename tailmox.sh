@@ -95,7 +95,7 @@ function check_script_directory() {
 function install_dependencies() {
     log_echo "${YELLOW}Checking for required dependencies...${RESET}"
 
-    local dependencies=(curl expect git jq)
+    local dependencies=(curl expect git jq bc)
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
             log_echo "${YELLOW}$dep not found. Installing...${RESET}"
