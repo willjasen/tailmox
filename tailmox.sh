@@ -152,6 +152,65 @@ function show_info() {
         <<< "$host_records"
 }
 
+function remove_cluster_node() {
+    local node_name="${1:-}"
+    local local_hostname="${HOSTNAME:-$(hostname)}"
+    local cluster_status
+
+    if [[ -z "$node_name" ]]; then
+        printf 'Usage: tailmox.sh remove <node-name>\n' >&2
+        return 2
+    fi
+    if [[ "$node_name" == "$local_hostname" ]]; then
+        printf 'Refusing to remove the local node (%s). Run pvecm delnode from another member.\n' \
+            "$local_hostname" >&2
+        return 1
+    fi
+    if ! command -v pvecm >/dev/null 2>&1; then
+        printf 'pvecm command not found; this must be run on a Proxmox cluster member.\n' >&2
+        return 1
+    fi
+    cluster_status=$(pvecm status 2>&1) || {
+        printf 'Unable to determine Proxmox cluster status:\n%s\n' "$cluster_status" >&2
+        return 1
+    }
+    if [[ "$cluster_status" != *"Cluster information"* ]]; then
+        printf 'This host is not currently in a Proxmox cluster. No changes made.\n' >&2
+        return 1
+    fi
+    if ! pvecm nodes 2>&1 | grep -Eq "[[:space:]]${node_name}([[:space:]]|$)"; then
+        printf 'Node %s was not found in the current Proxmox cluster. No changes made.\n' \
+            "$node_name" >&2
+        return 1
+    fi
+    if [[ "${TAILMOX_ASSUME_YES:-false}" != "true" ]]; then
+        printf 'This will remove %s from the Proxmox cluster. Continue? [y/N] ' "$node_name"
+        read -r confirmation < /dev/tty || return 1
+        [[ "$confirmation" == "y" || "$confirmation" == "Y" ]] || {
+            printf 'Aborted. No changes made.\n'
+            return 1
+        }
+    fi
+    if ! pvecm delnode "$node_name"; then
+        printf 'Failed to remove %s from the Proxmox cluster.\n' "$node_name" >&2
+        return 1
+    fi
+    if [[ -f "$STATE_FILE" ]] && jq empty "$STATE_FILE" >/dev/null 2>&1; then
+        local temporary_state="${STATE_FILE}.tmp.remove.$$"
+        if jq --arg node_name "$node_name" '.hosts = [(.hosts // [])[] | select(.hostname != $node_name)]' \
+            "$STATE_FILE" > "$temporary_state" && mv "$temporary_state" "$STATE_FILE"; then
+            printf 'Removed %s from the Proxmox and Tailmox cluster membership records.\n' "$node_name"
+        else
+            rm -f "$temporary_state"
+            printf 'Removed %s from Proxmox, but could not update Tailmox membership state.\n' "$node_name" >&2
+            return 1
+        fi
+    else
+        printf 'Removed %s from the Proxmox cluster.\n' "$node_name"
+    fi
+    printf 'The removed host still needs its local Proxmox cluster configuration reset before reuse.\n'
+}
+
 function record_local_host() {
     local tailscale_ip
 
@@ -735,6 +794,12 @@ fi
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         info) show_info; exit 0 ;;
+        remove)
+            shift
+            [[ "$#" -eq 1 ]] || { printf 'Usage: tailmox.sh remove <node-name>\n' >&2; exit 2; }
+            remove_cluster_node "$1"
+            exit $?
+            ;;
         --staging) STAGING="true"; log_echo "${YELLOW}Staging mode enabled.${RESET}"; ;;
         --auth-key) AUTH_KEY="$2"; log_echo "${YELLOW}Using auth key for Tailscale...${RESET}"; shift; ;;
         *) log_echo "${RED}Unknown parameter: $1${RESET}"; exit 1 ;;

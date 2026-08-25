@@ -157,6 +157,18 @@ To display the Tailmox membership recorded on the cluster, run:
 ./tailmox.sh info
 ```
 
+To remove a host from the Proxmox cluster, run this on a remaining cluster
+member:
+
+```sh
+tailmox remove <node-name>
+```
+
+Tailmox confirms the target is a current cluster member, runs `pvecm delnode`,
+and removes the host from Tailmox's shared membership record. The removed host
+must still have its local Proxmox cluster configuration reset before it can be
+reused or joined to another cluster. Do not run this against the local host.
+
 The command reports that the host is not part of a Tailmox cluster when the
 state file is missing or contains no hosts. Hosts added by Tailmox are stored
 in `/etc/pve/tailmox/state.json`, so Proxmox replicates the membership record

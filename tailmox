@@ -154,6 +154,7 @@ show_usage() {
     printf '%s\n' \
  'Usage:' \
  "  tailmox ${blue}cluster${reset} [options]  Run the complete clustering workflow" \
+ "  tailmox ${blue}remove${reset} <node-name>    Remove a host from the Proxmox cluster" \
  "  tailmox ${blue}in${word_break}fo${reset}               Show current Tailmox cluster information" \
  "  tailmox ${blue}serve${reset} [subcommand]" \
  "      ${blue}start${reset} [options]          Start the dashboard and read-only command output (default)" \
@@ -173,7 +174,7 @@ show_usage() {
  'Options such as --auth-key are passed through to tailmox.sh.'
 }
 
-if [[ "${1:-}" != "info" ]]; then
+if [[ "${1:-}" != "info" && "${1:-}" != "remove" ]]; then
     bootstrap_command
 fi
 
@@ -189,6 +190,10 @@ case "${1:-}" in
     cluster)
         shift
         exec "$TAILMOX_ROOT/tailmox.sh" --terminal "$@"
+        ;;
+    remove)
+        shift
+        exec "$TAILMOX_ROOT/tailmox.sh" remove "$@"
         ;;
     serve)
         shift

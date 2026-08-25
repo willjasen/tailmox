@@ -103,6 +103,34 @@ else
     fail "info rejects a host absent from shared cluster state"
 fi
 
+PVE_NODES_OUTPUT='    Nodeid      Votes Name
+         1          1 pve1 (local)
+         2          1 pve2'
+PVE_DELETED_NODE=''
+function pvecm() {
+    case "$1" in
+        status) printf '%s\n' 'Cluster information' ;;
+        nodes) printf '%s\n' "$PVE_NODES_OUTPUT" ;;
+        delnode) PVE_DELETED_NODE="$2" ;;
+    esac
+}
+export TAILMOX_ASSUME_YES=true
+HOSTNAME=pve1
+if remove_cluster_node pve2 >/dev/null 2>&1 &&
+    [[ "$PVE_DELETED_NODE" == pve2 ]] &&
+    ! jq -e '.hosts[] | select(.hostname == "pve2")' "$STATE_FILE" >/dev/null 2>&1; then
+    pass "remove deletes a remote Proxmox node and Tailmox membership record"
+else
+    fail "remove deletes a remote Proxmox node and Tailmox membership record"
+fi
+
+if ! remove_cluster_node pve1 >/dev/null 2>&1 && [[ -z "$PVE_DELETED_NODE" || "$PVE_DELETED_NODE" == pve2 ]]; then
+    pass "remove refuses to delete the local node"
+else
+    fail "remove refuses to delete the local node"
+fi
+unset TAILMOX_ASSUME_YES
+
 printf '%s\n' '{malformed state' > "$STATE_FILE"
 if ! write_state "pve-c2" "100.64.0.12" "pve-c2.example.ts.net" \
         "2026-07-30T21:05:00Z" &&
