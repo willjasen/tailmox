@@ -2013,7 +2013,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Tailmox InfluxDB Settings</title>
+  <title>Tailmox Identity &amp; InfluxDB Settings</title>
   <style>
     :root { color-scheme: dark; --bg: #0b1020; --panel: #111827; --line: #334155; --text: #e5e7eb; --muted: #9ca3af; --accent: #38bdf8; --good: #22c55e; --bad: #ef4444; }
     body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: radial-gradient(circle at top left, rgba(56,189,248,0.18), transparent 34%), linear-gradient(135deg, #0b1020 0%, #111827 48%, #14213d 100%); color: var(--text); min-height: 100vh; }
@@ -2050,8 +2050,8 @@ EDIT_INFLUX_HTML = """<!doctype html>
   <main>
     <header>
       <div>
-        <h1>InfluxDB Settings</h1>
-        <div class="muted">Configure cluster-distributed Tailmox monitor exports.</div>
+        <h1>Tailmox Identity &amp; InfluxDB Settings</h1>
+        <div class="muted">Load the cluster age identity, approve host configuration, and configure monitor exports.</div>
       </div>
       <a class="button" href="./">Back to monitor</a>
     </header>
@@ -2239,6 +2239,9 @@ EDIT_INFLUX_HTML = """<!doctype html>
 """
 
 
+ID_HTML = EDIT_INFLUX_HTML
+
+
 class Handler(BaseHTTPRequestHandler):
     def send_body(self, status, content_type, body, extra_headers=None):
         encoded = body.encode("utf-8")
@@ -2278,13 +2281,25 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             if not self.require_tailscale_user():
                 return
+            try:
+                identity_loaded = bool(tailmox_config.identity_status().get("configured"))
+            except tailmox_config.ConfigError:
+                identity_loaded = False
+            if not identity_loaded:
+                self.send_body(
+                    200,
+                    "text/html; charset=utf-8",
+                    ID_HTML.replace("__CSRF_TOKEN__", CSRF_TOKEN),
+                    {"Set-Cookie": "tailmox_csrf=1; Path=/; SameSite=Strict; Secure"},
+                )
+                return
             self.send_body(
                 200,
                 "text/html; charset=utf-8",
                 INDEX_HTML.replace("__CSRF_TOKEN__", CSRF_TOKEN),
                 {"Set-Cookie": "tailmox_csrf=1; Path=/; SameSite=Strict; Secure"},
             )
-        elif path == "/editInfluxDB":
+        elif path in ("/id", "/editInfluxDB"):
             if not self.require_tailscale_user():
                 return
             self.send_body(
