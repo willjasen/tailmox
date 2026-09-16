@@ -49,6 +49,18 @@ function corosync() {
         [[ "$MOCK_COROSYNC_VALID" == "true" ]]
 }
 
+function lan_ip_for_node() {
+    local node_name=$1
+    local cidr=$2
+
+    [[ "$cidr" == "10.10.0.0/24" ]] || return 1
+    case "$node_name" in
+        pve1) printf '10.10.0.11\n' ;;
+        pve2) printf '10.10.0.12\n' ;;
+        *) return 1 ;;
+    esac
+}
+
 function pass() {
     printf 'PASS: %s\n' "$1"
     PASS_COUNT=$((PASS_COUNT + 1))
@@ -250,6 +262,8 @@ if ! remote_cluster_is_ready_for_tailmox_join >/dev/null 2>&1; then
 else
     fail "new host rejects a partially prepared remote cluster"
 fi
+
+# Staged LAN migration is covered in test-corosync-migration.sh.
 
 printf '\n%s passed; %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 

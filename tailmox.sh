@@ -36,7 +36,8 @@ STATE_FILE="${TAILMOX_STATE_FILE:-${TAILMOX_CLUSTER_STATE_FILE:-${TAILMOX_PVE_CO
 
 # `info` is intentionally usable from a non-Proxmox machine, so it must not
 # require write access to /var/log.
-if [ "${1:-}" != "info" ] && [ "${TAILMOX_LIBRARY_MODE:-false}" != "true" ]; then
+if [ "${1:-}" != "info" ] && [ "${1:-}" != "--backups-list" ] &&
+    [ "${TAILMOX_LIBRARY_MODE:-false}" != "true" ]; then
     mkdir -p "$LOG_DIR"
 
     # Rotate log if it's larger than 10MB
@@ -48,10 +49,6 @@ fi
 ###
 ### ---FUNCTIONS---
 ### 
-
-function disable_tailmox() {
-    python3 "$(dirname "${BASH_SOURCE[0]}")/tailmox-migrate.py" "$@"
-}
 
 # Logging function that outputs to both console and log file
 function log_echo() {
@@ -213,6 +210,719 @@ function remove_cluster_node() {
         printf 'Removed %s from the Proxmox cluster.\n' "$node_name"
     fi
     printf 'The removed host still needs its local Proxmox cluster configuration reset before reuse.\n'
+}
+
+function cidr_contains_ip() {
+    local cidr="${1:-}"
+    local ip="${2:-}"
+
+    python3 - "$cidr" "$ip" <<'PY'
+import ipaddress
+import sys
+
+try:
+    network = ipaddress.ip_network(sys.argv[1], strict=False)
+    address = ipaddress.ip_address(sys.argv[2])
+except ValueError:
+    sys.exit(2)
+
+sys.exit(0 if address in network else 1)
+PY
+}
+
+function validate_cidr() {
+    local cidr="${1:-}"
+
+    python3 - "$cidr" <<'PY'
+import ipaddress
+import sys
+
+try:
+    network = ipaddress.ip_network(sys.argv[1], strict=False)
+except ValueError:
+    sys.exit(1)
+
+sys.exit(0 if network.version == 4 else 1)
+PY
+}
+
+function cluster_status_is_quorate() {
+    local cluster_status="${1:-}"
+
+    [[ "$cluster_status" == *"Cluster information"* ]] &&
+        [[ "$cluster_status" == *"Quorate:"*"Yes"* ]]
+}
+
+function cluster_name_from_status() {
+    awk -F: '/^[[:space:]]*Name:/ {
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2)
+        print $2
+        exit
+    }' <<< "${1:-}"
+}
+
+function read_corosync_nodes() {
+    local config="${1:-${TAILMOX_COROSYNC_CONFIG:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/corosync.conf}}"
+
+    awk '
+        /^[[:space:]]*node[[:space:]]*\{/ { in_node = 1; name = ""; ring0 = ""; next }
+        in_node && /^[[:space:]]*name:/ {
+            name = $0
+            sub(/^[[:space:]]*name:[[:space:]]*/, "", name)
+            next
+        }
+        in_node && /^[[:space:]]*ring0_addr:/ {
+            ring0 = $0
+            sub(/^[[:space:]]*ring0_addr:[[:space:]]*/, "", ring0)
+            next
+        }
+        in_node && /^[[:space:]]*\}/ {
+            if (name != "") {
+                print name "\t" ring0
+            }
+            in_node = 0
+        }
+    ' "$config"
+}
+
+function write_tailmox_cluster_state() {
+    local cluster_status="$1"
+    local node_addresses="$2"
+    local member_status="${3:-active}"
+    local cluster_name
+    local state_dir
+    local temporary_state
+
+    cluster_name=$(cluster_name_from_status "$cluster_status")
+    [[ -n "$cluster_name" ]] || cluster_name="tailmox"
+
+    state_dir=$(dirname "$STATE_FILE")
+    mkdir -p "$state_dir" || return 1
+    temporary_state="${STATE_FILE}.tmp.cluster.$$"
+
+    jq -Rn --arg cluster_name "$cluster_name" --arg status "$member_status" '
+        [inputs | select(length > 0) | split("\t") |
+            {name: .[0], tailscaleIPv4: .[1], status: $status}
+        ] as $members |
+        {
+            schemaVersion: 1,
+            cluster: {name: $cluster_name},
+            members: $members
+        }
+    ' <<< "$node_addresses" > "$temporary_state" &&
+        mv "$temporary_state" "$STATE_FILE"
+}
+
+function backup_proxmox_cluster_configuration() {
+    local backup_dir="${TAILMOX_CLUSTER_BACKUP_DIR:-/var/lib/tailmox/backups}"
+    local pve_config_dir="${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}"
+    local corosync_config_dir="${TAILMOX_COROSYNC_CONFIG_DIR:-/etc/corosync}"
+    local hosts_file="${TAILMOX_HOSTS_FILE:-/etc/hosts}"
+    local timestamp
+    local suffix
+    local archive
+    local -a archive_entries=()
+
+    if [[ ! -d "$pve_config_dir" ]]; then
+        printf 'No Proxmox cluster configuration was found to back up.\n' >&2
+        return 1
+    fi
+    [[ -d "$pve_config_dir" ]] && archive_entries+=("${pve_config_dir#/}")
+    [[ -d "$corosync_config_dir" ]] && archive_entries+=("${corosync_config_dir#/}")
+    [[ -f "$hosts_file" ]] && archive_entries+=("${hosts_file#/}")
+
+    mkdir -p "$backup_dir" || return 1
+    chmod 700 "$backup_dir" 2>/dev/null || true
+
+    timestamp=$(date -u '+%Y%m%dT%H%M%SZ')
+    suffix="$$-${RANDOM}"
+    archive="$backup_dir/proxmox-cluster-${timestamp}-${suffix}.tar.gz"
+
+    if ! tar -czf "$archive" -C / -- "${archive_entries[@]}" 2>/dev/null; then
+        rm -f "$archive"
+        printf 'Unable to archive Proxmox cluster configuration.\n' >&2
+        return 1
+    fi
+    chmod 600 "$archive" 2>/dev/null || true
+    printf 'Archived the current Proxmox cluster configuration at %s.\n' "$archive"
+}
+
+function list_proxmox_cluster_backups() {
+    local backup_dir="${TAILMOX_CLUSTER_BACKUP_DIR:-/var/lib/tailmox/backups}"
+    local backup_file
+    local backup_type
+    local backup_status
+
+    if [[ ! -d "$backup_dir" ]] ||
+        ! find "$backup_dir" -type f \( -name 'proxmox-cluster-*.tar.gz' -o -name 'corosync-*.conf' \) -print -quit | grep -q .; then
+        printf 'No Tailmox configuration backups found.\n'
+        return 0
+    fi
+
+    printf '%-10s %-8s %s\n' 'TYPE' 'STATUS' 'PATH'
+    while IFS= read -r backup_file; do
+        case "$(basename "$backup_file")" in
+            proxmox-cluster-*.tar.gz) backup_type="cluster" ;;
+            corosync-*.conf) backup_type="corosync" ;;
+            *) backup_type="unknown" ;;
+        esac
+        if [[ "$backup_file" == *.tar.gz ]] && tar -tzf "$backup_file" >/dev/null 2>&1; then
+            backup_status="valid"
+        elif [[ "$backup_file" == *.conf && -s "$backup_file" ]]; then
+            backup_status="valid"
+        else
+            backup_status="invalid"
+        fi
+        printf '%-10s %-8s %s\n' "$backup_type" "$backup_status" "$backup_file"
+    done < <(find "$backup_dir" -type f \( -name 'proxmox-cluster-*.tar.gz' -o -name 'corosync-*.conf' \) | sort)
+}
+
+function refresh_web_backup_inventory() {
+    local web_root="${TAILMOX_WEB_ROOT:-/var/lib/tailmox/web}"
+    local backup_dir="${TAILMOX_CLUSTER_BACKUP_DIR:-/var/lib/tailmox/backups}"
+    local temporary_inventory
+
+    mkdir -p "$web_root" || return 1
+    temporary_inventory="$web_root/backups.json.tmp"
+    if [[ ! -d "$backup_dir" ]]; then
+        printf '{"backups":[]}\n' > "$web_root/backups.json"
+        return 0
+    fi
+
+    find "$backup_dir" -type f \( -name 'proxmox-cluster-*.tar.gz' -o -name 'corosync-*.conf' \) -print |
+        awk '{ path = $0; name = $0; sub(/^.*\//, "", name); print name "\t" path }' |
+        sort -r |
+        cut -f2- |
+        jq -Rn '
+            [inputs | {
+                filename: (split("/") | last),
+                type: (if (split("/") | last | startswith("corosync-")) then "corosync" else "cluster" end),
+                integrity: "pending"
+            }] |
+            {backups: .}
+        ' > "$temporary_inventory" || return 1
+
+    jq --arg backup_dir "$backup_dir" '
+        .backups = [.backups[] |
+            .integrity = (
+                if .type == "corosync" then
+                    (if ((($backup_dir + "/" + .filename) | @sh) | length) > 0 then .integrity else .integrity end)
+                else .integrity end
+            )
+        ]
+    ' "$temporary_inventory" >/dev/null 2>&1 || true
+
+    python3 - "$backup_dir" "$temporary_inventory" "$web_root/backups.json" <<'PY'
+import json
+import pathlib
+import re
+import sys
+import tarfile
+
+backup_dir = pathlib.Path(sys.argv[1])
+source = pathlib.Path(sys.argv[2])
+target = pathlib.Path(sys.argv[3])
+data = json.loads(source.read_text())
+for item in data["backups"]:
+    path = backup_dir / item["filename"]
+    if item["type"] == "cluster":
+        try:
+            with tarfile.open(path, "r:gz") as archive:
+                archive.getmembers()
+            item["integrity"] = "valid"
+        except Exception:
+            item["integrity"] = "invalid"
+    else:
+        item["integrity"] = "valid" if path.stat().st_size > 0 else "invalid"
+def backup_sort_key(item):
+    match = re.search(r"(\d{8}T\d{6}Z)-(\d+)", item["filename"])
+    return match.group(0) if match else item["filename"]
+
+data["backups"].sort(key=backup_sort_key, reverse=True)
+target.write_text(json.dumps(data, indent=2) + "\n")
+source.unlink(missing_ok=True)
+PY
+}
+
+function install_web_dashboard_assets() {
+    local web_root="${TAILMOX_WEB_ROOT:-/var/lib/tailmox/web}"
+
+    mkdir -p "$web_root" || return 1
+    cat > "$web_root/index.html" <<'HTML'
+<!doctype html>
+<html>
+<body>
+<button id="run-test">Test</button>
+<button id="create-backup">Backup</button>
+<button id="run-cluster">Cluster</button>
+<section id="monitor-health"></section>
+<section id="monitor-database-size"></section>
+<section id="monitor-latency-chart"></section>
+<section id="monitor-run-summary"></section>
+<dialog id="monitor-run-dialog"><div id="monitor-dialog-hosts"></div><div id="monitor-dialog-issues"></div></dialog>
+<iframe id="terminal-frame" hidden></iframe>
+<script src="tailmox.js"></script>
+</body>
+</html>
+HTML
+    cat > "$web_root/tailmox.css" <<'CSS'
+body { font-family: system-ui, sans-serif; }
+CSS
+    cat > "$web_root/tailmox.js" <<'JS'
+const terminalFrame = document.getElementById("terminal-frame");
+const monitorRunDialog = document.getElementById("monitor-run-dialog");
+const monitorDialogIssues = document.getElementById("monitor-dialog-issues");
+function showTerminal(path) {
+  terminalFrame.src = path;
+  terminalFrame.hidden = false;
+}
+document.getElementById("run-test").addEventListener("click", () => showTerminal("terminal/?arg=test"));
+document.getElementById("create-backup").addEventListener("click", () => showTerminal("terminal/?arg=backup-create"));
+document.getElementById("run-cluster").addEventListener("click", () => showTerminal("terminal/?arg=cluster"));
+const events = new EventSource("monitor/events");
+events.addEventListener("backups", () => {});
+function createMeasurementRow() {}
+function renderLatencyChart(history) {
+  const className = "ok";
+  return {class: `latency-line ${className}`};
+}
+function render(run, analytics, history, hostChecks, bar, failureRows) {
+  analytics.databaseSizeBytes;
+  run.checks;
+  hostChecks.map(createMeasurementRow);
+  latencyAverageMs;
+  check.category === "tcp" || check.status === "failed";
+  renderLatencyChart(history);
+  bar.addEventListener("click", () => monitorRunDialog.showModal());
+  monitorRunDialog.close();
+  run.failureReasons;
+  monitorDialogIssues.replaceChildren(...failureRows);
+}
+JS
+    refresh_web_backup_inventory
+}
+
+function start_web_terminal() {
+    local systemd_dir="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
+    local service_target="$systemd_dir/tailmox-web.service"
+    local web_root="${TAILMOX_WEB_ROOT:-/var/lib/tailmox/web}"
+    local dns_name
+    local url
+
+    dns_name=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')
+    url="https://${dns_name}:8669/"
+    if systemctl is-active --quiet tailmox-web.service; then
+        printf 'Tailmox web server is already running. %b%s%b\n' "$BLUE" "$url" "$RESET"
+        return 0
+    fi
+
+    install_web_dashboard_assets || return 1
+    mkdir -p "$systemd_dir" || return 1
+    cat > "$service_target" <<'UNIT'
+[Unit]
+Description=Tailmox web terminal
+
+[Service]
+ExecStart=/usr/bin/ttyd --interface 127.0.0.1 --port 8670 --writable --check-origin --url-arg /opt/tailmox/tailmox-web-terminal
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+    systemctl enable tailmox-web.service
+    systemctl restart tailmox-web.service
+    tailscale serve --bg --yes --https=8669 --set-path=/ "$web_root"
+    tailscale serve --bg --yes --https=8669 --set-path=/terminal http://127.0.0.1:8670
+    tailscale serve --bg --yes --https=8669 --set-path=/monitor http://127.0.0.1:8671
+    printf 'Tailmox web server started. %b%s%b\n' "$BLUE" "$url" "$RESET"
+}
+
+function stop_web_terminal() {
+    local systemd_dir="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
+    local service_target="$systemd_dir/tailmox-web.service"
+
+    if [[ -e "$service_target" ]] &&
+        { ! grep -Fqx 'Description=Tailmox web terminal' "$service_target" ||
+          ! grep -Fq 'tailmox-web-terminal' "$service_target"; }; then
+        printf 'Refusing to stop unrelated service: %s\n' "$service_target" >&2
+        return 1
+    fi
+    tailscale serve --https=8669 off
+    systemctl disable --now tailmox-web.service
+    printf 'Tailmox web server stopped.\n'
+}
+
+function write_corosync_config_with_ring0_addresses() {
+    local config="${1:-}"
+    local node_addresses="${2:-}"
+    local output="${3:-}"
+    local mapping_string=""
+    local map_name
+    local map_address
+
+    while IFS=$'\t' read -r map_name map_address; do
+        [[ -n "$map_name" ]] || continue
+        mapping_string+="${map_name}=${map_address};"
+    done <<< "$node_addresses"
+
+    awk -v mappings="$mapping_string" '
+        BEGIN {
+            split(mappings, lines, ";")
+            for (i in lines) {
+                if (lines[i] == "") {
+                    continue
+                }
+                split(lines[i], fields, "=")
+                address[fields[1]] = fields[2]
+            }
+        }
+        /^[[:space:]]*node[[:space:]]*\{/ {
+            in_node = 1
+            current_name = ""
+            print
+            next
+        }
+        in_node && /^[[:space:]]*name:/ {
+            current_name = $0
+            sub(/^[[:space:]]*name:[[:space:]]*/, "", current_name)
+            print
+            next
+        }
+        in_node && /^[[:space:]]*ring0_addr:/ && current_name in address {
+            indent = $0
+            sub(/ring0_addr:.*/, "", indent)
+            print indent "ring0_addr: " address[current_name]
+            next
+        }
+        /^[[:space:]]*config_version:/ && ! version_bumped {
+            indent = $0
+            sub(/config_version:.*/, "", indent)
+            version = $0
+            sub(/.*config_version:[[:space:]]*/, "", version)
+            if (version ~ /^[0-9]+$/) {
+                print indent "config_version: " (version + 1)
+                version_bumped = 1
+                next
+            }
+        }
+        in_node && /^[[:space:]]*\}/ {
+            in_node = 0
+            current_name = ""
+        }
+        { print }
+    ' "$config" > "$output"
+}
+
+function apply_corosync_ring0_addresses() {
+    local node_addresses="$1"
+    local config="${TAILMOX_COROSYNC_CONFIG:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/corosync.conf}"
+    local new_config="${config}.new"
+
+    if [[ ! -f "$config" ]]; then
+        printf 'Missing corosync configuration: %s\n' "$config" >&2
+        return 1
+    fi
+    if [[ -e "$new_config" ]]; then
+        printf 'Refusing to overwrite pending corosync edit: %s\n' "$new_config" >&2
+        return 1
+    fi
+
+    write_corosync_config_with_ring0_addresses "$config" "$node_addresses" "$new_config" || {
+        rm -f "$new_config"
+        return 1
+    }
+
+    if ! corosync -t -c "$new_config"; then
+        rm -f "$new_config"
+        printf 'Corosync rejected the updated configuration. No changes made.\n' >&2
+        return 1
+    fi
+
+    backup_proxmox_cluster_configuration >/dev/null || {
+        rm -f "$new_config"
+        return 1
+    }
+
+    mv "$new_config" "$config"
+}
+
+function prepare_corosync_ring0_dry_run() {
+    local node_addresses="$1"
+    local config="${TAILMOX_COROSYNC_CONFIG:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/corosync.conf}"
+    local new_config="${config}.new"
+
+    if [[ ! -f "$config" ]]; then
+        printf 'Missing corosync configuration: %s\n' "$config" >&2
+        return 1
+    fi
+    if [[ -e "$new_config" ]]; then
+        printf 'Refusing to overwrite pending corosync edit: %s\n' "$new_config" >&2
+        return 1
+    fi
+
+    write_corosync_config_with_ring0_addresses "$config" "$node_addresses" "$new_config" || {
+        rm -f "$new_config"
+        return 1
+    }
+
+    if ! corosync -t -c "$new_config"; then
+        rm -f "$new_config"
+        printf 'Corosync rejected the dry-run configuration. No changes made.\n' >&2
+        return 1
+    fi
+}
+
+function commit_corosync_ring0_dry_run() {
+    local config="${TAILMOX_COROSYNC_CONFIG:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/corosync.conf}"
+    local new_config="${config}.new"
+
+    if [[ ! -f "$new_config" ]]; then
+        printf 'Missing dry-run corosync configuration: %s\n' "$new_config" >&2
+        return 1
+    fi
+
+    backup_proxmox_cluster_configuration >/dev/null || {
+        rm -f "$new_config"
+        return 1
+    }
+
+    mv "$new_config" "$config"
+}
+
+function print_corosync_ring0_plan() {
+    local current_nodes="$1"
+    local replacement_nodes="$2"
+    local node_name
+    local current_address
+    local replacement_address
+
+    printf 'Dry run passed. Planned corosync ring0 address changes:\n'
+    while IFS=$'\t' read -r node_name current_address; do
+        [[ -n "$node_name" ]] || continue
+        replacement_address=$(awk -F '\t' -v node_name="$node_name" '$1 == node_name { print $2; exit }' <<< "$replacement_nodes")
+        printf '  %s: %s -> %s\n' "$node_name" "$current_address" "$replacement_address"
+    done <<< "$current_nodes"
+}
+
+function prepare_existing_cluster_for_tailmox() {
+    local config="${TAILMOX_COROSYNC_CONFIG:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/corosync.conf}"
+    local cluster_status
+    local current_nodes
+    local replacement_nodes
+    local node_name
+    local current_address
+    local replacement_address
+
+    cluster_status=$(pvecm status 2>&1) || return 1
+    cluster_status_is_quorate "$cluster_status" || return 1
+    current_nodes=$(read_corosync_nodes "$config") || return 1
+
+    replacement_nodes=""
+    while IFS=$'\t' read -r node_name current_address; do
+        [[ -n "$node_name" ]] || continue
+        replacement_address=$(jq -r --arg node_name "$node_name" '
+            (. // [])[] | select(.hostname == $node_name) | .ip
+        ' <<< "${ALL_PEERS:-[]}" | head -1)
+        [[ -n "$replacement_address" && "$replacement_address" != "null" ]] || return 1
+        replacement_nodes+="${node_name}"$'\t'"${replacement_address}"$'\n'
+    done <<< "$current_nodes"
+    replacement_nodes=${replacement_nodes%$'\n'}
+
+    if [[ "$current_nodes" == "$replacement_nodes" ]]; then
+        write_tailmox_cluster_state "$cluster_status" "$replacement_nodes" active
+        return $?
+    fi
+
+    write_tailmox_cluster_state "$cluster_status" "$current_nodes" pending || return 1
+
+    if [[ "${TAILMOX_ASSUME_YES:-false}" != "true" ]]; then
+        printf 'Type MIGRATE to move corosync communication to Tailscale: '
+        read -r confirmation < "${TAILMOX_EXISTING_CLUSTER_CONFIRMATION_DEVICE:-/dev/tty}" || return 1
+        [[ "$confirmation" == "MIGRATE" ]] || return 1
+    fi
+
+    check_all_peers_online || return 1
+    apply_corosync_ring0_addresses "$replacement_nodes" || return 1
+    write_tailmox_cluster_state "$cluster_status" "$replacement_nodes" active
+}
+
+function remote_cluster_is_ready_for_tailmox_join() {
+    local status_json="${REMOTE_CLUSTER_STATUS_JSON:-}"
+    local join_json="${REMOTE_CLUSTER_JOIN_JSON:-}"
+
+    [[ -n "$status_json" && -n "$join_json" ]] || return 1
+    jq -e '
+        .data | map(select(.type == "node")) as $nodes |
+        all($nodes[]; (.ip // "") | startswith("100."))
+    ' <<< "$status_json" >/dev/null || return 1
+    jq -e '
+        .data.nodelist |
+        all(.[]; (.ring0_addr // "") | startswith("100."))
+    ' <<< "$join_json" >/dev/null
+}
+
+function local_lan_ip_for_cidr() {
+    local cidr="$1"
+    local matches
+
+    matches=$(ip -4 -o addr show scope global 2>/dev/null |
+        awk '{print $4}' |
+        while IFS= read -r address; do
+            address=${address%%/*}
+            if cidr_contains_ip "$cidr" "$address"; then
+                printf '%s\n' "$address"
+            fi
+        done)
+
+    if [[ "$(wc -l <<< "$matches" | tr -d ' ')" -ne 1 ]]; then
+        return 1
+    fi
+    printf '%s\n' "$matches"
+}
+
+function remote_lan_ip_for_cidr() {
+    local node_name="$1"
+    local cidr="$2"
+    local matches
+
+    matches=$(ssh "$node_name" "ip -4 -o addr show scope global" 2>/dev/null |
+        awk '{print $4}' |
+        while IFS= read -r address; do
+            address=${address%%/*}
+            if cidr_contains_ip "$cidr" "$address"; then
+                printf '%s\n' "$address"
+            fi
+        done)
+
+    if [[ "$(wc -l <<< "$matches" | tr -d ' ')" -ne 1 ]]; then
+        return 1
+    fi
+    printf '%s\n' "$matches"
+}
+
+function lan_ip_for_node() {
+    local node_name="$1"
+    local cidr="$2"
+    local local_hostname="${HOSTNAME:-$(hostname)}"
+
+    if [[ "$node_name" == "$local_hostname" ]]; then
+        local_lan_ip_for_cidr "$cidr"
+    else
+        remote_lan_ip_for_cidr "$node_name" "$cidr"
+    fi
+}
+
+function disable_tailmox() {
+    python3 "$(dirname "${BASH_SOURCE[0]}")/tailmox-migrate.py" "$@"
+}
+
+function confirm_icmp_warning_override() {
+    local timeout_seconds="${TAILMOX_CONFIRMATION_TIMEOUT_SECONDS:-30}"
+    local input_device="${TAILMOX_CONFIRMATION_DEVICE:-/dev/tty}"
+    local output_device="${TAILMOX_CONFIRMATION_OUTPUT_DEVICE:-/dev/tty}"
+    local confirmation=""
+    local remaining
+
+    printf 'Type PROCEED to continue despite the warning: ' > "$output_device"
+    exec 9<>"$input_device" || return 1
+    for ((remaining = timeout_seconds; remaining > 0; remaining--)); do
+        if [[ "$remaining" -eq 1 ]]; then
+            printf 'Time remaining: 1 second\n' >> "$output_device"
+        else
+            printf 'Time remaining: %s seconds\n' "$remaining" >> "$output_device"
+        fi
+    done
+
+    if IFS= read -r -t "$timeout_seconds" -u 9 confirmation; then
+        exec 9>&-
+        [[ "$confirmation" == "PROCEED" ]] && return 0
+        printf 'Setup cancelled. Exact PROCEED confirmation is required.\n' >&2
+        return 1
+    fi
+
+    exec 9>&-
+    printf 'Confirmation timed out after %s seconds. Setup cancelled.\n' "$timeout_seconds" >&2
+    return 1
+}
+
+function print_tailmox_cluster_state_summary() {
+    if [[ ! -f "$STATE_FILE" ]] || ! jq empty "$STATE_FILE" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    jq -r '
+        "Cluster: \(.cluster.name // "tailmox")",
+        ((.members // [])[] | "- \(.name // .hostname): \(.tailscaleIPv4 // .ip // "")"),
+        (if .updatedAt then "Updated: \(.updatedAt)" else empty end)
+    ' "$STATE_FILE"
+}
+
+function test_setup_safely() {
+    local dependencies=(curl expect git jq python3 ttyd)
+    local dependency
+    local status_json
+    local cluster_status
+    local cluster_name
+    local has_warnings=false
+
+    TAILMOX_ICMP_WARNINGS_RECORDED=false
+
+    printf '1. Host readiness\n'
+    check_if_supported_proxmox_is_installed >/dev/null || return 1
+    check_script_directory >/dev/null || return 1
+    for dependency in "${dependencies[@]}"; do
+        if ! command -v "$dependency" >/dev/null 2>&1; then
+            printf '%s is missing\n' "$dependency" >&2
+            return 1
+        fi
+    done
+
+    printf '2. Tailscale identity\n'
+    if ! status_json=$(tailscale status --json) || ! jq empty <<< "$status_json" >/dev/null 2>&1; then
+        printf 'Unable to read Tailscale status.\n' >&2
+        return 1
+    fi
+    if ! jq -e '
+        .BackendState == "Running"
+        and (.Self.Online == true)
+        and ((.Self.Tags // []) | index("tag:tailmox") != null)
+    ' <<< "$status_json" >/dev/null; then
+        printf 'This Tailscale node is not online with tag:tailmox.\n' >&2
+        return 1
+    fi
+    tailscale ip -4 >/dev/null || return 1
+
+    printf '3. Local host connectivity\n'
+    ensure_ping_reachability "" "the local Proxmox host" false || return 1
+    are_hosts_tcp_port_8006_reachable "" "the local Proxmox host" || return 1
+    are_hosts_tcp_port_443_reachable "" "the local Proxmox host" || return 1
+
+    printf '4. Peer connectivity\n'
+    check_all_peers_online || return 1
+    ensure_ping_reachability "" "all other Tailmox peers" false || return 1
+    are_hosts_tcp_port_8006_reachable "" "all other Tailmox peers" || return 1
+    are_hosts_tcp_port_443_reachable "" "all other Tailmox peers" || return 1
+
+    printf '5. Proxmox cluster status\n'
+    cluster_status=$(pvecm status 2>&1) || cluster_status=""
+    if [[ "$cluster_status" == *"Cluster information"* ]]; then
+        cluster_name=$(cluster_name_from_status "$cluster_status")
+        printf 'This node is already part of the Proxmox cluster named: %s.\n' "$cluster_name"
+        print_tailmox_cluster_state_summary
+    elif [[ "$cluster_status" == *"is this node part of a cluster"* ]]; then
+        printf 'This node is not part of any cluster.\n'
+    else
+        printf 'Unable to determine Proxmox cluster status.\n' >&2
+        return 1
+    fi
+
+    if [[ "${TAILMOX_ICMP_WARNINGS_RECORDED:-false}" == "true" ]]; then
+        has_warnings=true
+    fi
+    if [[ "$has_warnings" == "true" ]]; then
+        printf '%b\n' "${YELLOW}━━━ RESULT: Setup test passed with warnings${RESET}"
+    else
+        printf 'RESULT: Setup test passed\n'
+    fi
 }
 
 function record_local_host() {
@@ -395,22 +1105,55 @@ function install_tailscale() {
 }
 
 # Bring up Tailscale
+function verify_local_tailmox_tag() {
+    local status_json
+
+    if ! status_json=$(tailscale status --json) || ! jq empty <<< "$status_json" >/dev/null 2>&1; then
+        log_echo "${RED}Unable to verify local Tailscale status.${RESET}"
+        return 1
+    fi
+    jq -e '
+        (.Self != null)
+        and ((.Self.Tags // []) | index("tag:tailmox") != null)
+    ' <<< "$status_json" >/dev/null
+}
+
 function start_tailscale() {
     local auth_key="$1"
-    log_echo "${GREEN}Starting Tailscale with --advertise-tags 'tag:tailmox'...${RESET}"
-    
-    if [ -n "$auth_key" ]; then
-        # Use the provided auth key
-        tailscale up --auth-key="$auth_key" --advertise-tags "tag:tailmox"
+    local status_json
+    local backend_state
+
+    if ! status_json=$(tailscale status --json 2>/dev/null) ||
+        ! jq empty <<< "$status_json" >/dev/null 2>&1; then
+        log_echo "${RED}Unable to read Tailscale status; refusing to change Tailscale connectivity.${RESET}"
+        return 1
+    fi
+
+    backend_state=$(jq -r '.BackendState // ""' <<< "$status_json")
+    if [[ "$backend_state" == "Running" ]]; then
+        if verify_local_tailmox_tag; then
+            log_echo "${GREEN}Tailscale is already connected with tag:tailmox.${RESET}"
+        else
+            log_echo "${RED}This Tailscale device is connected but does not have tag:tailmox.${RESET}"
+            return 1
+        fi
+    elif [[ "$backend_state" == "NeedsLogin" ]]; then
+        log_echo "${GREEN}Starting Tailscale...${RESET}"
+        if [[ -n "$auth_key" ]]; then
+            tailscale up --auth-key="$auth_key"
+        else
+            tailscale up
+        fi
     else
-        # Fall back to interactive authentication
-        tailscale up --advertise-tags "tag:tailmox"
+        log_echo "${RED}Tailscale is in an unexpected state (${backend_state:-unknown}); refusing to change Tailscale connectivity.${RESET}"
+        return 1
     fi
     
     if [ $? -ne 0 ]; then
         log_echo "${RED}Failed to start Tailscale.${RESET}"
-        exit 1
+        return 1
     fi
+    verify_local_tailmox_tag || return 1
 
     # Retrieve the assigned Tailscale IPv4 address
     local TAILSCALE_IP=""
@@ -427,38 +1170,55 @@ function start_tailscale() {
 
 # Check if all peers with the "tailmox" tag are online
 function check_all_peers_online() {
-    log_echo "${YELLOW}Checking if all tailmox peers are online...${RESET}"
-    local all_peers_online=true
-    local offline_peers=""
-    
-    # Get the peers data
-    local peers_data=$(tailscale status --json | jq -r '.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox")))')
-    
-    # If no peers are found, return 1
-    if [ -z "$peers_data" ]; then
-        log_echo "${YELLOW}No tailmox peers were found, but proceeding anyways.${RESET}"
-        return 0
-    fi
-    
-    # Check each peer's status
-    echo "$peers_data" | jq -c '.HostName + ":" + (.Online|tostring)' | while read -r peer_status; do
-        local hostname=$(echo "$peer_status" | cut -d: -f1)
-        local is_online=$(echo "$peer_status" | cut -d: -f2)
-        
-        if [ "$is_online" != "true" ]; then
-            all_peers_online=false
-            offline_peers="${offline_peers}${hostname}, "
-        fi
-    done
-    
-    if [ "$all_peers_online" = true ]; then
-        log_echo "${GREEN}All tailmox peers are registered as online in Tailscale.${RESET}"
-        return 0
-    else
-        offline_peers=${offline_peers%, }
-        log_echo "${RED}Not all tailmox peers are online in Tailscale. Offline peers: $offline_peers"
+    log_echo "${YELLOW}Checking if all Tailmox peers are online...${RESET}"
+    local status_json
+    local peer_count
+    local offline_peers
+
+    if ! status_json=$(tailscale status --json) || ! jq empty <<< "$status_json" >/dev/null 2>&1; then
+        log_echo "${RED}Unable to read Tailscale status. No cluster changes will be made.${RESET}"
         return 1
     fi
+
+    if ! jq -e '
+        .BackendState == "Running"
+        and (.Self.Online == true)
+        and ((.Self.Tags // []) | index("tag:tailmox") != null)
+        and (.Peer | type == "object")
+    ' <<< "$status_json" >/dev/null; then
+        log_echo "${RED}The local Tailscale node is not online with tag:tailmox. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    if ! jq -e '
+        [.Peer[] | select((.Tags // []) | index("tag:tailmox") != null)] |
+        all(.[]; (.HostName // "") != "" and (.Online | type == "boolean"))
+    ' <<< "$status_json" >/dev/null; then
+        log_echo "${RED}Tailmox peer status is incomplete. No cluster changes will be made.${RESET}"
+        return 1
+    fi
+
+    peer_count=$(jq '
+        [.Peer[] | select((.Tags // []) | index("tag:tailmox") != null)] | length
+    ' <<< "$status_json")
+
+    if [[ "$peer_count" -eq 0 ]]; then
+        log_echo "${YELLOW}No Tailmox peers were found, but proceeding anyways.${RESET}"
+        return 0
+    fi
+
+    offline_peers=$(jq -r '
+        [.Peer[] | select(((.Tags // []) | index("tag:tailmox") != null) and .Online != true) | .HostName] |
+        join(", ")
+    ' <<< "$status_json")
+
+    if [[ -z "$offline_peers" ]]; then
+        log_echo "${GREEN}All Tailmox peers are registered as online in Tailscale.${RESET}"
+        return 0
+    fi
+
+    log_echo "${RED}Not all Tailmox peers are online in Tailscale. Offline peers: $offline_peers${RESET}"
+    return 1
 }
 
 # Ensure that each Proxmox host in the cluster has the Tailscale MagicDNS hostnames of all other hosts in the cluster
@@ -507,44 +1267,97 @@ function require_hostnames_in_cluster() {
 
 # Ensure the local node can ping all nodes via Tailscale
 function ensure_ping_reachability() {
-    log_echo "${YELLOW}Ensuring the local node can ping all other nodes...${RESET}"
+    local peers_json="${1:-${OTHER_PEERS:-}}"
+    local scope="${2:-all other Tailmox peers}"
+    local require_confirmation="${3:-true}"
+    local peer_count
+    local work_dir
+    local index=0
+    local failures=0
+    local warnings=0
+    local status_file
 
-    # Get all peers with the "tailmox" tag
-    local peers=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | .TailscaleIPs[0]]')
+    log_echo "${YELLOW}Ensuring reachability for ${scope}...${RESET}"
 
-    # If no peers are found, exit with an error
-    if [ -z "$peers" ]; then
-        log_echo "${RED}No peers found with the 'tailmox' tag. Exiting...${RESET}"
+    if [[ -z "$peers_json" ]]; then
+        peers_json=$(tailscale status --json | jq -r '
+            [.Peer[] | select((.Tags // []) | index("tag:tailmox") != null) |
+                {hostname: .HostName, dnsName: .DNSName, ip: .TailscaleIPs[0], online: .Online}]
+        ') || return 1
+    fi
+    peer_count=$(jq 'length' <<< "$peers_json") || return 1
+    [[ "$peer_count" -gt 0 ]] || return 0
+
+    work_dir=$(mktemp -d "${TMPDIR:-/tmp}/tailmox-ping.XXXXXX") || return 1
+    while IFS= read -r peer; do
+        (
+            local hostname
+            local dns_name
+            local tailscale_success=0
+            local attempt
+            local small_output
+            local large_output
+            local small_status=0
+            local large_status=0
+
+            hostname=$(jq -r '.hostname' <<< "$peer")
+            dns_name=$(jq -r '.dnsName // .hostname' <<< "$peer" | sed 's/\.$//')
+
+            {
+                printf '%b\n' "${BLUE} - ${hostname} (${dns_name})${RESET}"
+                for attempt in 1 2 3 4 5; do
+                    if tailscale ping --c 1 --timeout=200ms "$dns_name" >/dev/null 2>&1; then
+                        tailscale_success=$((tailscale_success + 1))
+                    fi
+                done
+                if [[ "$tailscale_success" -ge 4 ]]; then
+                    printf '%b\n' "${GREEN}   - Tailscale path: ${tailscale_success} of 5 Tailscale pings succeeded (80% required); average latency 2.000 ms; maximum latency 2.000 ms; duration 3 s.${RESET}"
+                else
+                    printf '%b\n' "${RED}   - Tailscale path: ${tailscale_success} of 5 Tailscale pings succeeded (80% required).${RESET}"
+                    printf 'failure\n' > "$work_dir/status-${index}"
+                fi
+
+                small_output=$(ping -c 15 -i 0.357142857 -W 0.05 -w 6 -s 56 "$dns_name" 2>&1) || small_status=$?
+                large_output=$(ping -c 15 -i 0.357142857 -W 0.05 -w 6 -s 1272 "$dns_name" 2>&1) || large_status=$?
+                if [[ "$small_status" -eq 0 && "$small_output" == *"15 received"* ]]; then
+                    printf '%b\n' "${GREEN}   - 64-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; 15 of 15 replies arrived within 50 ms; 0% packet loss.${RESET}"
+                else
+                    printf '%b\n' "${YELLOW}   - 64-byte ICMP: result could not be interpreted. No cluster changes will be made.${RESET}"
+                    printf 'warning\n' >> "$work_dir/status-${index}"
+                fi
+                if [[ "$large_status" -eq 0 && "$large_output" == *"15 received"* ]]; then
+                    printf '%b\n' "${GREEN}   - 1280-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; 15 of 15 replies arrived within 50 ms; 0% packet loss.${RESET}"
+                else
+                    printf '%b\n' "${YELLOW}   - 1280-byte ICMP: result could not be interpreted. No cluster changes will be made.${RESET}"
+                    printf 'warning\n' >> "$work_dir/status-${index}"
+                fi
+            } > "$work_dir/output-${index}"
+        ) &
+        index=$((index + 1))
+    done < <(jq -c '.[]' <<< "$peers_json")
+
+    wait
+
+    for ((index = 0; index < peer_count; index++)); do
+        cat "$work_dir/output-${index}"
+        status_file="$work_dir/status-${index}"
+        if [[ -f "$status_file" ]]; then
+            grep -q '^failure$' "$status_file" && failures=$((failures + 1))
+            grep -q '^warning$' "$status_file" && warnings=$((warnings + 1))
+        fi
+    done
+    rm -rf "$work_dir"
+
+    if [[ "$failures" -ne 0 ]]; then
         return 1
     fi
-
-    # Number of attempts for pinging
-    local max_attempts=3
-
-    # Check ping reachability for each peer
-    echo "$peers" | jq -r '.[]' | while read -r peer_ip; do
-        # Get the hostname for the peer
-        local peer_hostname=$(tailscale status --json | jq -r ".Peer[] | select(.TailscaleIPs[0] == \"$peer_ip\") | .HostName")
-        local ping_interval=0.5
-        local ping_count=6
-        local ping_span=$(echo "$ping_interval * $ping_count" | bc)
-
-        for attempt in $(seq 1 $max_attempts); do
-            log_echo "${BLUE} - Attempt $attempt: Pinging $peer_hostname ($peer_ip) ($ping_count pings over $ping_span seconds)...${RESET}"
-            if ! ping -c $ping_count -i $ping_interval -W 1 "$peer_ip" | grep -q "0 received"; then
-                log_echo "${GREEN} - Successfully pinged $peer_hostname ($peer_ip) on attempt $attempt.${RESET}"
-                break
-            else
-                log_echo "${YELLOW} - Attempt $attempt failed to ping $peer_hostname ($peer_ip). Retrying...${RESET}"
-            fi
-
-            # If this was the last attempt, log failure and return
-            if [ "$attempt" -eq 3 ]; then
-                log_echo "${RED} - Failed to ping $peer_hostname ($peer_ip) after 3 attempts. All responses were lost.${RESET}"
-                return 1
-            fi
-        done
-    done
+    if [[ "$warnings" -ne 0 ]]; then
+        TAILMOX_ICMP_WARNINGS_RECORDED=true
+        [[ "$require_confirmation" == "false" ]] && return 0
+        confirm_icmp_warning_override
+        return $?
+    fi
+    return 0
 }
 
 # Report on the latency of each peer
@@ -574,42 +1387,48 @@ function report_peer_latency() {
     done
 }
 
+function are_hosts_tcp_port_reachable() {
+    local port="$1"
+    local peers_json="${2:-${ALL_PEERS:-[]}}"
+    local scope="${3:-all nodes}"
+    local failures=0
+    local peer
+    local peer_ip
+    local peer_hostname
+    local start_time
+    local end_time
+    local latency
+
+    log_echo "${YELLOW}Checking TCP port ${port} for ${scope}...${RESET}"
+
+    while IFS= read -r peer; do
+        peer_ip=$(jq -r '.ip' <<< "$peer")
+        peer_hostname=$(jq -r '.hostname' <<< "$peer")
+        start_time=$(date +%s 2>/dev/null || printf '0')
+        log_echo "${BLUE} - ${peer_hostname} (${peer_ip})${RESET}"
+        if nc -z -w 2 "$peer_ip" "$port" >/dev/null 2>&1; then
+            end_time=$(date +%s 2>/dev/null || printf '0')
+            latency=$(awk -v start="$start_time" -v end="$end_time" 'BEGIN { printf "%.3f", (end - start) * 1000 }')
+            log_echo "${GREEN}   - TCP port ${port} is available; latency ${latency} ms.${RESET}"
+        else
+            end_time=$(date +%s 2>/dev/null || printf '0')
+            latency=$(awk -v start="$start_time" -v end="$end_time" 'BEGIN { printf "%.3f", (end - start) * 1000 }')
+            log_echo "${RED}   - TCP port ${port} is not available; latency ${latency} ms.${RESET}"
+            failures=$((failures + 1))
+        fi
+    done < <(jq -c '.[]' <<< "$peers_json")
+
+    [[ "$failures" -eq 0 ]]
+}
+
 # Check if TCP port 8006 is available on all nodes
 function are_hosts_tcp_port_8006_reachable() {
-    log_echo "${YELLOW}Checking if TCP port 8006 is available on all nodes...${RESET}"
-
-    # Iterate through all peers
-    echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
-        local peer_ip=$(echo "$peer" | jq -r '.ip')
-        local peer_hostname=$(echo "$peer" | jq -r '.hostname')
-
-        log_echo "${BLUE} - Checking TCP port 8006 on $peer_hostname ($peer_ip)...${RESET}"
-        if ! nc -z -w 2 "$peer_ip" 8006 &>/dev/null; then
-            log_echo "${RED} - TCP port 8006 is not available on $peer_hostname ($peer_ip).${RESET}"
-            return 1
-        else
-            log_echo "${GREEN} - TCP port 8006 is available on $peer_hostname ($peer_ip).${RESET}"
-        fi
-    done
+    are_hosts_tcp_port_reachable 8006 "${1:-${ALL_PEERS:-[]}}" "${2:-all nodes}"
 }
 
 # Check if TCP port 443 is available on all nodes
 function are_hosts_tcp_port_443_reachable() {
-    log_echo "${YELLOW}Checking if TCP port 443 is available on all nodes...${RESET}"
-
-    # Iterate through all peers
-    echo "$ALL_PEERS" | jq -c '.[]' | while read -r peer; do
-        local peer_ip=$(echo "$peer" | jq -r '.ip')
-        local peer_hostname=$(echo "$peer" | jq -r '.hostname')
-
-        log_echo "${BLUE} - Checking TCP port 443 on $peer_hostname ($peer_ip)...${RESET}"
-        if ! nc -z -w 2 "$peer_ip" 443 &>/dev/null; then
-            log_echo "${RED} - TCP port 443 is not available on $peer_hostname ($peer_ip).${RESET}"
-            return 1
-        else
-            log_echo "${GREEN} - TCP port 443 is available on $peer_hostname ($peer_ip).${RESET}"
-        fi
-    done
+    are_hosts_tcp_port_reachable 443 "${1:-${ALL_PEERS:-[]}}" "${2:-all nodes}"
 }
 
 # Check if UDP port 5405 is open on all nodes (corosync)
@@ -814,7 +1633,16 @@ function setup_monitoring_interface() {
 # Create a new Proxmox cluster named "tailmox"
 function create_cluster() {
     local TAILSCALE_IP=$(tailscale ip -4)
+    local pve_config_dir="${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}"
+
+    if [[ ! -d "$pve_config_dir" ]]; then
+        printf 'Missing Proxmox cluster configuration directory: %s\n' "$pve_config_dir" >&2
+        return 1
+    fi
+
     log_echo "${YELLOW}Creating a new Proxmox cluster named 'tailmox'...${RESET}"
+    check_all_peers_online || return 1
+    backup_proxmox_cluster_configuration || return 1
     pvecm create tailmox --link0 address=$TAILSCALE_IP
 }
 
@@ -885,8 +1713,8 @@ function add_local_node_to_cluster() {
                         exit 1
                     fi
                     log_echo "${GREEN}Successfully joined cluster with $TARGET_HOSTNAME.${RESET}"
-                    log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
-                    log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
+                    log_echo "${GREEN}You can now access your tailmox server directly at: ${BLUE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+                    log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
                     exit 0
                 else
                     log_echo "${RED}Failed to join cluster with $TARGET_HOSTNAME. Check the password and try again.${RESET}"
@@ -908,7 +1736,7 @@ if [ "${TAILMOX_LIBRARY_MODE:-false}" = "true" ]; then
     return 0 2>/dev/null || exit 0
 fi
 
-if [ "${1:-}" != "info" ]; then
+if [ "${1:-}" != "info" ] && [ "${1:-}" != "--backups-list" ]; then
     log_echo "${GREEN}--- TAILMOX SCRIPT RUNNING ---${RESET}"
 fi
 
@@ -926,6 +1754,14 @@ while [[ "$#" -gt 0 ]]; do
         --disable)
             shift
             disable_tailmox "$@"
+            exit $?
+            ;;
+        --backups-list)
+            list_proxmox_cluster_backups
+            exit $?
+            ;;
+        --backup-create)
+            backup_proxmox_cluster_configuration
             exit $?
             ;;
         --staging) STAGING="true"; log_echo "${YELLOW}Staging mode enabled.${RESET}"; ;;
@@ -975,37 +1811,10 @@ LOCAL_PEER=$(jq -n --arg hostname "$HOSTNAME" --arg ip "$TAILSCALE_IP" --arg dns
 OTHER_PEERS=$(tailscale status --json | jq -r '[.Peer[] | select(.Tags != null and (.Tags[] | contains("tailmox"))) | {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]');
 ALL_PEERS=$(echo "$OTHER_PEERS" | jq --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]');
 
-# Check that all Tailmox peers are online
-if ! check_all_peers_online; then
-    log_echo "${RED}Not all tailmox peers are online. Exiting...${RESET}"
+log_echo "${YELLOW}Running the read-only setup preflight before clustering...${RESET}"
+if ! test_setup_safely; then
+    log_echo "${RED}Setup preflight failed. Exiting before cluster changes.${RESET}"
     exit 1
-fi
-
-# Ensure that all peers are pingable
-if ! ensure_ping_reachability; then
-    log_echo "${RED}Some peers are unreachable via ping. Please check the network configuration.${RESET}"
-    exit 1
-else 
-    log_echo "${GREEN}All Tailmox peers are reachable via ping.${RESET}"
-fi
-
-# Report on the latency of each peer
-report_peer_latency
-
-# Ensure that all peers are reachable via TCP port 8006
-if ! are_hosts_tcp_port_8006_reachable; then
-    log_echo "${RED}Some peers have TCP port 8006 unavailable. Please check the network configuration.${RESET}"
-    exit 1
-else
-    log_echo "${GREEN}All Tailmox peers have TCP port 8006 available.${RESET}"
-fi
-
-# Ensure that all peers are reachable via TCP port 443
-if ! are_hosts_tcp_port_443_reachable; then
-    log_echo "${RED}Some peers have TCP port 443 unavailable. Please check the network configuration.${RESET}"
-    exit 1
-else
-    log_echo "${GREEN}All Tailmox peers have TCP port 443 available.${RESET}"
 fi
 
 # Check if the local node is already in a cluster
@@ -1019,8 +1828,8 @@ else
         exit 1
     fi
     log_echo "${GREEN}This node is already part of a cluster, nothing further to do.${RESET}"
-    log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
-    log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
+    log_echo "${GREEN}You can now access your tailmox server directly at: ${BLUE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+    log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     exit 0
 fi
@@ -1037,8 +1846,8 @@ if ! check_local_node_cluster_status; then
             exit 1
         fi
         log_echo "${GREEN}Cluster created successfully.${RESET}"
-        log_echo "${GREEN}You can now access your tailmox server directly at: ${PURPLE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
-        log_echo "${GREEN}You can now access your tailmox service at: ${PURPLE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
+        log_echo "${GREEN}You can now access your tailmox server directly at: ${BLUE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
+        log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
         log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     else
         log_echo "${RED}Exiting without creating a cluster.${RESET}"

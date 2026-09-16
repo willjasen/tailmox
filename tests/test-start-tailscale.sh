@@ -132,6 +132,12 @@ else
 fi
 
 MOCK_STATUS_FAILURE=true
+TAILSCALE_UP_CALLS=""
+if ! start_tailscale "tskey-test" >/dev/null 2>&1 && [[ -z "$TAILSCALE_UP_CALLS" ]]; then
+    pass "status command failure refuses to change Tailscale connectivity"
+else
+    fail "status command failure refuses to change Tailscale connectivity"
+fi
 if ! verify_local_tailmox_tag >/dev/null 2>&1; then
     pass "post-connection status command failure fails the local tag check"
 else
