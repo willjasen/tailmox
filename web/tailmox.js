@@ -35,8 +35,116 @@ const monitorDialogIssues = document.querySelector("#monitor-dialog-issues");
 const monitorDialogSummary = document.querySelector("#monitor-dialog-summary");
 const monitorState = document.querySelector("#monitor-state");
 const monitorStateLabel = document.querySelector("#monitor-state-label");
+const sectionPicker = document.querySelector("#section-picker");
+const introStatus = document.querySelector("#intro-status");
+const stageAuthKey = document.querySelector("#stage-auth-key");
+const workflowStatus = document.querySelector("#workflow-status");
+const workflowOutput = document.querySelector("#workflow-output");
+let controlCsrfToken = "";
 
 document.querySelector("#host-name").textContent = window.location.hostname;
+
+function showSection(name, updateLocation = true) {
+    const section = document.querySelector(`[data-page="${name}"]`)
+        || document.querySelector('[data-page="intro"]');
+    document.querySelectorAll(".app-page").forEach((page) => {
+        page.hidden = page !== section;
+    });
+    sectionPicker.value = section.dataset.page;
+    if (updateLocation) {
+        window.history.replaceState(null, "", `#${section.dataset.page}`);
+    }
+}
+
+sectionPicker.addEventListener("change", () => showSection(sectionPicker.value));
+document.querySelectorAll("[data-go]").forEach((button) => {
+    button.addEventListener("click", () => showSection(button.dataset.go));
+});
+window.addEventListener("hashchange", () => showSection(window.location.hash.slice(1) || "intro", false));
+showSection(window.location.hash.slice(1) || "intro", false);
+
+function setStep(name, complete) {
+    document.querySelector(`[data-step="${name}"]`)?.classList.toggle("is-complete", complete);
+}
+
+async function loadControlState() {
+    try {
+        const response = await fetch("/control/api/security", {cache: "no-store"});
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to read Tailmox security status.");
+        controlCsrfToken = data.csrfToken || "";
+        const identityReady = Boolean(data.identity?.configured);
+        const configReady = Boolean(data.configReadable);
+        setStep("identity", identityReady);
+        setStep("config", configReady);
+        introStatus.textContent = !identityReady
+            ? "Next: create or import the dedicated Tailmox age identity in Settings."
+            : !configReady
+                ? "Next: review and accept the encrypted configuration migration on every registered host."
+                : "Identity and encrypted configuration are ready. You can stage this host and install analytics.";
+    } catch (error) {
+        introStatus.textContent = `${error.message} Ensure the /control route is published by Tailscale Serve.`;
+    }
+}
+
+const actionLabel = (action) => ({
+    stage: "tailmox stage",
+    "analytics-install": "tailmox analytics install",
+    "analytics-restart": "tailmox analytics restart",
+    "analytics-uninstall": "tailmox analytics uninstall",
+    test: "tailmox test",
+    "backup-create": "tailmox backups create",
+}[action] || "Tailmox workflow");
+
+function renderWorkflow(data) {
+    const running = data.status === "running";
+    document.querySelectorAll(".workflow-action").forEach((button) => { button.disabled = running; });
+    workflowStatus.textContent = data.status === "idle"
+        ? "No workflow is running."
+        : `${actionLabel(data.action)} · ${data.status}${Number.isInteger(data.exitCode) ? ` · exit ${data.exitCode}` : ""}`;
+    workflowOutput.textContent = data.output || "No output.";
+    setStep("stage", data.action === "stage" && data.status === "succeeded");
+    setStep("monitor", data.action === "analytics-install" && data.status === "succeeded");
+}
+
+async function refreshWorkflow() {
+    try {
+        const response = await fetch("/control/api/actions", {cache: "no-store"});
+        const data = await response.json();
+        if (response.ok) renderWorkflow(data);
+    } catch {
+        // The Intro status provides the actionable proxy error.
+    }
+}
+
+async function runWorkflow(action) {
+    if (action === "analytics-uninstall" && !window.confirm("Uninstall Tailmox analytics? Its history will be preserved.")) return;
+    const payload = action === "stage" ? {authKey: stageAuthKey.value} : {};
+    document.querySelectorAll(".workflow-action").forEach((button) => { button.disabled = true; });
+    try {
+        if (!controlCsrfToken) await loadControlState();
+        const response = await fetch(`/control/api/actions/${action}`, {
+            method: "POST",
+            headers: {"Content-Type": "application/json", "X-CSRF-Token": controlCsrfToken},
+            body: JSON.stringify(payload),
+        });
+        stageAuthKey.value = "";
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to start workflow.");
+        renderWorkflow(data);
+    } catch (error) {
+        stageAuthKey.value = "";
+        workflowStatus.textContent = error.message;
+        document.querySelectorAll(".workflow-action").forEach((button) => { button.disabled = false; });
+    }
+}
+
+document.querySelectorAll(".workflow-action").forEach((button) => {
+    button.addEventListener("click", () => runWorkflow(button.dataset.action));
+});
+loadControlState();
+refreshWorkflow();
+window.setInterval(refreshWorkflow, 2000);
 
 function formatMonitorTimestamp(value) {
     const parsed = new Date(value);

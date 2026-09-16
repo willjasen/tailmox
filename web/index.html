@@ -26,16 +26,55 @@
                 </span>
             </a>
 
-            <div class="connection">
-                <span class="connection-dot" aria-hidden="true"></span>
-                <span>
-                    <strong>Private tailnet access</strong>
-                    <small id="host-name">This Proxmox host</small>
-                </span>
+            <div class="topbar-actions">
+                <div class="connection">
+                    <span class="connection-dot" aria-hidden="true"></span>
+                    <span><strong>Private tailnet access</strong><small id="host-name">This Proxmox host</small></span>
+                </div>
+                <label class="section-picker">Section
+                    <select id="section-picker" aria-label="Tailmox section">
+                        <option value="intro">Intro</option>
+                        <option value="staging">Staging</option>
+                        <option value="settings">Settings</option>
+                        <option value="monitor">Monitor</option>
+                    </select>
+                </label>
             </div>
         </header>
 
-        <main class="workspace">
+        <main class="app-main">
+            <section class="app-page intro-page" data-page="intro">
+                <div class="intro-hero">
+                    <p class="eyebrow">Welcome to Tailmox</p>
+                    <h1>Prepare this host, one safe step at a time.</h1>
+                    <p>Tailmox protects cluster settings with one post-quantum age identity and gives every host its own dedicated Ed25519 signing key.</p>
+                </div>
+                <div class="onboarding-grid" id="onboarding-steps">
+                    <article class="onboarding-step" data-step="identity"><span>1</span><div><h2>Create or import the age identity</h2><p>Create the Tailmox identity on the first host, back it up, then import the same identity on every other host.</p><button class="button button-primary" data-go="settings" type="button">Open settings</button></div></article>
+                    <article class="onboarding-step" data-step="config"><span>2</span><div><h2>Encrypt and approve the configuration</h2><p>Existing plaintext settings remain active until every registered host accepts the signed encrypted migration.</p><button class="button button-secondary" data-go="settings" type="button">Review configuration</button></div></article>
+                    <article class="onboarding-step" data-step="stage"><span>3</span><div><h2>Stage the host</h2><p>Install prerequisites, connect Tailscale, configure certificates, and start services without joining a Proxmox cluster.</p><button class="button button-secondary" data-go="staging" type="button">Go to staging</button></div></article>
+                    <article class="onboarding-step" data-step="monitor"><span>4</span><div><h2>Install analytics and monitor</h2><p>Start the periodic analytics collector, then confirm cluster and network health before making cluster changes.</p><button class="button button-secondary" data-go="staging" type="button">Manage services</button></div></article>
+                </div>
+                <p class="intro-status" id="intro-status">Checking this host…</p>
+            </section>
+
+            <section class="app-page" data-page="staging" hidden>
+                <div class="page-heading"><p class="eyebrow">Host workflows</p><h1>Staging and services</h1><p>Only one workflow runs at a time. Output stays on this page.</p></div>
+                <div class="workflow-grid">
+                    <article class="workflow-card"><h2>Stage this host</h2><p>Use an optional reusable or ephemeral Tailscale auth key. It is sent only for this run and is not saved.</p><input id="stage-auth-key" type="password" autocomplete="new-password" placeholder="Optional Tailscale auth key"><button class="button button-primary workflow-action" data-action="stage" type="button">Run tailmox stage</button></article>
+                    <article class="workflow-card"><h2>Analytics</h2><p>Install, restart, or remove the once-per-minute analytics collector. History is preserved.</p><div class="terminal-actions"><button class="button button-secondary workflow-action" data-action="analytics-install" type="button">Install</button><button class="button button-secondary workflow-action" data-action="analytics-restart" type="button">Restart</button><button class="button button-danger workflow-action" data-action="analytics-uninstall" type="button">Uninstall</button></div></article>
+                    <article class="workflow-card"><h2>Maintenance</h2><p>Validate this checkout or create a root-only configuration snapshot.</p><div class="terminal-actions"><button class="button button-secondary workflow-action" data-action="test" type="button">Run tests</button><button class="button button-secondary workflow-action" data-action="backup-create" type="button">Create backup</button></div></article>
+                </div>
+                <div class="workflow-output"><strong id="workflow-status">No workflow is running.</strong><pre id="workflow-output">No workflow has run from this page yet.</pre></div>
+            </section>
+
+            <section class="app-page settings-page" data-page="settings" hidden>
+                <div class="page-heading"><p class="eyebrow">Protected configuration</p><h1>Identity and settings</h1><p>Create or import the cluster age identity, review signed migration proposals, and configure InfluxDB.</p></div>
+                <iframe class="settings-frame" src="/control/editInfluxDB" title="Tailmox encrypted settings"></iframe>
+            </section>
+
+            <section class="app-page" data-page="monitor" hidden>
+              <div class="workspace">
             <section class="monitor-panel" aria-labelledby="monitor-heading">
                 <div class="panel-heading monitor-heading">
                     <div>
@@ -239,6 +278,8 @@
                     Backup contents remain root-only and cannot be downloaded here.
                 </footer>
             </aside>
+              </div>
+            </section>
         </main>
     </div>
 

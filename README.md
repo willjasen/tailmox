@@ -139,6 +139,15 @@ During the running of the script, if there are existing hosts within the tailmox
 
 ### 📈 Monitoring 📈
 
+The Tailmox console on HTTPS port `8669` opens on an Intro page and provides a
+top-right section selector for Intro, Staging, Settings, and Monitor. Intro
+checks the local age identity and encrypted configuration and points to the
+next required step. Staging runs the guarded host and analytics workflows,
+Settings embeds the encrypted configuration interface, and Monitor preserves
+the original analytics dashboard, terminal actions, and backup inventory. The
+console publishes the authenticated monitor service beneath `/control` on the
+same Tailscale Serve listener.
+
 Tailmox installs a lightweight monitoring interface as `tailmox-monitor.service`. It listens locally on port `8088` and is mounted through Tailscale Serve at `/monitor`, so each node can show its own health from:
 
 - `https://HOSTNAME.MAGICDNS_NAME.ts.net/monitor`

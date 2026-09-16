@@ -264,6 +264,16 @@ def influx_settings_payload():
     }
 
 
+def encrypted_config_readable():
+    if not tailmox_config.CONFIG_FILE.is_file():
+        return False
+    try:
+        tailmox_config.current_config()
+        return True
+    except (OSError, tailmox_config.ConfigError):
+        return False
+
+
 def request_identity(headers):
     return headers.get("Tailscale-User-Login", "")
 
@@ -2265,6 +2275,8 @@ class Handler(BaseHTTPRequestHandler):
                         "proposals": tailmox_config.list_proposals(),
                         "legacyConfiguration": os.path.isfile(LEGACY_CONFIG_FILE)
                         or os.path.isfile(INFLUX_ENV_FILE),
+                        "configReadable": encrypted_config_readable(),
+                        "csrfToken": CSRF_TOKEN,
                     },
                 )
             except tailmox_config.ConfigError as error:
