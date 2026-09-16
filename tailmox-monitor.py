@@ -1479,6 +1479,11 @@ INDEX_HTML = """<!doctype html>
     .danger { border-color: rgba(239,68,68,0.5); color: #fecaca; background: rgba(127,29,29,0.3); }
     button:disabled { cursor: wait; opacity: 0.5; }
     .action-meta { margin: 10px 0; color: var(--muted); }
+    #actionDialog { width: min(960px, calc(100vw - 48px)); max-height: 85vh; box-sizing: border-box; border: 1px solid var(--line); border-radius: 12px; padding: 20px; background: var(--panel); color: var(--text); }
+    #actionDialog::backdrop { background: rgba(2,6,23,0.75); }
+    #actionDialog header { gap: 16px; margin-bottom: 12px; }
+    #actionDialog h2 { margin: 0; }
+    #actionOutput { max-height: 60vh; overflow: auto; }
     .message { min-height: 20px; color: var(--muted); }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -1541,8 +1546,7 @@ INDEX_HTML = """<!doctype html>
           <div class="workflow"><h3>Analytics</h3><p>Manage the once-per-minute analytics service. Existing monitoring history is preserved by restart and uninstall.</p><div class="actions"><button class="workflow-button" data-action="analytics-install">Install</button><button class="workflow-button" data-action="analytics-restart">Restart</button><button class="workflow-button danger" data-action="analytics-uninstall">Uninstall</button></div></div>
           <div class="workflow"><h3>Maintenance</h3><p>Run Tailmox's local test suite or create a root-only snapshot of the current cluster configuration.</p><div class="actions"><button class="workflow-button" data-action="test">Run tests</button><button class="workflow-button" data-action="backup-create">Create backup</button></div></div>
         </div>
-        <div class="action-meta" id="actionMeta">Checking workflow status...</div>
-        <pre id="actionOutput">Loading...</pre>
+        <button type="button" id="showActionOutput">View workflow output</button>
       </div>
       <div class="panel" id="tailmoxPanel"><h2>Tailmox</h2><div class="metric" id="tailmoxState">...</div><div class="muted" id="tailmoxDetail"></div></div>
       <div class="panel" id="corosyncPanel"><h2>Corosync</h2><div class="metric" id="corosyncState">...</div><div class="muted" id="corosyncEnabled"></div></div>
@@ -1562,6 +1566,11 @@ INDEX_HTML = """<!doctype html>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
     </section>
   </main>
+  <dialog id="actionDialog" aria-labelledby="actionDialogTitle">
+    <header><h2 id="actionDialogTitle">Workflow output</h2><button type="button" id="closeActionOutput" autofocus>Close</button></header>
+    <div class="action-meta" id="actionMeta" role="status">Checking workflow status...</div>
+    <pre id="actionOutput">Loading...</pre>
+  </dialog>
   <div class="chart-tooltip" id="chartTooltip"></div>
   <script>
     const csrfToken = "__CSRF_TOKEN__";
@@ -1981,9 +1990,15 @@ INDEX_HTML = """<!doctype html>
         renderAction(data);
       } catch (error) { document.getElementById("actionMeta").textContent = error.message; }
     };
+    const actionDialog = document.getElementById("actionDialog");
+    const showActionOutput = () => { if (!actionDialog.open) actionDialog.showModal(); };
+    document.getElementById("showActionOutput").addEventListener("click", showActionOutput);
+    document.getElementById("closeActionOutput").addEventListener("click", () => actionDialog.close());
     const runAction = async action => {
       if (action === "analytics-uninstall" && !window.confirm("Uninstall the Tailmox analytics service? Monitoring history will be preserved.")) return;
       const authInput = document.getElementById("stageAuthKey");
+      document.getElementById("actionDialogTitle").textContent = action === "test" ? "Test output" : "Workflow output";
+      showActionOutput();
       const payload = action === "stage" ? { authKey: authInput.value } : {};
       document.querySelectorAll(".workflow-button").forEach(button => button.disabled = true);
       try {

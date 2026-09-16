@@ -200,7 +200,9 @@ The monitor includes corosync-specific details: whether the `corosync` service i
 The same page is also the Tailmox control console. A signed-in Tailscale user
 can run `tailmox stage`, install, restart, or uninstall `tailmox analytics`, run
 the local test suite, and create a root-only configuration backup. Only one
-workflow runs at a time and its output is shown on the page. A Tailscale auth
+workflow runs at a time and its output opens in a pop-up dialog. Close it with
+Close or Escape, and reopen it with View workflow output. Closing the dialog
+does not stop the workflow. A Tailscale auth
 key entered for staging is passed through a private process environment, is
 cleared from the browser field immediately, and is never placed in command
 arguments or saved in the clustered configuration.
