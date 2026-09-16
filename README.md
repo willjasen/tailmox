@@ -144,7 +144,7 @@ Tailmox installs a lightweight monitoring interface as `tailmox-monitor.service`
 - `https://HOSTNAME.MAGICDNS_NAME.ts.net/monitor`
 - `https://tailmox.MAGICDNS_NAME.ts.net/monitor`
 
-The monitor includes corosync-specific details: whether the `corosync` service is active and enabled, whether the cluster is quorate, expected and current votes, corosync transport, member/ring information from `corosync-cmapctl`, quorum node details from `corosync-quorumtool`, cluster member count over time, and recent `corosync` journal entries.
+The monitor includes corosync-specific details: whether the `corosync` service is active and enabled, whether the cluster is quorate, expected and current votes, corosync transport, member/ring information from `corosync-cmapctl`, quorum node details from `corosync-quorumtool`, cluster member count over time, link-quality history for each peer, and recent `corosync` journal entries.
 
 To export monitor data to InfluxDB 2.x, create `/etc/tailmox-monitor.env` on the node and restart `tailmox-monitor.service`:
 

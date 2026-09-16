@@ -25,6 +25,8 @@ PORT = int(os.environ.get("TAILMOX_MONITOR_PORT", "8088"))
 INFLUX_ENV_FILE = os.environ.get("TAILMOX_INFLUXDB_ENV_FILE", "/etc/tailmox-monitor.env")
 LINK_QUALITY_TTL_SECONDS = 30
 LINK_QUALITY_CACHE = {"generatedAt": 0, "links": []}
+LINK_QUALITY_HISTORY_LIMIT = 120
+LINK_QUALITY_HISTORY = {}
 INFLUX_STATE = {"lastWriteAt": None, "lastError": None}
 CSRF_TOKEN = secrets.token_urlsafe(32)
 MTU_HISTORY_LIMIT = 120
@@ -408,8 +410,38 @@ def collect_link_quality():
     LINK_QUALITY_CACHE["links"] = measure_link_quality(corosync_members, local_ips, now)
     for link in LINK_QUALITY_CACHE["links"]:
         link["hostname"] = peer_names.get(link.get("ip"), "")
+        key = link.get("hostname") or link.get("ip")
+        if key:
+            samples = LINK_QUALITY_HISTORY.setdefault(key, [])
+            samples.append(
+                {
+                    "timestamp": now,
+                    "hostname": link.get("hostname"),
+                    "ip": link.get("ip"),
+                    "avgMs": link.get("avgMs"),
+                    "maxMs": link.get("maxMs"),
+                    "jitterMs": link.get("jitterMs"),
+                    "packetLossPercent": link.get("packetLossPercent"),
+                }
+            )
+            del samples[:-LINK_QUALITY_HISTORY_LIMIT]
     export_link_quality(LINK_QUALITY_CACHE["links"], now)
     return LINK_QUALITY_CACHE
+
+
+def collect_link_quality_history():
+    if not LINK_QUALITY_HISTORY:
+        collect_link_quality()
+    return {
+        "generatedAt": int(time.time()),
+        "series": [
+            {
+                "name": name,
+                "samples": samples,
+            }
+            for name, samples in sorted(LINK_QUALITY_HISTORY.items())
+        ],
+    }
 
 
 def export_link_quality(links, timestamp):
@@ -629,6 +661,9 @@ INDEX_HTML = """<!doctype html>
     .chart .grid-line { stroke: rgba(148,163,184,0.18); stroke-width: 1; }
     .chart .series { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
     .chart .point { fill: var(--accent); }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; color: var(--muted); font-size: 13px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 7px; }
+    .swatch { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
     pre { white-space: pre-wrap; overflow: auto; margin: 0; color: #cbd5e1; font-size: 13px; line-height: 1.45; background: rgba(2,6,23,0.42); border-radius: 6px; padding: 12px; }
     a { color: var(--accent); }
     @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
@@ -653,6 +688,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
       <div class="panel full"><h2>Global MTU Over Time</h2><div class="muted" id="mtuDetail">Loading MTU history...</div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over time"></svg></div>
       <div class="panel full"><h2>Cluster Members Over Time</h2><div class="muted" id="memberCountDetail">Loading member history...</div><svg class="chart" id="memberCountChart" viewBox="0 0 900 220" role="img" aria-label="Cluster members over time"></svg></div>
+      <div class="panel full"><h2>Link Quality Over Time</h2><div class="muted" id="linkQualityGraphDetail">Loading link-quality history...</div><svg class="chart" id="linkQualityChart" viewBox="0 0 900 220" role="img" aria-label="Link quality over time"></svg><div class="legend" id="linkQualityLegend"></div></div>
       <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Hostname</th><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
       <div class="panel full"><h2>Recent Corosync Logs</h2><pre id="logs">Loading...</pre></div>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
@@ -667,6 +703,7 @@ INDEX_HTML = """<!doctype html>
     const qualityClass = (value, warn, bad) => !Number.isFinite(value) ? "bad" : value >= bad ? "bad" : value >= warn ? "warn" : "good";
     const metricCell = (value, text, warn, bad) => `<span class="metric-cell ${qualityClass(value, warn, bad)}">${text}</span>`;
     const number = value => Number.isFinite(value) ? value.toLocaleString() : "auto";
+    const seriesColors = ["#38bdf8", "#2dd4bf", "#a78bfa", "#fb7185", "#f59e0b", "#22c55e", "#e879f9", "#60a5fa"];
     const svg = (name, attrs = {}, content = "") => `<${name} ${Object.entries(attrs).map(([key, value]) => `${key}="${value}"`).join(" ")}>${content}</${name}>`;
     const renderLineChart = (chart, history, valueKey, emptyText, formatLabel = number) => {
       if (!history.length) {
@@ -725,6 +762,51 @@ INDEX_HTML = """<!doctype html>
       text("memberCountDetail", `Current members: ${number(current.memberCount)}; quorum nodes: ${number(current.quorumNodeCount)}. Samples kept: ${(data.history || []).length}.`);
       renderLineChart(document.getElementById("memberCountChart"), history, "memberCount", "No member-count samples collected yet.");
     };
+    const renderLinkQualityHistory = data => {
+      const chart = document.getElementById("linkQualityChart");
+      const legend = document.getElementById("linkQualityLegend");
+      const series = (data.series || []).map((item, index) => ({
+        ...item,
+        color: seriesColors[index % seriesColors.length],
+        samples: (item.samples || []).filter(sample => Number.isFinite(sample.avgMs)),
+      })).filter(item => item.samples.length);
+      const totalSamples = series.reduce((sum, item) => sum + item.samples.length, 0);
+      text("linkQualityGraphDetail", `Average latency by host. Series: ${series.length}; samples: ${totalSamples}.`);
+      legend.innerHTML = series.map(item => `<span class="legend-item"><span class="swatch" style="background:${item.color}"></span>${item.name}</span>`).join("");
+      if (!series.length) {
+        chart.innerHTML = svg("text", { x: 32, y: 112 }, "No link-quality history collected yet.");
+        return;
+      }
+      const allSamples = series.flatMap(item => item.samples);
+      const width = 900, height = 220, left = 58, right = 20, top = 20, bottom = 38;
+      const minTime = Math.min(...allSamples.map(sample => sample.timestamp));
+      const maxTime = Math.max(...allSamples.map(sample => sample.timestamp));
+      const values = allSamples.map(sample => sample.avgMs);
+      const minValue = Math.min(...values);
+      const maxValue = Math.max(...values);
+      const flat = minValue === maxValue;
+      const padding = flat ? Math.max(1, maxValue * 0.25) : Math.max(0.5, (maxValue - minValue) * 0.12);
+      const chartMin = Math.max(0, minValue - padding);
+      const chartMax = maxValue + padding;
+      const span = Math.max(1, chartMax - chartMin);
+      const x = sample => left + ((sample.timestamp - minTime) / Math.max(1, maxTime - minTime)) * (width - left - right);
+      const y = sample => top + (1 - ((sample.avgMs - chartMin) / span)) * (height - top - bottom);
+      const midValue = chartMin + span / 2;
+      const paths = series.map(item => {
+        const points = item.samples.map(sample => `${x(sample).toFixed(1)},${y(sample).toFixed(1)}`).join(" ");
+        const dots = item.samples.map(sample => svg("circle", { cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 3, fill: item.color })).join("");
+        return `<polyline fill="none" stroke="${item.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${points}"></polyline>${dots}`;
+      }).join("");
+      chart.innerHTML = [
+        svg("line", { class: "grid-line", x1: left, y1: top, x2: left, y2: height - bottom }),
+        svg("line", { class: "grid-line", x1: left, y1: height - bottom, x2: width - right, y2: height - bottom }),
+        svg("line", { class: "grid-line", x1: left, y1: top, x2: width - right, y2: top }),
+        svg("text", { x: 10, y: top + 4 }, ms(chartMax)),
+        svg("text", { x: 10, y: top + (height - top - bottom) / 2 + 4 }, ms(midValue)),
+        svg("text", { x: 10, y: height - bottom + 4 }, ms(chartMin)),
+        paths,
+      ].join("");
+    };
     async function refreshStatus() {
       const response = await fetch("/api/status", { cache: "no-store" });
       const data = await response.json();
@@ -755,6 +837,11 @@ INDEX_HTML = """<!doctype html>
       const data = await response.json();
       renderLinkQuality(data.links);
     }
+    async function refreshLinkQualityHistory() {
+      const response = await fetch("/api/link-quality-history", { cache: "no-store" });
+      const data = await response.json();
+      renderLinkQualityHistory(data);
+    }
     async function refreshMtuHistory() {
       const response = await fetch("/api/mtu-history", { cache: "no-store" });
       const data = await response.json();
@@ -770,12 +857,14 @@ INDEX_HTML = """<!doctype html>
       refreshMtuHistory();
       refreshMemberCountHistory();
       refreshLinkQuality();
+      refreshLinkQualityHistory();
     }
     refresh();
     setInterval(refreshStatus, 15000);
     setInterval(refreshMtuHistory, 15000);
     setInterval(refreshMemberCountHistory, 15000);
     setInterval(refreshLinkQuality, 30000);
+    setInterval(refreshLinkQualityHistory, 30000);
   </script>
 </body>
 </html>
@@ -915,6 +1004,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, collect_status())
         elif path == "/api/link-quality":
             self.send_json(200, collect_link_quality())
+        elif path == "/api/link-quality-history":
+            self.send_json(200, collect_link_quality_history())
         elif path == "/api/mtu-history":
             self.send_json(200, collect_mtu_status())
         elif path == "/api/member-count-history":
