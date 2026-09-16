@@ -62,6 +62,9 @@ MAX_HTTP_THREADS = max(1, int(os.environ.get("TAILMOX_MONITOR_MAX_HTTP_THREADS",
 TAILMOX_COMMAND = os.environ.get(
     "TAILMOX_COMMAND", str(pathlib.Path(__file__).with_name("tailmox"))
 )
+TAILMOX_DEPLOY_DIR = os.environ.get("TAILMOX_DEPLOY_DIR", "/opt/tailmox")
+TAILMOX_GIT_COMMAND = os.environ.get("TAILMOX_GIT_COMMAND", "git")
+TAILMOX_SYSTEMCTL_COMMAND = os.environ.get("TAILMOX_SYSTEMCTL_COMMAND", "systemctl")
 ACTION_OUTPUT_LIMIT = 100_000
 ACTION_LOCK = threading.Lock()
 ACTION_STATE = {
@@ -79,7 +82,22 @@ ACTION_COMMANDS = {
     "analytics-install": ["analytics", "install"],
     "analytics-restart": ["analytics", "restart"],
     "analytics-uninstall": ["analytics", "uninstall"],
+    "redeploy": [],
 }
+
+
+def run_redeploy():
+    commands = (([TAILMOX_GIT_COMMAND, "pull", "--ff-only"], TAILMOX_DEPLOY_DIR),
+                ([TAILMOX_SYSTEMCTL_COMMAND, "restart", "tailmox-monitor.service"], None))
+    output = []
+    for command, directory in commands:
+        completed = subprocess.run(command, check=False, capture_output=True, text=True,
+                                   timeout=120, cwd=directory)
+        command_output = "\n".join(part.strip() for part in (completed.stdout, completed.stderr) if part.strip())
+        output.append(f"$ {' '.join(command)}\n{command_output}".rstrip())
+        if completed.returncode != 0:
+            return completed.returncode, "\n\n".join(output)
+    return 0, "\n\n".join(output)
 
 
 def action_snapshot():
@@ -92,18 +110,13 @@ def _run_action(action, auth_key):
     if action == "stage" and auth_key:
         environment["TAILMOX_AUTH_KEY"] = auth_key
     try:
-        completed = subprocess.run(
-            [TAILMOX_COMMAND, *ACTION_COMMANDS[action]],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=3600,
-            env=environment,
-        )
-        output = "\n".join(
-            part.strip() for part in (completed.stdout, completed.stderr) if part.strip()
-        )
-        exit_code = completed.returncode
+        if action == "redeploy":
+            exit_code, output = run_redeploy()
+        else:
+            completed = subprocess.run([TAILMOX_COMMAND, *ACTION_COMMANDS[action]], check=False,
+                                       capture_output=True, text=True, timeout=3600, env=environment)
+            output = "\n".join(part.strip() for part in (completed.stdout, completed.stderr) if part.strip())
+            exit_code = completed.returncode
         status = "succeeded" if exit_code == 0 else "failed"
     except (OSError, subprocess.TimeoutExpired) as error:
         output = str(error)
@@ -1494,6 +1507,7 @@ INDEX_HTML = """<!doctype html>
         <div class="muted" id="subtitle">Loading cluster health...</div>
       </div>
       <div class="actions">
+        <button class="workflow-button redeploy-button" data-action="redeploy" id="redeployButton" type="button">Redeploy Tailmox</button>
         <label class="page-picker">Page
           <select id="pagePicker" aria-label="Tailmox page">
             <option value="id">ID</option>
@@ -1929,6 +1943,7 @@ INDEX_HTML = """<!doctype html>
       "test": "tailmox test", "backup-create": "tailmox backups create",
       "stage": "tailmox stage", "analytics-install": "tailmox analytics install",
       "analytics-restart": "tailmox analytics restart", "analytics-uninstall": "tailmox analytics uninstall",
+      "redeploy": "Redeploy Tailmox",
     }[value] || "Tailmox workflow");
     const renderAction = data => {
       const running = data.status === "running";
@@ -1948,6 +1963,7 @@ INDEX_HTML = """<!doctype html>
     };
     const runAction = async action => {
       if (action === "analytics-uninstall" && !window.confirm("Uninstall the Tailmox analytics service? Monitoring history will be preserved.")) return;
+      if (action === "redeploy" && !window.confirm("Pull the latest Tailmox code and restart the monitor service?")) return;
       const authInput = document.getElementById("stageAuthKey");
       const payload = action === "stage" ? { authKey: authInput.value } : {};
       document.querySelectorAll(".workflow-button").forEach(button => button.disabled = true);

@@ -40,6 +40,7 @@ const introStatus = document.querySelector("#intro-status");
 const stageAuthKey = document.querySelector("#stage-auth-key");
 const workflowStatus = document.querySelector("#workflow-status");
 const workflowOutput = document.querySelector("#workflow-output");
+const redeployButton = document.querySelector("#redeploy-tailmox");
 let controlCsrfToken = "";
 
 document.querySelector("#host-name").textContent = window.location.hostname;
@@ -94,6 +95,7 @@ const actionLabel = (action) => ({
     "analytics-uninstall": "tailmox analytics uninstall",
     test: "tailmox test",
     "backup-create": "tailmox backups create",
+    redeploy: "Redeploy Tailmox",
 }[action] || "Tailmox workflow");
 
 function renderWorkflow(data) {
@@ -138,6 +140,12 @@ async function runWorkflow(action) {
         document.querySelectorAll(".workflow-action").forEach((button) => { button.disabled = false; });
     }
 }
+
+redeployButton?.addEventListener("click", () => {
+    if (window.confirm("Pull the latest Tailmox code and restart the monitor service?")) {
+        runWorkflow("redeploy");
+    }
+});
 
 document.querySelectorAll(".workflow-action").forEach((button) => {
     button.addEventListener("click", () => runWorkflow(button.dataset.action));

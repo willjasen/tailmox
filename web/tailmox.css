@@ -906,6 +906,11 @@ h2 {
     font-weight: 650;
 }
 
+.redeploy-button {
+    border-color: rgba(245, 199, 106, 0.45);
+    color: var(--amber);
+}
+
 .button-test,
 .button-backup,
 .button-primary {
