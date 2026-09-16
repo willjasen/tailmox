@@ -7,7 +7,8 @@ import time
 import unittest
 from unittest.mock import patch
 
-from tailmox_migration_control import MigrationControl, PROMPT
+from tailmox_migration_control import MigrationControl, PROMPT, discover_subnets
+import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 MOCK = "import sys; print('Dry run passed.', flush=True); answer=input(" + repr(PROMPT) + "); print('APPLIED' if answer == 'DISABLE' else 'CANCELLED', flush=True)"
@@ -75,6 +76,28 @@ class ControlTests(unittest.TestCase):
             self.control.start('alice', {'cidr': '10.0.0.0/24'})
 
 
+class SubnetTests(unittest.TestCase):
+    def test_discovery_normalizes_and_groups_lan_networks(self):
+        interfaces = [{'ifname': name, 'addr_info': [{'family': 'inet', 'local': address, 'prefixlen': prefix}]} for name, address, prefix in (
+            ('vmbr0', '192.168.1.11', 24), ('eno1', '192.168.1.12', 24),
+            ('vmbr1', '10.0.0.2', 16), ('tailscale0', '100.64.0.1', 32),
+            ('lo', '127.0.0.1', 8), ('eno2', '169.254.1.1', 16))]
+        with patch('tailmox_migration_control.subprocess.run', return_value=subprocess.CompletedProcess([], 0, json.dumps(interfaces))) as run:
+            result = discover_subnets()
+        self.assertEqual([item['cidr'] for item in result], ['10.0.0.0/16', '192.168.1.0/24'])
+        self.assertEqual(len(result[1]['interfaces']), 2)
+        self.assertEqual(run.call_args.args[0][:4], ['ip', '-j', '-4', 'addr'])
+
+    def test_failed_and_malformed_scans_allow_manual_fallback(self):
+        for value in ('bad json', '{}', '[null]'):
+            with patch('tailmox_migration_control.subprocess.run', return_value=subprocess.CompletedProcess([], 0, value)), self.assertRaisesRegex(RuntimeError, 'manually'):
+                discover_subnets()
+        with patch('tailmox_migration_control.subprocess.run', side_effect=subprocess.TimeoutExpired(['ip'], 10)), self.assertRaises(RuntimeError):
+            discover_subnets()
+        with patch('tailmox_migration_control.subprocess.run', return_value=subprocess.CompletedProcess([], 0, '[]')):
+            self.assertEqual(discover_subnets(), [])
+
+
 class HttpTests(unittest.TestCase):
     def test_page_navigation_authentication_and_csrf(self):
         module = runpy.run_path(str(ROOT / 'tailmox-monitor.py'))
@@ -93,6 +116,11 @@ class HttpTests(unittest.TestCase):
                 getattr(instance, 'do_' + method)()
                 return responses[0]
             self.assertEqual(request('GET', '/disable')[0], 403)
+            self.assertEqual(request('GET', '/api/migration/subnets')[0], 403)
+            with patch.dict(globals_, {'discover_subnets': lambda: [{'cidr': '10.0.0.0/24', 'interfaces': []}]}):
+                code, body = request('GET', '/api/migration/subnets', headers={'Test-User': 'alice'})
+                self.assertEqual(code, 200)
+                self.assertEqual(json.loads(body)['subnets'][0]['cidr'], '10.0.0.0/24')
             status, html = request('GET', '/disable', headers={'Test-User': 'alice'})
             self.assertEqual(status, 200)
             self.assertIn('Run dry run', html)

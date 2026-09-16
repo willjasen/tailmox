@@ -32,7 +32,10 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-heig
 </label></header>
 <section>
 <form id="planForm">
-<label for="cidr">LAN subnet</label><input id="cidr" type="text" placeholder="192.168.1.0/24" required autocomplete="off">
+<label for="subnet">LAN subnet</label>
+<select id="subnet" required><option value="" disabled selected>Scanning host subnets...</option><option value="manual">Enter manually</option></select>
+<p id="scanStatus" role="status"></p>
+<div id="manualSubnet" hidden><label for="cidr">Manual subnet</label><input id="cidr" type="text" placeholder="192.168.1.0/24" autocomplete="off" disabled></div>
 <label><input id="keep" type="checkbox"> Keep Tailscale as a fallback</label>
 <button id="dryRun" type="submit">Run dry run</button>
 </form>
@@ -51,14 +54,27 @@ const apiPrefix = (location.pathname === '/monitor' || location.pathname.startsW
 const byId = id => document.getElementById(id);
 let state = {status: 'idle'};
 let requesting = false;
+let subnetTouched = false;
+function updateSubnetInput() {
+    const manual = byId('subnet').value === 'manual';
+    byId('manualSubnet').hidden = !manual;
+    byId('cidr').required = manual;
+    byId('cidr').disabled = !manual || requesting || ['running', 'awaiting_confirmation', 'applying'].includes(state.status);
+}
+byId('subnet').addEventListener('change', () => { subnetTouched = true; updateSubnetInput(); });
 byId('pagePicker').addEventListener('change', event => { location.href = `${apiPrefix}/${event.target.value.replace(/^\.\/$/, '')}`; });
 function render(data) {
     state = data;
     const busy = ['running', 'awaiting_confirmation', 'applying'].includes(data.status);
-    byId('cidr').disabled = busy || requesting;
+    byId('subnet').disabled = busy || requesting;
     byId('keep').disabled = busy || requesting;
     byId('dryRun').disabled = busy || requesting;
-    if (busy && data.cidr) { byId('cidr').value = data.cidr; byId('keep').checked = data.keepTailscale; }
+    if (busy && data.cidr) {
+        const found = [...byId('subnet').options].some(option => option.value === data.cidr);
+        byId('subnet').value = found ? data.cidr : 'manual';
+        byId('cidr').value = data.cidr; byId('keep').checked = data.keepTailscale;
+    }
+    updateSubnetInput();
     byId('status').textContent = ({idle: 'No migration started', running: 'Dry run in progress', awaiting_confirmation: 'Dry run passed', applying: 'Migration in progress', succeeded: 'Migration complete', failed: 'Migration stopped', cancelled: 'Migration cancelled', expired: 'Confirmation expired'})[data.status] || data.status;
     byId('output').textContent = data.output || '';
     byId('confirmation').hidden = data.status !== 'awaiting_confirmation';
@@ -81,7 +97,8 @@ async function submit(operation, payload) {
 }
 byId('planForm').addEventListener('submit', event => {
     event.preventDefault(); byId('accept').value = '';
-    submit('start', {cidr: byId('cidr').value.trim(), keepTailscale: byId('keep').checked});
+    const cidr = byId('subnet').value === 'manual' ? byId('cidr').value.trim() : byId('subnet').value;
+    submit('start', {cidr, keepTailscale: byId('keep').checked});
 });
 byId('accept').addEventListener('input', () => render(state));
 byId('apply').addEventListener('click', () => submit('decide', {token: state.token, decision: byId('accept').value}));
@@ -93,5 +110,21 @@ async function refresh() {
     }
     setTimeout(refresh, 1500);
 }
+async function scanSubnets() {
+    try {
+        const data = await api('subnets');
+        const selected = byId('subnet').value;
+        const options = data.subnets.map(subnet => new Option(`${subnet.cidr} (${subnet.interfaces.map(item => item.name).join(', ')})`, subnet.cidr));
+        byId('subnet').replaceChildren(new Option('Select a subnet', ''), ...options, new Option('Enter manually', 'manual'));
+        byId('subnet').options[0].disabled = true;
+        byId('subnet').value = subnetTouched ? selected : data.subnets.length ? '' : 'manual';
+        byId('scanStatus').textContent = data.subnets.length ? '' : 'No LAN subnets found on this host.';
+    } catch (error) {
+        byId('subnet').value = 'manual';
+        byId('scanStatus').textContent = error.message;
+    }
+    render(state);
+}
+scanSubnets();
 refresh();
 </script></body></html>
