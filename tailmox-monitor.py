@@ -1292,6 +1292,7 @@ def influx_cmap_knet_history():
         for node in collect_configured_nodes()
         if node.get("nodeid") and node.get("name")
     }
+    local_node_name = socket.gethostname()
     rows = influx_query(f'''
 from(bucket: "{escape_string(config["bucket"])}")
   |> range(start: -6h)
@@ -1313,6 +1314,8 @@ from(bucket: "{escape_string(config["bucket"])}")
         if timestamp is None or value is None or not nodeid or not link or not metric:
             continue
         if active_nodeids and nodeid not in active_nodeids:
+            continue
+        if node_names.get(nodeid) == local_node_name:
             continue
         key = (nodeid, link)
         series = by_link.setdefault(
