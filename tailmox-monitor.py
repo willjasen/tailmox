@@ -1510,6 +1510,11 @@ INDEX_HTML = """<!doctype html>
   </style>
 </head>
 <body>
+    .test-line { display: block; padding: 1px 0; }
+    .test-pass { color: #bbf7d0; }
+    .test-fail { color: #fecdd3; font-weight: 800; }
+    .test-section { color: #bae6fd; font-weight: 800; }
+    .test-summary { color: #fde68a; font-weight: 800; }
   <main>
     <header>
       <div>
@@ -1962,7 +1967,11 @@ INDEX_HTML = """<!doctype html>
       document.getElementById("actionMeta").textContent = data.status === "idle"
         ? "No workflow is running."
         : `${actionLabel(data.action)} · ${data.status}${Number.isInteger(data.exitCode) ? ` · exit ${data.exitCode}` : ""}`;
-      document.getElementById("actionOutput").textContent = data.output || "No output.";
+      const output = data.output || "No output.";
+      document.getElementById("actionOutput").innerHTML = output.split("\\n").map(line => {
+        const className = /^FAIL:|failed|exit [1-9]/i.test(line) ? "test-fail" : /^PASS:|passed|All .* passed/i.test(line) ? "test-pass" : /^==>/.test(line) ? "test-section" : /^\\d+ passed; \\d+ failed/i.test(line) ? "test-summary" : "";
+        return `<span class="test-line ${className}">${escapeHtml(line) || "&nbsp;"}</span>`;
+      }).join("");
     };
     const refreshAction = async () => {
       try {
