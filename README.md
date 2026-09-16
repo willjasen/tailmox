@@ -157,6 +157,8 @@ TAILMOX_INFLUXDB_BUCKET=your-bucket
 
 When configured, Tailmox writes `tailmox_cluster_status`, `tailmox_corosync_member`, `tailmox_corosync_link_quality`, and `tailmox_corosync_config` measurements using InfluxDB line protocol. The cluster status measurement includes active, configured, quorum, and offline node counts. `tailmox_corosync_config` includes the global knet MTU setting, PMTUD interval, knet ping interval and timeout, token timing, consensus timing, max network delay, and related corosync config values. If the env file is absent, the monitor runs without exporting data. The same settings can also be edited from the monitor UI at `/editInfluxDB` when accessed through Tailscale Serve with user identity headers.
 
+The older periodic test collector is still available as `tailmox analytics`. It records `tailmox test` results, latency summaries, and cluster samples in SQLite, and can be installed as `tailmox-analytics.service` with `tailmox analytics install`.
+
 ---
 
 ### 🧪 Testing 🧪
@@ -208,6 +210,10 @@ entry for that host without recreating or rejoining the cluster.
 - reports Proxmox cluster and Tailscale status
 - reports corosync service, quorum, member, vote, and recent log details
 - refreshes the dashboard automatically
+
+`tailmox-monitor` - this is the legacy test analytics collector behind `tailmox analytics`
+- stores periodic `tailmox test` results in SQLite
+- exposes an event stream for the older dashboard assets in `web/`
 
 There are further scripts related to testing in the "test-env" folder.
 

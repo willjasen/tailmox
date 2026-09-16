@@ -72,13 +72,13 @@ install_monitor_service() {
         return 1
     fi
     if [[ -e "$service_target" ]] &&
-        { ! grep -Fqx 'Description=Tailmox health monitor' "$service_target" ||
-          ! grep -Fq '/tailmox monitor ' "$service_target"; }; then
+        { ! grep -Fqx 'Description=Tailmox monitoring interface' "$service_target" ||
+          ! grep -Fq '/tailmox-monitor.py' "$service_target"; }; then
         printf 'Refusing to replace unrelated service: %s\n' "$service_target" >&2
         return 1
     fi
     if ! install -d -m 0755 "$systemd_dir" ||
-        ! install -m 0644 "$service_source" "$service_target"; then
+        ! sed "s|@TAILMOX_DIR@|$TAILMOX_ROOT|g" "$service_source" > "$service_target"; then
         printf 'Unable to install %s.\n' "$service_target" >&2
         return 1
     fi
@@ -89,7 +89,7 @@ install_monitor_service() {
         return 1
     fi
 
-    printf 'Tailmox monitor installed and running once per minute.\n'
+    printf 'Tailmox web monitor installed and running on localhost:8088.\n'
 }
 
 restart_monitor_service() {
@@ -101,8 +101,8 @@ restart_monitor_service() {
         printf 'Tailmox monitor is not installed.\n' >&2
         return 1
     fi
-    if ! grep -Fqx 'Description=Tailmox health monitor' "$service_target" ||
-        ! grep -Fq '/tailmox monitor ' "$service_target"; then
+    if ! grep -Fqx 'Description=Tailmox monitoring interface' "$service_target" ||
+        ! grep -Fq '/tailmox-monitor.py' "$service_target"; then
         printf 'Refusing to restart unrelated service: %s\n' "$service_target" >&2
         return 1
     fi
@@ -111,7 +111,7 @@ restart_monitor_service() {
         return 1
     fi
 
-    printf 'Tailmox monitor restarted. Monitoring history was preserved.\n'
+    printf 'Tailmox web monitor restarted.\n'
 }
 
 uninstall_monitor_service() {
@@ -120,12 +120,12 @@ uninstall_monitor_service() {
     local service_target="$systemd_dir/$service_name"
 
     if [[ ! -e "$service_target" ]]; then
-        printf 'Tailmox monitor is not installed. Monitoring history was preserved.\n'
+        printf 'Tailmox monitor is not installed.\n'
         return 0
     fi
     if [[ -e "$service_target" ]] &&
-        { ! grep -Fqx 'Description=Tailmox health monitor' "$service_target" ||
-          ! grep -Fq '/tailmox monitor ' "$service_target"; }; then
+        { ! grep -Fqx 'Description=Tailmox monitoring interface' "$service_target" ||
+          ! grep -Fq '/tailmox-monitor.py' "$service_target"; }; then
         printf 'Refusing to remove unrelated service: %s\n' "$service_target" >&2
         return 1
     fi
@@ -143,7 +143,92 @@ uninstall_monitor_service() {
         return 1
     fi
 
-    printf 'Tailmox monitor uninstalled. Monitoring history was preserved.\n'
+    printf 'Tailmox web monitor uninstalled.\n'
+}
+
+install_analytics_service() {
+    local systemd_dir="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
+    local service_name="${TAILMOX_ANALYTICS_SERVICE:-tailmox-analytics.service}"
+    local service_source="$TAILMOX_ROOT/tailmox-analytics.service"
+    local service_target="$systemd_dir/$service_name"
+
+    if [[ ! -f "$service_source" ]]; then
+        printf 'Missing analytics service definition: %s\n' "$service_source" >&2
+        return 1
+    fi
+    if [[ -e "$service_target" ]] &&
+        { ! grep -Fqx 'Description=Tailmox test analytics monitor' "$service_target" ||
+          ! grep -Fq '/tailmox analytics ' "$service_target"; }; then
+        printf 'Refusing to replace unrelated service: %s\n' "$service_target" >&2
+        return 1
+    fi
+    if ! install -d -m 0755 "$systemd_dir" ||
+        ! install -m 0644 "$service_source" "$service_target"; then
+        printf 'Unable to install %s.\n' "$service_target" >&2
+        return 1
+    fi
+    if ! systemctl daemon-reload ||
+        ! systemctl enable "$service_name" ||
+        ! systemctl restart "$service_name"; then
+        printf 'Unable to enable and start %s.\n' "$service_name" >&2
+        return 1
+    fi
+
+    printf 'Tailmox analytics monitor installed and running once per minute.\n'
+}
+
+restart_analytics_service() {
+    local systemd_dir="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
+    local service_name="${TAILMOX_ANALYTICS_SERVICE:-tailmox-analytics.service}"
+    local service_target="$systemd_dir/$service_name"
+
+    if [[ ! -e "$service_target" ]]; then
+        printf 'Tailmox analytics monitor is not installed.\n' >&2
+        return 1
+    fi
+    if ! grep -Fqx 'Description=Tailmox test analytics monitor' "$service_target" ||
+        ! grep -Fq '/tailmox analytics ' "$service_target"; then
+        printf 'Refusing to restart unrelated service: %s\n' "$service_target" >&2
+        return 1
+    fi
+    if ! systemctl restart "$service_name"; then
+        printf 'Unable to restart %s.\n' "$service_name" >&2
+        return 1
+    fi
+
+    printf 'Tailmox analytics monitor restarted. Monitoring history was preserved.\n'
+}
+
+uninstall_analytics_service() {
+    local systemd_dir="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
+    local service_name="${TAILMOX_ANALYTICS_SERVICE:-tailmox-analytics.service}"
+    local service_target="$systemd_dir/$service_name"
+
+    if [[ ! -e "$service_target" ]]; then
+        printf 'Tailmox analytics monitor is not installed. Monitoring history was preserved.\n'
+        return 0
+    fi
+    if [[ -e "$service_target" ]] &&
+        { ! grep -Fqx 'Description=Tailmox test analytics monitor' "$service_target" ||
+          ! grep -Fq '/tailmox analytics ' "$service_target"; }; then
+        printf 'Refusing to remove unrelated service: %s\n' "$service_target" >&2
+        return 1
+    fi
+    if ! systemctl disable --now "$service_name"; then
+        printf 'Unable to stop and disable %s; it was not removed.\n' \
+            "$service_name" >&2
+        return 1
+    fi
+    if [[ -e "$service_target" ]] && ! rm -f "$service_target"; then
+        printf 'Unable to remove %s.\n' "$service_target" >&2
+        return 1
+    fi
+    if ! systemctl daemon-reload; then
+        printf 'The service was removed, but systemd could not be reloaded.\n' >&2
+        return 1
+    fi
+
+    printf 'Tailmox analytics monitor uninstalled. Monitoring history was preserved.\n'
 }
 
 show_usage() {
@@ -164,10 +249,14 @@ show_usage() {
  "  tailmox ${blue}backups${reset} [list]     List Tailmox configuration backups" \
  "      ${blue}create${reset}                   Create a configuration backup now" \
  "  tailmox ${blue}test${reset}               Run the regression test suite" \
- "  tailmox ${blue}monitor${reset} [options]  Record test analytics every minute" \
- "      ${blue}install${reset}                  Install and start the background monitor" \
- "      ${blue}restart${reset}                  Restart the installed background monitor" \
- "      ${blue}uninstall${reset}                Stop and remove the background monitor" \
+ "  tailmox ${blue}monitor${reset} [subcommand] Manage the live Corosync web monitor" \
+ "      ${blue}install${reset}                  Install and start the web monitor service" \
+ "      ${blue}restart${reset}                  Restart the web monitor service" \
+ "      ${blue}uninstall${reset}                Stop and remove the web monitor service" \
+ "  tailmox ${blue}analytics${reset} [options] Record test analytics every minute" \
+ "      ${blue}install${reset}                  Install and start the analytics monitor" \
+ "      ${blue}restart${reset}                  Restart the analytics monitor" \
+ "      ${blue}uninstall${reset}                Stop and remove the analytics monitor" \
  "  tailmox ${blue}self-test${reset}          Run the regression test suite" \
  "  tailmox ${blue}help${reset}               Show this help" \
  '' \
@@ -293,6 +382,43 @@ case "${1:-}" in
                     exit 2
                 fi
                 uninstall_monitor_service
+                ;;
+            *)
+                if [[ "$#" -ne 0 ]]; then
+                    printf 'Unknown monitor action: %s\n' "$1" >&2
+                    printf 'Usage: tailmox monitor [install|restart|uninstall]\n' >&2
+                    exit 2
+                fi
+                exec /usr/bin/python3 "$TAILMOX_ROOT/tailmox-monitor.py"
+                ;;
+        esac
+        ;;
+    analytics)
+        shift
+        case "${1:-}" in
+            install)
+                shift
+                if [[ "$#" -ne 0 ]]; then
+                    printf 'tailmox analytics install does not accept arguments.\n' >&2
+                    exit 2
+                fi
+                install_analytics_service
+                ;;
+            restart)
+                shift
+                if [[ "$#" -ne 0 ]]; then
+                    printf 'tailmox analytics restart does not accept arguments.\n' >&2
+                    exit 2
+                fi
+                restart_analytics_service
+                ;;
+            uninstall)
+                shift
+                if [[ "$#" -ne 0 ]]; then
+                    printf 'tailmox analytics uninstall does not accept arguments.\n' >&2
+                    exit 2
+                fi
+                uninstall_analytics_service
                 ;;
             *)
                 exec "$TAILMOX_ROOT/tailmox-monitor" "$@"
