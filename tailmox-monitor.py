@@ -2239,6 +2239,10 @@ EDIT_INFLUX_HTML = """<!doctype html>
           card.className = "proposal";
           const title = document.createElement("strong");
           title.textContent = item.error ? item.proposalId : `Revision ${item.revision} · ${item.summary}`;
+        const monitorOption = document.querySelector('#pagePicker option[value="./"]');
+        if (identity.configured && !monitorOption) {
+          document.getElementById("pagePicker").add(new Option("Monitor", "./"));
+        }
           const detail = document.createElement("div");
           detail.className = "muted";
           detail.textContent = item.error || `Proposed by ${item.proposer}; ${Object.values(item.receipts).filter(value => value === "accepted").length} of ${Object.keys(item.receipts).length} hosts accepted.`;
@@ -2372,6 +2376,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(encoded)
         except (BrokenPipeError, ConnectionResetError):
             return
+ID_HTML = ID_HTML.replace('          <option value="./">Monitor</option>\n', "")
 
     def send_json(self, status, payload):
         self.send_body(status, "application/json", json.dumps(payload))
