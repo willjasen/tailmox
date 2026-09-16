@@ -1998,7 +1998,7 @@ INDEX_HTML = """<!doctype html>
       if (action === "analytics-uninstall" && !window.confirm("Uninstall the Tailmox analytics service? Monitoring history will be preserved.")) return;
       const authInput = document.getElementById("stageAuthKey");
       document.getElementById("actionDialogTitle").textContent = action === "test" ? "Test output" : "Workflow output";
-      showActionOutput();
+      if (action !== "redeploy") showActionOutput();
       const payload = action === "stage" ? { authKey: authInput.value } : {};
       document.querySelectorAll(".workflow-button").forEach(button => button.disabled = true);
       try {
