@@ -27,6 +27,8 @@ SERVICE="$SYSTEMD_DIR/tailmox-monitor.service"
 if [[ ! -f "$SERVICE" ]] ||
     ! grep -Fq 'Description=Tailmox monitoring interface' "$SERVICE" ||
     ! grep -Fq "ExecStart=/usr/bin/python3 $TEST_ROOT/tailmox-monitor.py" "$SERVICE" ||
+    ! grep -Fq 'RestartPreventExitStatus=132' "$SERVICE" ||
+    ! grep -Fq 'StartLimitBurst=3' "$SERVICE" ||
     grep -Fq 'EnvironmentFile=' "$SERVICE" ||
     [[ ! -f "$TEST_ROOT/tailmox_config.py" ]] ||
     ! grep -Fxq 'daemon-reload' "$SYSTEMCTL_CALLS" ||

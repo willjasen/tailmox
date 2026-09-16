@@ -49,6 +49,7 @@ MEMBER_COUNT_HISTORY_LIMIT = 120
 MEMBER_COUNT_HISTORY = []
 CMAP_STATS_INTERVAL_SECONDS = int(os.environ.get("TAILMOX_CMAP_STATS_INTERVAL_SECONDS", "5"))
 CMAP_STATS_THREAD_STARTED = False
+MAX_HTTP_THREADS = max(1, int(os.environ.get("TAILMOX_MONITOR_MAX_HTTP_THREADS", "32")))
 TAILMOX_COMMAND = os.environ.get(
     "TAILMOX_COMMAND", str(pathlib.Path(__file__).with_name("tailmox"))
 )
@@ -2381,8 +2382,24 @@ class Handler(BaseHTTPRequestHandler):
         return
 
 
+class MonitorHTTPServer(ThreadingHTTPServer):
+    """Bound concurrent requests so persistent SSE clients cannot exhaust threads."""
+
+    daemon_threads = True
+    allow_reuse_address = True
+    request_queue_size = 64
+
+    def __init__(self, *args, **kwargs):
+        self._request_slots = threading.BoundedSemaphore(MAX_HTTP_THREADS)
+        super().__init__(*args, **kwargs)
+
+    def process_request_thread(self, request, client_address):
+        with self._request_slots:
+            super().process_request_thread(request, client_address)
+
+
 if __name__ == "__main__":
     start_cmap_stats_exporter()
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
+    server = MonitorHTTPServer((HOST, PORT), Handler)
     print(f"Tailmox monitor listening on http://{HOST}:{PORT}")
     server.serve_forever()
