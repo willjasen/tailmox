@@ -39,6 +39,8 @@ MTU_HISTORY_LIMIT = 120
 MTU_HISTORY = []
 MEMBER_COUNT_HISTORY_LIMIT = 120
 MEMBER_COUNT_HISTORY = []
+CMAP_STATS_INTERVAL_SECONDS = int(os.environ.get("TAILMOX_CMAP_STATS_INTERVAL_SECONDS", "5"))
+CMAP_STATS_THREAD_STARTED = False
 
 
 def run_command(command, timeout=5):
@@ -278,6 +280,96 @@ def write_influx(lines):
         INFLUX_STATE["lastError"] = None
     except (urllib.error.URLError, TimeoutError) as error:
         INFLUX_STATE["lastError"] = str(error)
+
+
+def parse_cmap_stat_line(line):
+    match = re.match(r"(?P<path>[^ ]+) \((?P<type>[^)]+)\) = (?P<value>.*)", line.strip())
+    if not match:
+        return None
+    value_type = match.group("type")
+    if value_type == "str":
+        return None
+    value_text = match.group("value").strip()
+    try:
+        value = float(value_text) if "." in value_text else int(value_text)
+    except ValueError:
+        return None
+    return {
+        "path": match.group("path"),
+        "type": value_type,
+        "value": value,
+    }
+
+
+def cmap_stat_tags(path):
+    parts = path.split(".")
+    tags = {"host": socket.gethostname(), "path": path}
+    if len(parts) >= 3:
+        tags["family"] = parts[1]
+        tags["scope"] = parts[2]
+    if len(parts) >= 5 and parts[1] == "knet" and re.match(r"node[0-9]+", parts[2]) and re.match(r"link[0-9]+", parts[3]):
+        tags.update(
+            {
+                "nodeid": parts[2].removeprefix("node"),
+                "link": parts[3].removeprefix("link"),
+                "metric": ".".join(parts[4:]),
+            }
+        )
+    elif len(parts) >= 4 and parts[1] == "knet":
+        tags["metric"] = ".".join(parts[3:])
+    elif len(parts) >= 4 and parts[1] == "ipcs" and parts[2] != "global":
+        tags.update(
+            {
+                "service": parts[2],
+                "process": parts[3],
+                "metric": ".".join(parts[5:] if len(parts) > 5 else parts[4:]),
+            }
+        )
+    elif len(parts) >= 4:
+        tags["metric"] = ".".join(parts[3:])
+    return tags
+
+
+def collect_cmap_stats():
+    timestamp = int(time.time())
+    result = run_command(["corosync-cmapctl", "-m", "stats"], timeout=8)
+    if not result["ok"]:
+        if result["stderr"]:
+            INFLUX_STATE["lastError"] = result["stderr"]
+        return 0
+    lines = []
+    for line in result["stdout"].splitlines():
+        stat = parse_cmap_stat_line(line)
+        if not stat:
+            continue
+        encoded = line_protocol(
+            "tailmox_corosync_cmap_stat",
+            cmap_stat_tags(stat["path"]),
+            {"value": stat["value"]},
+            timestamp,
+        )
+        if encoded:
+            lines.append(encoded)
+    write_influx(lines)
+    return len(lines)
+
+
+def cmap_stats_loop():
+    while True:
+        try:
+            collect_cmap_stats()
+        except Exception as error:
+            INFLUX_STATE["lastError"] = f"cmap stats export failed: {error}"
+        time.sleep(CMAP_STATS_INTERVAL_SECONDS)
+
+
+def start_cmap_stats_exporter():
+    global CMAP_STATS_THREAD_STARTED
+    if CMAP_STATS_THREAD_STARTED:
+        return
+    CMAP_STATS_THREAD_STARTED = True
+    thread = threading.Thread(target=cmap_stats_loop, name="tailmox-cmap-stats", daemon=True)
+    thread.start()
 
 
 def influx_query(flux, timeout=8):
@@ -1689,6 +1781,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    start_cmap_stats_exporter()
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"Tailmox monitor listening on http://{HOST}:{PORT}")
     server.serve_forever()
