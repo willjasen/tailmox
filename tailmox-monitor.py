@@ -35,6 +35,9 @@ if str(MONITOR_DIR) not in sys.path:
     sys.path.insert(0, str(MONITOR_DIR))
 
 import tailmox_config
+from tailmox_migration_control import MigrationControl
+
+MIGRATION_CONTROL = MigrationControl()
 
 
 HOST = os.environ.get("TAILMOX_MONITOR_HOST", "127.0.0.1")
@@ -142,7 +145,7 @@ def start_action(action, payload):
         raise ValueError("Unknown Tailmox workflow.")
     auth_key = str(payload.get("authKey", "")).strip() if action == "stage" else ""
     with ACTION_LOCK:
-        if ACTION_STATE["status"] == "running":
+        if ACTION_STATE["status"] == "running" or MIGRATION_CONTROL.busy():
             raise RuntimeError("Another Tailmox workflow is already running.")
         ACTION_STATE.update(
             action=action,
@@ -1533,6 +1536,7 @@ INDEX_HTML = """<!doctype html>
             <option value="id">ID</option>
             <option value="settings">Settings</option>
             <option value="./" selected>Monitor</option>
+            <option value="disable">Disable Tailmox</option>
           </select>
         </label>
         <div class="pill" id="overall"><span class="dot"></span><span>Loading</span></div>
@@ -2160,6 +2164,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
           <option value="id">ID</option>
           <option value="settings">Settings</option>
           <option value="./">Monitor</option>
+          <option value="disable">Disable Tailmox</option>
           </select>
         </label>
         <div class="pill" id="overall"><span class="dot"></span><span>Loading</span></div>
@@ -2456,6 +2461,19 @@ class Handler(BaseHTTPRequestHandler):
                 ID_HTML.replace("__CSRF_TOKEN__", CSRF_TOKEN),
                 {"Set-Cookie": "tailmox_csrf=1; Path=/; SameSite=Strict; Secure"},
             )
+        elif path == "/disable":
+            if not self.require_tailscale_user():
+                return
+            self.send_body(200, "text/html; charset=utf-8",
+                           (MONITOR_DIR / "web" / "disable.html").read_text().replace("__CSRF_TOKEN__", CSRF_TOKEN))
+        elif path == "/api/migration":
+            owner = self.require_tailscale_user()
+            if not owner:
+                return
+            try:
+                self.send_json(200, MIGRATION_CONTROL.snapshot(owner))
+            except RuntimeError as error:
+                self.send_json(409, {"error": str(error)})
         elif path == "/settings":
             if not self.require_tailscale_user():
                 return
@@ -2516,10 +2534,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path != "/api/influxdb" and path != "/api/security" and not path.startswith("/api/proposals/") and not path.startswith("/api/actions/"):
+        if path not in ("/api/migration/start", "/api/migration/decide", "/api/influxdb", "/api/security") and not path.startswith("/api/proposals/") and not path.startswith("/api/actions/"):
             self.send_body(404, "text/plain; charset=utf-8", "not found")
             return
-        if not self.require_tailscale_user():
+        owner = self.require_tailscale_user()
+        if not owner:
             return
         if self.headers.get("X-CSRF-Token") != CSRF_TOKEN:
             self.send_json(403, {"error": "Invalid CSRF token."})
@@ -2527,6 +2546,16 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             payload = self.read_json_request()
+            if path == "/api/migration/start":
+                with ACTION_LOCK:
+                    if ACTION_STATE["status"] == "running":
+                        raise RuntimeError("Another Tailmox workflow is already running.")
+                    result = MIGRATION_CONTROL.start(owner, payload)
+                self.send_json(202, result)
+                return
+            if path == "/api/migration/decide":
+                self.send_json(202, MIGRATION_CONTROL.decide(owner, payload))
+                return
             if path.startswith("/api/actions/"):
                 self.send_json(202, start_action(path.removeprefix("/api/actions/"), payload))
                 return

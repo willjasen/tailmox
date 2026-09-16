@@ -166,7 +166,15 @@ connections before advancing. Existing multi-link or non-passive configurations
 are rejected for manual review. No Tailscale service is stopped.
 
 The port 8669 website includes **Move Corosync to LAN** in its terminal actions.
-It opens the same interactive workflow, including input collection, mandatory dry
+The monitor site also has a dedicated **Disable Tailmox** page in the top page
+dropdown (`/disable`, or `/monitor/disable` behind Tailscale Serve). Enter the
+LAN subnet and fallback choice, then select **Run dry run**. The page streams
+the results and only exposes confirmation after the migration process completes
+validation. Type `DISABLE` to apply that same plan, or cancel it. Confirmation
+expires after ten minutes and is restricted to the Tailscale user who started
+the dry run. The process rechecks the cluster before applying the plan.
+
+The port 8669 terminal opens the same interactive workflow, including input collection, mandatory dry
 run and confirmation. The terminal accepts input only for approved workflows and
 does not expose a shell. Existing deployments need their web service updated and
 restarted to enable terminal input.

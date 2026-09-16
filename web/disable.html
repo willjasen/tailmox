@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Disable Tailmox</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; color: #e4e4e7; background: #18181b; font: 16px system-ui, sans-serif; }
+main { max-width: 1100px; margin: auto; padding: 24px; }
+header { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid #52525b; padding-bottom: 20px; }
+h1 { font-size: 26px; margin: 0; }
+h2 { font-size: 18px; }
+label { display: block; margin: 16px 0 8px; }
+input, select, button { font: inherit; padding: 10px; border: 1px solid #71717a; border-radius: 4px; color: inherit; background: #27272a; max-width: 100%; }
+button { cursor: pointer; background: #166534; margin: 12px 8px 0 0; }
+button:disabled { opacity: .5; cursor: default; }
+input[type=text] { width: 320px; }
+input[type=checkbox] { accent-color: #22c55e; }
+section { padding: 18px 0; border-bottom: 1px solid #52525b; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
+.warning { color: #fda4af; max-width: 760px; }
+#cancel { background: #3f3f46; }
+#apply { background: #9f1239; }
+#error { color: #fda4af; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body><main>
+<header><h1>Disable Tailmox</h1><label>Page
+<select id="pagePicker"><option value="id">ID</option><option value="settings">Settings</option><option value="./">Monitor</option><option value="disable" selected>Disable Tailmox</option></select>
+</label></header>
+<section>
+<form id="planForm">
+<label for="cidr">LAN subnet</label><input id="cidr" type="text" placeholder="192.168.1.0/24" required autocomplete="off">
+<label><input id="keep" type="checkbox"> Keep Tailscale as a fallback</label>
+<button id="dryRun" type="submit">Run dry run</button>
+</form>
+<p id="error" role="alert"></p>
+</section>
+<section aria-live="polite"><h2 id="status">No migration started</h2><pre id="output"></pre></section>
+<section id="confirmation" hidden>
+<h2>Confirm migration</h2>
+<p class="warning">This changes cluster networking. A failure can lose quorum and trigger HA recovery. Keep console access available. The dry run does not guarantee live LAN connectivity.</p>
+<label for="accept">Type DISABLE to apply the plan above</label><input id="accept" type="text" autocomplete="off">
+<div><button id="apply" type="button" disabled>Apply migration</button><button id="cancel" type="button">Cancel</button></div>
+</section>
+</main>
+<script>
+const apiPrefix = (location.pathname === '/monitor' || location.pathname.startsWith('/monitor/')) ? '/monitor' : (location.pathname === '/control' || location.pathname.startsWith('/control/')) ? '/control' : '';
+const byId = id => document.getElementById(id);
+let state = {status: 'idle'};
+let requesting = false;
+byId('pagePicker').addEventListener('change', event => { location.href = `${apiPrefix}/${event.target.value.replace(/^\.\/$/, '')}`; });
+function render(data) {
+    state = data;
+    const busy = ['running', 'awaiting_confirmation', 'applying'].includes(data.status);
+    byId('cidr').disabled = busy || requesting;
+    byId('keep').disabled = busy || requesting;
+    byId('dryRun').disabled = busy || requesting;
+    if (busy && data.cidr) { byId('cidr').value = data.cidr; byId('keep').checked = data.keepTailscale; }
+    byId('status').textContent = ({idle: 'No migration started', running: 'Dry run in progress', awaiting_confirmation: 'Dry run passed', applying: 'Migration in progress', succeeded: 'Migration complete', failed: 'Migration stopped', cancelled: 'Migration cancelled', expired: 'Confirmation expired'})[data.status] || data.status;
+    byId('output').textContent = data.output || '';
+    byId('confirmation').hidden = data.status !== 'awaiting_confirmation';
+    byId('apply').disabled = requesting || data.status !== 'awaiting_confirmation' || byId('accept').value !== 'DISABLE';
+    byId('cancel').disabled = requesting;
+}
+async function api(operation, payload) {
+    const response = await fetch(`${apiPrefix}/api/migration${operation ? '/' + operation : ''}`, payload ? {
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': '__CSRF_TOKEN__'}, body: JSON.stringify(payload)
+    } : {cache: 'no-store'});
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Unable to contact migration service.');
+    return data;
+}
+async function submit(operation, payload) {
+    requesting = true; render(state); byId('error').textContent = '';
+    try { render(await api(operation, payload)); }
+    catch (error) { byId('error').textContent = error.message; }
+    finally { requesting = false; render(state); }
+}
+byId('planForm').addEventListener('submit', event => {
+    event.preventDefault(); byId('accept').value = '';
+    submit('start', {cidr: byId('cidr').value.trim(), keepTailscale: byId('keep').checked});
+});
+byId('accept').addEventListener('input', () => render(state));
+byId('apply').addEventListener('click', () => submit('decide', {token: state.token, decision: byId('accept').value}));
+byId('cancel').addEventListener('click', () => submit('decide', {token: state.token, decision: 'cancel'}));
+async function refresh() {
+    if (!requesting) {
+        try { render(await api('')); }
+        catch (error) { byId('error').textContent = error.message; }
+    }
+    setTimeout(refresh, 1500);
+}
+refresh();
+</script></body></html>
