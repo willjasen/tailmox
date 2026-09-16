@@ -577,7 +577,7 @@ monitorEvents.addEventListener("open", () => {
 monitorEvents.addEventListener("error", () => {
     monitorState.classList.remove("is-connected");
     monitorStateLabel.textContent = "Monitor offline";
-    monitorDescription.textContent = "Start tailmox monitor to stream health analytics.";
+    monitorDescription.textContent = "The Tailmox monitor service streams health analytics automatically.";
 });
 monitorEvents.addEventListener("analytics", (event) => {
     try {

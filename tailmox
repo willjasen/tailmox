@@ -389,6 +389,12 @@ case "${1:-}" in
                     printf 'Usage: tailmox monitor [install|restart|uninstall]\n' >&2
                     exit 2
                 fi
+                if systemctl is-active --quiet "${TAILMOX_MONITOR_SERVICE:-tailmox-monitor.service}"; then
+                    printf 'Tailmox monitor is already running via %s on localhost:8088.\n' \
+                        "${TAILMOX_MONITOR_SERVICE:-tailmox-monitor.service}"
+                    printf 'Use tailmox monitor restart to restart it, or open the Tailmox dashboard to view monitoring data.\n'
+                    exit 0
+                fi
                 exec /usr/bin/python3 "$TAILMOX_ROOT/tailmox-monitor.py"
                 ;;
         esac
