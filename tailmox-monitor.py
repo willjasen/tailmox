@@ -30,6 +30,9 @@ import tailmox_config
 HOST = os.environ.get("TAILMOX_MONITOR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TAILMOX_MONITOR_PORT", "8088"))
 INFLUX_ENV_FILE = os.environ.get("TAILMOX_INFLUXDB_ENV_FILE", "/etc/tailmox-monitor.env")
+LEGACY_TAILMOX_CONF_FILE = pathlib.Path(
+    os.environ.get("TAILMOX_CONF_FILE", str(tailmox_config.CLUSTER_DIR / "tailmox.conf"))
+)
 STATE_FILE = pathlib.Path(os.environ.get("TAILMOX_CLUSTER_STATE_FILE", "/etc/pve/tailmox/state.json"))
 LINK_QUALITY_TTL_SECONDS = 30
 LINK_QUALITY_CACHE = {"generatedAt": 0, "links": []}
@@ -157,7 +160,7 @@ def influx_config():
     except (OSError, tailmox_config.ConfigError) as error:
         INFLUX_STATE["lastError"] = str(error)
 
-    legacy = read_env_config_file(TAILMOX_CONF_FILE)
+    legacy = read_env_config_file(LEGACY_TAILMOX_CONF_FILE)
     if not legacy:
         legacy = read_influx_env_file()
     return {
