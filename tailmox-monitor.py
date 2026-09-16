@@ -493,38 +493,49 @@ from(bucket: "{escape_string(config["bucket"])}")
   |> filter(fn: (r) => r._measurement == "tailmox_corosync_config")
   |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r._field == "configured_mtu" or r._field == "discovered_global_mtu" or r._field == "display_mtu" or r._field == "automatic" or r._field == "pmtud_interval_seconds" or r._field == "knet_ping_interval_ms" or r._field == "knet_ping_timeout_ms" or r._field == "token_ms" or r._field == "token_retransmit_ms" or r._field == "token_retransmits_before_loss" or r._field == "consensus_ms" or r._field == "max_network_delay_ms" or r._field == "max_messages" or r._field == "window_size" or r._field == "knet_compression_threshold" or r._field == "knet_compression_level")
-  |> group(columns: [])
-  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
   |> sort(columns: ["_time"])
   |> limit(n: 720)
 ''')
-    history = []
+    by_timestamp = {}
     for row in rows:
         timestamp = influx_time(row.get("_time"))
         if timestamp is None:
             continue
-        history.append(
-            {
-                "timestamp": timestamp,
-                "configuredMtu": influx_int(row, "configured_mtu"),
-                "discoveredGlobalMtu": influx_int(row, "discovered_global_mtu"),
-                "displayMtu": influx_int(row, "display_mtu"),
-                "automatic": influx_bool(row, "automatic"),
-                "pmtudIntervalSeconds": influx_int(row, "pmtud_interval_seconds"),
-                "knetPingIntervalMs": influx_int(row, "knet_ping_interval_ms"),
-                "knetPingTimeoutMs": influx_int(row, "knet_ping_timeout_ms"),
-                "tokenMs": influx_int(row, "token_ms"),
-                "tokenRetransmitMs": influx_int(row, "token_retransmit_ms"),
-                "tokenRetransmitsBeforeLoss": influx_int(row, "token_retransmits_before_loss"),
-                "consensusMs": influx_int(row, "consensus_ms"),
-                "maxNetworkDelayMs": influx_int(row, "max_network_delay_ms"),
-                "maxMessages": influx_int(row, "max_messages"),
-                "windowSize": influx_int(row, "window_size"),
-                "knetCompressionThreshold": influx_int(row, "knet_compression_threshold"),
-                "knetCompressionLevel": influx_int(row, "knet_compression_level"),
-            }
-        )
-    return history
+        sample = by_timestamp.setdefault(timestamp, {"timestamp": timestamp})
+        field = row.get("_field")
+        if field == "configured_mtu":
+            sample["configuredMtu"] = influx_int(row, "_value")
+        elif field == "discovered_global_mtu":
+            sample["discoveredGlobalMtu"] = influx_int(row, "_value")
+        elif field == "display_mtu":
+            sample["displayMtu"] = influx_int(row, "_value")
+        elif field == "automatic":
+            sample["automatic"] = influx_bool(row, "_value")
+        elif field == "pmtud_interval_seconds":
+            sample["pmtudIntervalSeconds"] = influx_int(row, "_value")
+        elif field == "knet_ping_interval_ms":
+            sample["knetPingIntervalMs"] = influx_int(row, "_value")
+        elif field == "knet_ping_timeout_ms":
+            sample["knetPingTimeoutMs"] = influx_int(row, "_value")
+        elif field == "token_ms":
+            sample["tokenMs"] = influx_int(row, "_value")
+        elif field == "token_retransmit_ms":
+            sample["tokenRetransmitMs"] = influx_int(row, "_value")
+        elif field == "token_retransmits_before_loss":
+            sample["tokenRetransmitsBeforeLoss"] = influx_int(row, "_value")
+        elif field == "consensus_ms":
+            sample["consensusMs"] = influx_int(row, "_value")
+        elif field == "max_network_delay_ms":
+            sample["maxNetworkDelayMs"] = influx_int(row, "_value")
+        elif field == "max_messages":
+            sample["maxMessages"] = influx_int(row, "_value")
+        elif field == "window_size":
+            sample["windowSize"] = influx_int(row, "_value")
+        elif field == "knet_compression_threshold":
+            sample["knetCompressionThreshold"] = influx_int(row, "_value")
+        elif field == "knet_compression_level":
+            sample["knetCompressionLevel"] = influx_int(row, "_value")
+    return sorted(by_timestamp.values(), key=lambda sample: sample["timestamp"])[-720:]
 
 
 def collect_mtu_history():
@@ -658,8 +669,6 @@ from(bucket: "{escape_string(config["bucket"])}")
   |> filter(fn: (r) => r._measurement == "tailmox_corosync_link_quality")
   |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r._field == "packet_loss_percent" or r._field == "avg_ms" or r._field == "max_ms" or r._field == "jitter_ms")
-  |> group(columns: ["peer_host", "peer_ip"])
-  |> pivot(rowKey: ["_time", "peer_host", "peer_ip"], columnKey: ["_field"], valueColumn: "_value")
   |> sort(columns: ["_time"])
   |> limit(n: 2880)
 ''')
@@ -671,19 +680,28 @@ from(bucket: "{escape_string(config["bucket"])}")
         name = row.get("peer_host") or row.get("peer_ip")
         if not name:
             continue
-        samples = by_peer.setdefault(name, [])
-        samples.append(
+        samples = by_peer.setdefault(name, {})
+        sample = samples.setdefault(
+            timestamp,
             {
                 "timestamp": timestamp,
                 "hostname": row.get("peer_host"),
                 "ip": row.get("peer_ip"),
-                "avgMs": influx_float(row, "avg_ms"),
-                "maxMs": influx_float(row, "max_ms"),
-                "jitterMs": influx_float(row, "jitter_ms"),
-                "packetLossPercent": influx_float(row, "packet_loss_percent"),
-            }
+            },
         )
-    return [{"name": name, "samples": samples[-720:]} for name, samples in sorted(by_peer.items())]
+        field = row.get("_field")
+        if field == "avg_ms":
+            sample["avgMs"] = influx_float(row, "_value")
+        elif field == "max_ms":
+            sample["maxMs"] = influx_float(row, "_value")
+        elif field == "jitter_ms":
+            sample["jitterMs"] = influx_float(row, "_value")
+        elif field == "packet_loss_percent":
+            sample["packetLossPercent"] = influx_float(row, "_value")
+    return [
+        {"name": name, "samples": sorted(samples.values(), key=lambda sample: sample["timestamp"])[-720:]}
+        for name, samples in sorted(by_peer.items())
+    ]
 
 
 def export_link_quality(links, timestamp):
@@ -902,26 +920,27 @@ from(bucket: "{escape_string(config["bucket"])}")
   |> filter(fn: (r) => r._measurement == "tailmox_cluster_status")
   |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r._field == "member_count" or r._field == "quorum_node_count" or r._field == "configured_node_count" or r._field == "offline_node_count" or r._field == "quorate")
-  |> group(columns: [])
-  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
   |> sort(columns: ["_time"])
   |> limit(n: 720)
 ''')
-    history = []
+    by_timestamp = {}
     for row in rows:
         timestamp = influx_time(row.get("_time"))
         if timestamp is None:
             continue
-        history.append(
-            {
-                "timestamp": timestamp,
-                "memberCount": influx_int(row, "member_count"),
-                "quorumNodeCount": influx_int(row, "quorum_node_count"),
-                "configuredNodeCount": influx_int(row, "configured_node_count"),
-                "offlineNodeCount": influx_int(row, "offline_node_count"),
-                "quorate": influx_bool(row, "quorate"),
-            }
-        )
+        sample = by_timestamp.setdefault(timestamp, {"timestamp": timestamp})
+        field = row.get("_field")
+        if field == "member_count":
+            sample["memberCount"] = influx_int(row, "_value")
+        elif field == "quorum_node_count":
+            sample["quorumNodeCount"] = influx_int(row, "_value")
+        elif field == "configured_node_count":
+            sample["configuredNodeCount"] = influx_int(row, "_value")
+        elif field == "offline_node_count":
+            sample["offlineNodeCount"] = influx_int(row, "_value")
+        elif field == "quorate":
+            sample["quorate"] = influx_bool(row, "_value")
+    history = sorted(by_timestamp.values(), key=lambda sample: sample["timestamp"])
     return [sample for sample in history if sample["memberCount"] is not None]
 
 
