@@ -30,8 +30,11 @@ import tailmox_config
 HOST = os.environ.get("TAILMOX_MONITOR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TAILMOX_MONITOR_PORT", "8088"))
 INFLUX_ENV_FILE = os.environ.get("TAILMOX_INFLUXDB_ENV_FILE", "/etc/tailmox-monitor.env")
-LEGACY_TAILMOX_CONF_FILE = pathlib.Path(
-    os.environ.get("TAILMOX_CONF_FILE", str(tailmox_config.CLUSTER_DIR / "tailmox.conf"))
+LEGACY_CONFIG_FILE = pathlib.Path(
+    os.environ.get(
+        "TAILMOX_LEGACY_CONFIG_FILE",
+        os.environ.get("TAILMOX_CONF_FILE", str(tailmox_config.CLUSTER_DIR / "tailmox.conf")),
+    )
 )
 STATE_FILE = pathlib.Path(os.environ.get("TAILMOX_CLUSTER_STATE_FILE", "/etc/pve/tailmox/state.json"))
 LINK_QUALITY_TTL_SECONDS = 30
@@ -147,6 +150,9 @@ def run_command(command, timeout=5):
 
 
 def influx_config():
+    if not tailmox_config.CONFIG_FILE.is_file():
+        legacy = read_legacy_config()
+        return influx_values(legacy)
     try:
         config = tailmox_config.current_config()["influxdb"]
         normalized = {
@@ -160,15 +166,7 @@ def influx_config():
     except (OSError, tailmox_config.ConfigError) as error:
         INFLUX_STATE["lastError"] = str(error)
 
-    legacy = read_env_config_file(LEGACY_TAILMOX_CONF_FILE)
-    if not legacy:
-        legacy = read_influx_env_file()
-    return {
-        "url": legacy.get("TAILMOX_INFLUXDB_URL", "").rstrip("/"),
-        "token": legacy.get("TAILMOX_INFLUXDB_TOKEN", ""),
-        "org": legacy.get("TAILMOX_INFLUXDB_ORG", ""),
-        "bucket": legacy.get("TAILMOX_INFLUXDB_BUCKET", ""),
-    }
+    return influx_values(read_legacy_config())
 
 
 def read_env_config_file(path):
@@ -186,8 +184,26 @@ def read_env_config_file(path):
     return config
 
 
-def read_influx_env_file():
-    return read_env_config_file(INFLUX_ENV_FILE)
+def read_legacy_config():
+    clustered = read_env_config_file(LEGACY_CONFIG_FILE)
+    return clustered or read_env_config_file(INFLUX_ENV_FILE)
+
+
+def influx_values(values):
+    return {
+        "url": str(values.get("TAILMOX_INFLUXDB_URL", "")).rstrip("/"),
+        "token": str(values.get("TAILMOX_INFLUXDB_TOKEN", "")),
+        "org": str(values.get("TAILMOX_INFLUXDB_ORG", "")),
+        "bucket": str(values.get("TAILMOX_INFLUXDB_BUCKET", "")),
+    }
+
+
+def remove_legacy_config():
+    for path in (LEGACY_CONFIG_FILE, INFLUX_ENV_FILE):
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
 
 
 def save_influx_config(data):
@@ -214,7 +230,7 @@ def save_influx_config(data):
 
 def initialize_encrypted_configuration(identity_result):
     tailmox_config.enroll_local_host()
-    legacy = read_influx_env_file()
+    legacy = read_legacy_config()
     if tailmox_config.CONFIG_FILE.is_file() or not legacy:
         return identity_result
     pending = [
@@ -226,17 +242,12 @@ def initialize_encrypted_configuration(identity_result):
         identity_result["migrationProposal"] = pending[0]
         return identity_result
     config = tailmox_config.current_config()
-    config["influxdb"] = {
-        "url": legacy.get("TAILMOX_INFLUXDB_URL", "").rstrip("/"),
-        "token": legacy.get("TAILMOX_INFLUXDB_TOKEN", ""),
-        "org": legacy.get("TAILMOX_INFLUXDB_ORG", ""),
-        "bucket": legacy.get("TAILMOX_INFLUXDB_BUCKET", ""),
-    }
+    config["influxdb"] = influx_values(legacy)
     identity_result["migrationProposal"] = tailmox_config.propose_config(
-        config, "Migrate legacy InfluxDB settings to encrypted storage"
+        config, "Migrate plaintext Tailmox configuration to encrypted storage"
     )
     if identity_result["migrationProposal"].get("activated"):
-        os.unlink(INFLUX_ENV_FILE)
+        remove_legacy_config()
     return identity_result
 
 
@@ -1865,8 +1876,8 @@ EDIT_INFLUX_HTML = """<!doctype html>
       try {
         const data = await api("/api/security");
         document.getElementById("securityStatus").textContent = data.identity.configured
-          ? `${data.identity.postQuantum ? "Post-quantum age identity" : "Classic imported age identity"} ready · dedicated Ed25519 signer ready on ${data.identity.host}`
-          : "Create the cluster identity on the first host, or add the existing cluster identity here.";
+          ? `${data.identity.postQuantum ? "Post-quantum age identity" : "Classic imported age identity"} ready · dedicated Ed25519 signer ready on ${data.identity.host}${data.legacyConfiguration ? " · plaintext configuration migration pending" : ""}`
+          : `Create the cluster identity on the first host, or add the existing cluster identity here.${data.legacyConfiguration ? " Existing plaintext settings will remain active until the encrypted migration is approved." : ""}`;
         document.getElementById("createIdentity").disabled = Boolean(data.identity.recipient);
         const proposals = document.getElementById("proposals");
         proposals.replaceChildren(...data.proposals.filter(item => !item.activated).map(item => {
@@ -2050,6 +2061,8 @@ class Handler(BaseHTTPRequestHandler):
                     {
                         "identity": tailmox_config.identity_status(),
                         "proposals": tailmox_config.list_proposals(),
+                        "legacyConfiguration": os.path.isfile(LEGACY_CONFIG_FILE)
+                        or os.path.isfile(INFLUX_ENV_FILE),
                     },
                 )
             except tailmox_config.ConfigError as error:
@@ -2091,12 +2104,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, initialize_encrypted_configuration(result))
                 return
             proposal_id = path.removeprefix("/api/proposals/")
-            self.send_json(
-                200,
-                tailmox_config.decide_proposal(
-                    proposal_id, str(payload.get("decision", ""))
-                ),
+            result = tailmox_config.decide_proposal(
+                proposal_id, str(payload.get("decision", ""))
             )
+            if result.get("activated"):
+                remove_legacy_config()
+            self.send_json(200, result)
         except (ValueError, json.JSONDecodeError, UnicodeError) as error:
             self.send_json(400, {"error": str(error)})
         except RuntimeError as error:

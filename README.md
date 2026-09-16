@@ -177,11 +177,12 @@ hosts have written valid signed acceptance receipts. A rejection or missing
 receipt keeps the previous configuration active. The proposing host records
 its own acceptance when it creates the proposal.
 
-An existing `/etc/tailmox-monitor.env` is treated as legacy plaintext. After
-the age identity and host signer are initialized, the web interface proposes
-an encrypted migration. The plaintext file is removed only after that proposal
-is activated. The monitor service no longer loads credentials from an
-environment file.
+Existing `/etc/pve/tailmox/tailmox.conf` and `/etc/tailmox-monitor.env` files
+are treated as legacy plaintext. Tailmox continues using the existing settings
+so monitoring is not interrupted. After the age identity and host signer are
+initialized, the web interface automatically creates an encrypted migration
+proposal. The plaintext files are removed only after every registered host has
+accepted that exact revision and it becomes active.
 
 When configured, Tailmox writes `tailmox_cluster_status`,
 `tailmox_corosync_member`, `tailmox_corosync_link_quality`, and
