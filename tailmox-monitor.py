@@ -294,28 +294,51 @@ def parse_cmap_value(output, key):
     return None
 
 
+def int_or_none(value):
+    try:
+        return int(value) if value is not None else None
+    except ValueError:
+        return None
+
+
 def collect_mtu_status():
     now = int(time.time())
-    cmap = run_command(["corosync-cmapctl", "runtime.config.totem.knet_mtu", "runtime.config.totem.knet_pmtud_interval"])
+    cmap_keys = [
+        "runtime.config.totem.knet_mtu",
+        "runtime.config.totem.knet_pmtud_interval",
+        "runtime.config.totem.interface.0.knet_ping_interval",
+        "runtime.config.totem.interface.0.knet_ping_timeout",
+        "runtime.config.totem.token",
+        "runtime.config.totem.token_retransmit",
+        "runtime.config.totem.token_retransmits_before_loss_const",
+        "runtime.config.totem.consensus",
+        "runtime.config.totem.max_network_delay",
+        "runtime.config.totem.max_messages",
+        "runtime.config.totem.window_size",
+        "runtime.config.totem.knet_compression_threshold",
+        "runtime.config.totem.knet_compression_level",
+    ]
+    cmap = run_command(["corosync-cmapctl", *cmap_keys])
     raw_mtu = parse_cmap_value(cmap["stdout"], "runtime.config.totem.knet_mtu")
-    raw_interval = parse_cmap_value(cmap["stdout"], "runtime.config.totem.knet_pmtud_interval")
-
-    try:
-        mtu = int(raw_mtu) if raw_mtu is not None else None
-    except ValueError:
-        mtu = None
-
-    try:
-        pmtud_interval = int(raw_interval) if raw_interval is not None else None
-    except ValueError:
-        pmtud_interval = None
+    mtu = int_or_none(raw_mtu)
 
     sample = {
         "timestamp": now,
         "configuredMtu": mtu,
         "displayMtu": None if mtu == 0 else mtu,
         "automatic": mtu == 0,
-        "pmtudIntervalSeconds": pmtud_interval,
+        "pmtudIntervalSeconds": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.knet_pmtud_interval")),
+        "knetPingIntervalMs": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.interface.0.knet_ping_interval")),
+        "knetPingTimeoutMs": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.interface.0.knet_ping_timeout")),
+        "tokenMs": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.token")),
+        "tokenRetransmitMs": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.token_retransmit")),
+        "tokenRetransmitsBeforeLoss": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.token_retransmits_before_loss_const")),
+        "consensusMs": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.consensus")),
+        "maxNetworkDelayMs": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.max_network_delay")),
+        "maxMessages": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.max_messages")),
+        "windowSize": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.window_size")),
+        "knetCompressionThreshold": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.knet_compression_threshold")),
+        "knetCompressionLevel": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.knet_compression_level")),
     }
     if not MTU_HISTORY or MTU_HISTORY[-1]["timestamp"] != now:
         MTU_HISTORY.append(sample)
@@ -331,13 +354,24 @@ def collect_mtu_status():
 
 def export_mtu_status(sample):
     line = line_protocol(
-        "tailmox_corosync_mtu",
+        "tailmox_corosync_config",
         {"host": socket.gethostname()},
         {
             "configured_mtu": sample.get("configuredMtu"),
             "display_mtu": sample.get("displayMtu"),
             "automatic": sample.get("automatic"),
             "pmtud_interval_seconds": sample.get("pmtudIntervalSeconds"),
+            "knet_ping_interval_ms": sample.get("knetPingIntervalMs"),
+            "knet_ping_timeout_ms": sample.get("knetPingTimeoutMs"),
+            "token_ms": sample.get("tokenMs"),
+            "token_retransmit_ms": sample.get("tokenRetransmitMs"),
+            "token_retransmits_before_loss": sample.get("tokenRetransmitsBeforeLoss"),
+            "consensus_ms": sample.get("consensusMs"),
+            "max_network_delay_ms": sample.get("maxNetworkDelayMs"),
+            "max_messages": sample.get("maxMessages"),
+            "window_size": sample.get("windowSize"),
+            "knet_compression_threshold": sample.get("knetCompressionThreshold"),
+            "knet_compression_level": sample.get("knetCompressionLevel"),
         },
         sample["timestamp"],
     )
