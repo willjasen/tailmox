@@ -2324,6 +2324,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
         document.getElementById("token").placeholder = data.tokenConfigured ? "Current token is saved; leave blank to keep it" : "Paste an InfluxDB token";
         message.className = "message ok";
         message.textContent = data.proposal?.activated
+      if (!document.getElementById("influxForm")) return;
           ? "Saved and activated after host approval."
           : "Proposal saved. Every registered host must accept it before activation.";
         await loadSecurity();
