@@ -26,6 +26,7 @@ from urllib.parse import urlparse
 HOST = os.environ.get("TAILMOX_MONITOR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TAILMOX_MONITOR_PORT", "8088"))
 INFLUX_ENV_FILE = os.environ.get("TAILMOX_INFLUXDB_ENV_FILE", "/etc/tailmox-monitor.env")
+STATE_FILE = pathlib.Path(os.environ.get("TAILMOX_CLUSTER_STATE_FILE", "/etc/pve/tailmox/state.json"))
 LINK_QUALITY_TTL_SECONDS = 30
 LINK_QUALITY_CACHE = {"generatedAt": 0, "links": []}
 LINK_QUALITY_HISTORY_LIMIT = 120
@@ -131,6 +132,76 @@ def request_identity(headers):
 def influx_enabled():
     config = influx_config()
     return all(config.values())
+
+
+def collect_tailmox_state(configured_nodes):
+    state = {
+        "active": False,
+        "status": "missing",
+        "detail": "state file missing",
+        "stateFile": str(STATE_FILE),
+        "clusterName": None,
+        "memberCount": 0,
+        "activeMemberCount": 0,
+        "configuredNodeCount": len(configured_nodes),
+        "updatedAt": None,
+        "localStatus": None,
+        "tailscaleConfiguredNodeCount": 0,
+    }
+    if not STATE_FILE.is_file():
+        return state
+
+    try:
+        document = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        state["status"] = "error"
+        state["detail"] = str(error)
+        return state
+
+    members = document.get("members") if isinstance(document, dict) else None
+    if not isinstance(members, list):
+        state["status"] = "error"
+        state["detail"] = "state file has no member list"
+        return state
+
+    active_members = [member for member in members if member.get("status") == "active"]
+    local_member = next((member for member in members if member.get("name") == socket.gethostname()), None)
+    configured_by_name = {node.get("name"): node for node in configured_nodes if node.get("name")}
+    active_by_name = {member.get("name"): member for member in active_members if member.get("name")}
+    tailscale_configured = 0
+    for name, node in configured_by_name.items():
+        ring0_addr = node.get("ring0_addr")
+        tailscale_addr = active_by_name.get(name, {}).get("tailscaleIPv4")
+        if ring0_addr and ring0_addr == tailscale_addr:
+            tailscale_configured += 1
+
+    local_active = bool(local_member and local_member.get("status") == "active")
+    all_configured_tailmox = bool(configured_nodes) and tailscale_configured == len(configured_nodes)
+    extra_active = max(0, len(active_members) - len(configured_nodes))
+    missing_active = max(0, len(configured_nodes) - tailscale_configured)
+
+    state.update(
+        {
+            "active": local_active and all_configured_tailmox,
+            "status": "active" if local_active and all_configured_tailmox and extra_active == 0 else "attention",
+            "clusterName": (document.get("cluster") or {}).get("name"),
+            "memberCount": len(members),
+            "activeMemberCount": len(active_members),
+            "configuredNodeCount": len(configured_nodes),
+            "updatedAt": document.get("updatedAt"),
+            "localStatus": local_member.get("status") if local_member else "missing",
+            "tailscaleConfiguredNodeCount": tailscale_configured,
+        }
+    )
+    if not local_active:
+        state["detail"] = f"local host is {state['localStatus']}"
+    elif missing_active:
+        state["detail"] = f"{missing_active} configured node(s) are not using Tailmox addresses"
+    elif extra_active:
+        state["detail"] = f"{extra_active} active state member(s) are not in corosync config"
+    else:
+        state["detail"] = "all configured corosync nodes match Tailmox state"
+    return state
 
 
 def escape_tag(value):
@@ -817,6 +888,7 @@ def collect_status():
     corosync_members = collect_corosync_members()
     configured_nodes = collect_configured_nodes()
     member_health = corosync_member_health(configured_nodes, corosync_members, quorum_nodes)
+    tailmox_state = collect_tailmox_state(configured_nodes)
 
     tailscale_data = {}
     if tailscale["stdout"]:
@@ -869,6 +941,7 @@ def collect_status():
             "totalVotes": total_votes,
             "highestExpected": pvecm_fields.get("highest_expected"),
         },
+        "tailmox": tailmox_state,
         "corosync": {
             "members": member_health,
             "activeMembers": corosync_members,
@@ -968,7 +1041,7 @@ INDEX_HTML = """<!doctype html>
     h1 { font-size: 30px; margin: 0 0 6px; color: #f8fafc; }
     h2 { font-size: 15px; margin: 0 0 14px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
     .muted { color: var(--muted); }
-    .grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; }
     .wide { grid-column: span 2; }
     .wide-primary { grid-column: span 3; }
     .full { grid-column: 1 / -1; }
@@ -1042,6 +1115,7 @@ INDEX_HTML = """<!doctype html>
       <div class="pill" id="overall"><span class="dot"></span><span>Loading</span></div>
     </header>
     <section class="grid">
+      <div class="panel" id="tailmoxPanel"><h2>Tailmox</h2><div class="metric" id="tailmoxState">...</div><div class="muted" id="tailmoxDetail"></div></div>
       <div class="panel" id="corosyncPanel"><h2>Corosync</h2><div class="metric" id="corosyncState">...</div><div class="muted" id="corosyncEnabled"></div></div>
       <div class="panel" id="quorumPanel"><h2>Quorum</h2><div class="metric" id="quorumState">...</div><div class="muted" id="votes"></div></div>
       <div class="panel" id="clusterPanel"><h2>Cluster</h2><div class="metric" id="clusterName">...</div><div class="muted" id="transport"></div></div>
@@ -1331,6 +1405,8 @@ INDEX_HTML = """<!doctype html>
       const overall = document.getElementById("overall");
       overall.className = `pill ${data.overall === "healthy" ? "ok" : "warn"}`;
       overall.lastElementChild.textContent = data.overall === "healthy" ? "Healthy" : "Needs attention";
+      text("tailmoxState", data.tailmox.active ? "active" : (data.tailmox.status || "unknown"));
+      text("tailmoxDetail", `${number(data.tailmox.activeMemberCount)} active in state; ${number(data.tailmox.configuredNodeCount)} configured. ${data.tailmox.detail || ""}`);
       text("corosyncState", yesNo(data.services.corosync.active));
       text("corosyncEnabled", `enabled: ${data.services.corosync.enabled || "unknown"}`);
       text("quorumState", data.cluster.quorate === "Yes" ? "quorate" : "not quorate");
@@ -1342,6 +1418,7 @@ INDEX_HTML = """<!doctype html>
       text("influxState", data.influxdb.enabled ? "enabled" : "off");
       text("influxDetail", data.influxdb.lastError ? `error: ${data.influxdb.lastError}` : (data.influxdb.lastWriteAt ? `last write: ${new Date(data.influxdb.lastWriteAt * 1000).toLocaleTimeString()}` : "not configured"));
       const offlineCount = (data.corosync.offlineMembers || []).length;
+      setPanelStatus("tailmoxPanel", data.tailmox.status === "active" ? "good" : (data.tailmox.active ? "warn" : "bad"));
       setPanelStatus("corosyncPanel", data.services.corosync.active ? (offlineCount ? "warn" : "good") : "bad");
       setPanelStatus("quorumPanel", data.cluster.quorate === "Yes" ? (offlineCount ? "warn" : "good") : "bad");
       setPanelStatus("clusterPanel", data.cluster.name ? (offlineCount ? "warn" : "good") : "bad");
