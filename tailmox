@@ -163,7 +163,7 @@ show_usage() {
  "  tailmox ${blue}stage${reset} [options]    Set up Tailscale and certificates only" \
  "  tailmox ${blue}backups${reset} [list]     List Tailmox configuration backups" \
  "      ${blue}create${reset}                   Create a configuration backup now" \
- "  tailmox ${blue}test${reset}               Safely test setup without changing the host" \
+ "  tailmox ${blue}test${reset}               Run the regression test suite" \
  "  tailmox ${blue}monitor${reset} [options]  Record test analytics every minute" \
  "      ${blue}install${reset}                  Install and start the background monitor" \
  "      ${blue}restart${reset}                  Restart the installed background monitor" \
@@ -189,7 +189,7 @@ case "${1:-}" in
         ;;
     cluster)
         shift
-        exec "$TAILMOX_ROOT/tailmox.sh" --terminal "$@"
+        exec "$TAILMOX_ROOT/tailmox.sh" "$@"
         ;;
     remove)
         shift
@@ -237,7 +237,7 @@ case "${1:-}" in
         ;;
     stage)
         shift
-        exec "$TAILMOX_ROOT/tailmox.sh" --terminal --staging "$@"
+        exec "$TAILMOX_ROOT/tailmox.sh" --staging "$@"
         ;;
     backups)
         shift
@@ -266,14 +266,6 @@ case "${1:-}" in
                 exit 2
                 ;;
         esac
-        ;;
-    test)
-        shift
-        if [[ "$#" -ne 0 ]]; then
-            printf 'tailmox test does not accept arguments.\n' >&2
-            exit 2
-        fi
-        exec "$TAILMOX_ROOT/tailmox.sh" --dry-run
         ;;
     monitor)
         shift
@@ -307,10 +299,11 @@ case "${1:-}" in
                 ;;
         esac
         ;;
-    self-test)
+    test|self-test)
+        command_name="${1:-test}"
         shift
         if [[ "$#" -ne 0 ]]; then
-            printf 'tailmox self-test does not accept arguments.\n' >&2
+            printf 'tailmox %s does not accept arguments.\n' "$command_name" >&2
             exit 2
         fi
         run_self_tests
