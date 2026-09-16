@@ -1013,6 +1013,10 @@ INDEX_HTML = """<!doctype html>
     .chart .grid-line { stroke: rgba(148,163,184,0.18); stroke-width: 1; }
     .chart .series { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
     .chart .point { fill: var(--accent); }
+    .chart .chart-point { cursor: crosshair; stroke: rgba(248,250,252,0.82); stroke-width: 1; }
+    .chart .chart-point:hover, .chart .chart-point:focus { stroke: #f8fafc; stroke-width: 2; }
+    .chart-tooltip { position: fixed; z-index: 20; max-width: 270px; padding: 10px 12px; border: 1px solid rgba(148,163,184,0.32); border-radius: 8px; color: #e5e7eb; background: rgba(15,23,42,0.96); box-shadow: 0 18px 50px rgba(2,6,23,0.36); font-size: 12px; line-height: 1.45; white-space: pre-line; pointer-events: none; transform: translate(12px, -50%); opacity: 0; transition: opacity 0.12s ease; }
+    .chart-tooltip.visible { opacity: 1; }
     .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; color: var(--muted); font-size: 13px; }
     .legend-item { display: inline-flex; align-items: center; gap: 7px; }
     .swatch { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
@@ -1053,6 +1057,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
     </section>
   </main>
+  <div class="chart-tooltip" id="chartTooltip"></div>
   <script>
     const text = (id, value) => document.getElementById(id).textContent = value || "unknown";
     const setPanelStatus = (id, status) => {
@@ -1068,9 +1073,42 @@ INDEX_HTML = """<!doctype html>
     const metricCell = (value, text, warn, bad) => `<span class="metric-cell ${qualityClass(value, warn, bad)}">${text}</span>`;
     const number = value => Number.isFinite(value) ? value.toLocaleString() : "auto";
     const timeLabel = value => new Date(value * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+    const dateTimeLabel = value => Number.isFinite(value) ? new Date(value * 1000).toLocaleString() : "unknown";
     const seriesColors = ["#38bdf8", "#2dd4bf", "#a78bfa", "#fb7185", "#f59e0b", "#22c55e", "#e879f9", "#60a5fa"];
     const svg = (name, attrs = {}, content = "") => `<${name} ${Object.entries(attrs).map(([key, value]) => `${key}="${value}"`).join(" ")}>${content}</${name}>`;
     const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    const tooltipText = lines => escapeHtml(lines.filter(line => line !== null && line !== undefined && line !== "").join("\n"));
+    const hideChartTooltip = () => document.getElementById("chartTooltip").classList.remove("visible");
+    const moveChartTooltip = event => {
+      const tooltip = document.getElementById("chartTooltip");
+      const padding = 16;
+      const rect = tooltip.getBoundingClientRect();
+      const targetRect = event.target.getBoundingClientRect();
+      const pointerX = Number.isFinite(event.clientX) ? event.clientX : targetRect.left + targetRect.width / 2;
+      const pointerY = Number.isFinite(event.clientY) ? event.clientY : targetRect.top + targetRect.height / 2;
+      const x = Math.min(pointerX + 12, window.innerWidth - rect.width - padding);
+      const y = Math.max(padding, Math.min(pointerY, window.innerHeight - rect.height - padding));
+      tooltip.style.left = `${x}px`;
+      tooltip.style.top = `${y}px`;
+    };
+    const showChartTooltip = event => {
+      const detail = event.target.dataset.tooltip;
+      if (!detail) return;
+      const tooltip = document.getElementById("chartTooltip");
+      tooltip.innerHTML = detail;
+      moveChartTooltip(event);
+      tooltip.classList.add("visible");
+    };
+    const attachChartTooltips = chart => {
+      chart.querySelectorAll("[data-tooltip]").forEach(point => {
+        point.setAttribute("tabindex", "0");
+        point.addEventListener("mouseenter", showChartTooltip);
+        point.addEventListener("mousemove", moveChartTooltip);
+        point.addEventListener("mouseleave", hideChartTooltip);
+        point.addEventListener("focus", showChartTooltip);
+        point.addEventListener("blur", hideChartTooltip);
+      });
+    };
     const logClass = line => {
       const lower = line.toLowerCase();
       if (lower.includes("failed") || lower.includes("error") || lower.includes("has no active links")) return "log-error";
@@ -1084,9 +1122,10 @@ INDEX_HTML = """<!doctype html>
     const renderLogs = lines => {
       document.getElementById("logs").innerHTML = (lines || []).map(line => `<span class="log-line ${logClass(line)}">${escapeHtml(line)}</span>`).join("") || "No recent corosync logs available.";
     };
-    const renderLineChart = (chart, history, valueKey, emptyText, formatLabel = number) => {
+    const renderLineChart = (chart, history, valueKey, emptyText, formatLabel = number, tooltipFormatter = null) => {
       if (!history.length) {
         chart.innerHTML = svg("text", { x: 32, y: 112 }, emptyText);
+        hideChartTooltip();
         return;
       }
       const width = 900, height = 220, left = 58, right = 20, top = 20, bottom = 38;
@@ -1115,8 +1154,9 @@ INDEX_HTML = """<!doctype html>
         svg("text", { x: width / 2 - 34, y: height - 12 }, timeLabel(minTime + (maxTime - minTime) / 2)),
         svg("text", { x: width - right - 72, y: height - 12 }, timeLabel(maxTime)),
         `<polyline class="series" points="${points}"></polyline>`,
-        history.map(sample => svg("circle", { class: "point", cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 3 })).join(""),
+        history.map(sample => svg("circle", { class: "point chart-point", cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 4, "data-tooltip": tooltipFormatter ? tooltipText(tooltipFormatter(sample)) : tooltipText([dateTimeLabel(sample.timestamp), `${valueKey}: ${formatLabel(sample[valueKey])}`]) })).join(""),
       ].join("");
+      attachChartTooltips(chart);
     };
     const renderLinkQuality = links => {
       document.getElementById("linkQuality").innerHTML = (links || []).map(link => `<tr><td>${link.hostname || "unknown"}</td><td>${link.ip || ""}</td><td><span class="tag ${link.status === "offline" ? "offline" : "joined"}">${link.status || "unknown"}</span></td><td>${metricCell(link.packetLossPercent, percent(link.packetLossPercent), 0.1, 1)}</td><td>${metricCell(link.avgMs, ms(link.avgMs), 50, 150)}</td><td>${metricCell(link.maxMs, ms(link.maxMs), 100, 250)}</td><td>${metricCell(link.jitterMs, ms(link.jitterMs), 10, 20)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td><td>${localTime(link.lastUpdatedAt)}</td></tr>`).join("") || "<tr><td colspan='9'>No remote corosync links measured</td></tr>";
@@ -1130,6 +1170,7 @@ INDEX_HTML = """<!doctype html>
     const renderMemberCountChart = (chart, history) => {
       if (!history.length) {
         chart.innerHTML = svg("text", { x: 32, y: 112 }, "No member-count samples collected yet.");
+        hideChartTooltip();
         return;
       }
       const width = 900, height = 220, left = 58, right = 20, top = 20, bottom = 38;
@@ -1163,8 +1204,23 @@ INDEX_HTML = """<!doctype html>
         svg("text", { x: width / 2 - 34, y: height - 12 }, timeLabel(minTime + (maxTime - minTime) / 2)),
         svg("text", { x: width - right - 72, y: height - 12 }, timeLabel(maxTime)),
         segments,
-        history.map(sample => svg("circle", { cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 3, fill: memberSampleColor(sample) })).join(""),
+        history.map(sample => svg("circle", {
+          class: "chart-point",
+          cx: x(sample).toFixed(1),
+          cy: y(sample).toFixed(1),
+          r: 4,
+          fill: memberSampleColor(sample),
+          "data-tooltip": tooltipText([
+            dateTimeLabel(sample.timestamp),
+            `Members online: ${number(sample.memberCount)}`,
+            `Configured hosts: ${number(sample.configuredNodeCount)}`,
+            `Offline hosts: ${number(sample.offlineNodeCount)}`,
+            `Quorum nodes: ${number(sample.quorumNodeCount)}`,
+            `Quorate: ${sample.quorate === false ? "no" : "yes"}`,
+          ]),
+        })).join(""),
       ].join("");
+      attachChartTooltips(chart);
     };
     const renderMtu = data => {
       const current = data.current || {};
@@ -1181,7 +1237,20 @@ INDEX_HTML = """<!doctype html>
         return;
       }
 
-      renderLineChart(chart, history, "displayMtu", "No global MTU samples collected yet.", value => value === 0 ? "auto" : number(value));
+      renderLineChart(
+        chart,
+        history,
+        "displayMtu",
+        "No global MTU samples collected yet.",
+        value => value === 0 ? "auto" : number(value),
+        sample => [
+          dateTimeLabel(sample.timestamp),
+          `Displayed MTU: ${number(sample.displayMtu)} bytes`,
+          `Configured MTU: ${sample.automatic ? "auto" : `${number(sample.configuredMtu)} bytes`}`,
+          `Discovered global MTU: ${Number.isFinite(sample.discoveredGlobalMtu) ? `${number(sample.discoveredGlobalMtu)} bytes` : "unknown"}`,
+          `PMTUD interval: ${Number.isFinite(sample.pmtudIntervalSeconds) ? `${number(sample.pmtudIntervalSeconds)}s` : "unknown"}`,
+        ]
+      );
     };
     const renderMemberCount = data => {
       const current = data.current || {};
@@ -1204,6 +1273,7 @@ INDEX_HTML = """<!doctype html>
       legend.innerHTML = series.map(item => `<span class="legend-item"><span class="swatch" style="background:${item.color}"></span>${item.name}</span>`).join("");
       if (!series.length) {
         chart.innerHTML = svg("text", { x: 32, y: 112 }, "No link-quality history collected yet.");
+        hideChartTooltip();
         return;
       }
       const allSamples = series.flatMap(item => item.samples);
@@ -1223,7 +1293,21 @@ INDEX_HTML = """<!doctype html>
       const midValue = chartMin + span / 2;
       const paths = series.map(item => {
         const points = item.samples.map(sample => `${x(sample).toFixed(1)},${y(sample).toFixed(1)}`).join(" ");
-        const dots = item.samples.map(sample => svg("circle", { cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 3, fill: item.color })).join("");
+        const dots = item.samples.map(sample => svg("circle", {
+          class: "chart-point",
+          cx: x(sample).toFixed(1),
+          cy: y(sample).toFixed(1),
+          r: 4,
+          fill: item.color,
+          "data-tooltip": tooltipText([
+            item.name,
+            dateTimeLabel(sample.timestamp),
+            `Average latency: ${ms(sample.avgMs)}`,
+            `Max latency: ${ms(sample.maxMs)}`,
+            `Jitter: ${ms(sample.jitterMs)}`,
+            `Packet loss: ${percent(sample.packetLossPercent)}`,
+          ]),
+        })).join("");
         return `<polyline fill="none" stroke="${item.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${points}"></polyline>${dots}`;
       }).join("");
       chart.innerHTML = [
@@ -1238,6 +1322,7 @@ INDEX_HTML = """<!doctype html>
         svg("text", { x: width - right - 72, y: height - 12 }, timeLabel(maxTime)),
         paths,
       ].join("");
+      attachChartTooltips(chart);
     };
     async function refreshStatus() {
       const response = await fetch("/api/status", { cache: "no-store" });
