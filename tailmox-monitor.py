@@ -2120,7 +2120,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
           : `Create the cluster identity on the first host, or add the existing cluster identity here.${data.legacyConfiguration ? " Existing plaintext settings will remain active until the encrypted migration is approved." : ""}`;
         const details = document.getElementById("identityDetails");
         details.hidden = !identity.configured;
-        document.getElementById("identitySetup").hidden = Boolean(identity.recipient);
+        document.getElementById("identitySetup").hidden = Boolean(identity.configured);
         if (identity.configured) {
           document.getElementById("identityType").textContent = identity.postQuantum ? "Post-quantum ML-KEM-768 + X25519" : "Classic age identity";
           document.getElementById("identityHost").textContent = identity.host;
