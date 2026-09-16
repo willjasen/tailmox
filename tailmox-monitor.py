@@ -1436,6 +1436,9 @@ INDEX_HTML = """<!doctype html>
     input:focus { outline: 2px solid rgba(56,189,248,0.34); border-color: var(--accent); }
     button, .button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(56,189,248,0.42); border-radius: 8px; padding: 10px 14px; color: #e0f2fe; background: rgba(14,116,144,0.32); font: inherit; font-weight: 800; text-decoration: none; cursor: pointer; }
     .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .page-picker { display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .page-picker select { min-width: 132px; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 9px 30px 9px 10px; color: var(--text); background: rgba(2,6,23,0.42); font: inherit; cursor: pointer; }
+    .page-picker select:focus { outline: 2px solid rgba(56,189,248,0.34); border-color: var(--accent); }
     .workflow-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
     .workflow { border: 1px solid rgba(148,163,184,0.22); border-radius: 8px; padding: 14px; background: rgba(2,6,23,0.28); }
     .workflow h3 { margin: 0 0 7px; font-size: 16px; }
@@ -1481,7 +1484,16 @@ INDEX_HTML = """<!doctype html>
         <h1>Tailmox Monitor</h1>
         <div class="muted" id="subtitle">Loading cluster health...</div>
       </div>
-      <div class="pill" id="overall"><span class="dot"></span><span>Loading</span></div>
+      <div class="actions">
+        <label class="page-picker">Page
+          <select id="pagePicker" aria-label="Tailmox page">
+            <option value="id">ID</option>
+            <option value="settings">Settings</option>
+            <option value="./" selected>Monitor</option>
+          </select>
+        </label>
+        <div class="pill" id="overall"><span class="dot"></span><span>Loading</span></div>
+      </div>
     </header>
     <section class="grid">
       <div class="panel full">
@@ -1516,6 +1528,9 @@ INDEX_HTML = """<!doctype html>
   <script>
     const csrfToken = "__CSRF_TOKEN__";
     const apiPrefix = window.location.pathname.startsWith("/monitor/") ? "/monitor" : (window.location.pathname.startsWith("/control/") ? "/control" : "");
+    document.getElementById("pagePicker").addEventListener("change", event => {
+      window.location.href = event.target.value;
+    });
     const text = (id, value) => document.getElementById(id).textContent = value || "unknown";
     const setPanelStatus = (id, status) => {
       const panel = document.getElementById(id);
