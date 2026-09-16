@@ -502,9 +502,12 @@ def collect_cmap_stats():
         stat = parse_cmap_stat_line(line)
         if not stat:
             continue
+        tags = cmap_stat_tags(stat["path"])
+        if not (tags.get("family") == "knet" and tags.get("nodeid") and tags.get("link") and tags.get("metric")):
+            continue
         encoded = line_protocol(
             "tailmox_corosync_cmap_stat",
-            cmap_stat_tags(stat["path"]),
+            tags,
             {"value": stat["value"]},
             timestamp,
         )
@@ -1328,6 +1331,7 @@ from(bucket: "{escape_string(config["bucket"])}")
   |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r.family == "knet")
   |> filter(fn: (r) => exists r.nodeid and exists r.link and exists r.metric)
+  |> filter(fn: (r) => r._field == "value")
   |> filter(fn: (r) => r.metric == "latency_ave" or r.metric == "latency_max" or r.metric == "tx_data_packets" or r.metric == "rx_data_packets" or r.metric =~ /.*error.*/)
   |> sort(columns: ["_time"])
   |> limit(n: 6000)
