@@ -17,10 +17,19 @@ export TAILMOX_LIBRARY_MODE=true
 export TAILMOX_LOG_DIR="$TEST_DIR/log"
 export TAILMOX_AGE_ARCHITECTURE=amd64
 export TAILMOX_AGE_INSTALL_DIR="$TEST_DIR/bin"
+export TAILMOX_AGE_VERSION=9.9.9-test
 export TAILMOX_AGE_URL="file://$TEST_DIR/age.tar.gz"
 export TAILMOX_AGE_SHA256="$CHECKSUM"
 source "$ROOT_DIR/tailmox.sh"
 
+install_post_quantum_age >/dev/null
+"$TEST_DIR/bin/age-keygen" --help | grep -q -- '-pq'
+
+unset TAILMOX_AGE_VERSION TAILMOX_AGE_URL TAILMOX_AGE_SHA256
+printf '{"tag_name":"v9.9.10","assets":[{"name":"age-v9.9.10-linux-amd64.tar.gz","browser_download_url":"file://%s/age.tar.gz","digest":"sha256:%s"}]}\n' \
+    "$TEST_DIR" "$CHECKSUM" > "$TEST_DIR/latest.json"
+export TAILMOX_AGE_RELEASE_API="file://$TEST_DIR/latest.json"
+rm -f "$TEST_DIR/bin/age" "$TEST_DIR/bin/age-keygen"
 install_post_quantum_age >/dev/null
 "$TEST_DIR/bin/age-keygen" --help | grep -q -- '-pq'
 

@@ -261,25 +261,60 @@ function check_script_directory() {
 # Install the upstream age release because Debian 13 currently packages age
 # 1.2.x, which cannot create Tailmox's required post-quantum identities.
 function install_post_quantum_age() {
-    local version="${TAILMOX_AGE_VERSION:-1.3.2}"
+    local requested_version="${TAILMOX_AGE_VERSION:-latest}"
+    local version
     local architecture="${TAILMOX_AGE_ARCHITECTURE:-$(dpkg --print-architecture)}"
     local install_dir="${TAILMOX_AGE_INSTALL_DIR:-/usr/local/bin}"
     local checksum
     local archive_url
+    local release_api
+    local release_json
+    local asset_name
     local work_dir
     local archive
     local actual_checksum
 
     case "$architecture" in
-        amd64)
-            checksum="${TAILMOX_AGE_SHA256:-cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10}"
-            ;;
+        amd64|arm64|arm) ;;
         *)
-            log_echo "${RED}Tailmox does not have a pinned age checksum for architecture: $architecture${RESET}"
+            log_echo "${RED}Tailmox does not support the upstream age archive for architecture: $architecture${RESET}"
             return 1
             ;;
     esac
-    archive_url="${TAILMOX_AGE_URL:-https://github.com/FiloSottile/age/releases/download/v${version}/age-v${version}-linux-${architecture}.tar.gz}"
+
+    if [[ -n "${TAILMOX_AGE_URL:-}" ]]; then
+        archive_url="$TAILMOX_AGE_URL"
+        checksum="${TAILMOX_AGE_SHA256:-}"
+        version="$requested_version"
+        if [[ -z "$checksum" ]]; then
+            log_echo "${RED}TAILMOX_AGE_SHA256 is required with a custom age URL.${RESET}"
+            return 1
+        fi
+    else
+        if [[ "$requested_version" == "latest" ]]; then
+            release_api="${TAILMOX_AGE_RELEASE_API:-https://api.github.com/repos/FiloSottile/age/releases/latest}"
+        else
+            release_api="${TAILMOX_AGE_RELEASE_API:-https://api.github.com/repos/FiloSottile/age/releases/tags/v${requested_version}}"
+        fi
+        if ! release_json=$(curl -fsSL --retry 3 "$release_api"); then
+            log_echo "${RED}Unable to read the latest official age release metadata.${RESET}"
+            return 1
+        fi
+        version=$(jq -er '.tag_name | sub("^v"; "")' <<< "$release_json") || return 1
+        asset_name="age-v${version}-linux-${architecture}.tar.gz"
+        archive_url=$(jq -er --arg name "$asset_name" '.assets[] | select(.name == $name) | .browser_download_url' <<< "$release_json") || return 1
+        checksum=$(jq -er --arg name "$asset_name" '.assets[] | select(.name == $name) | .digest | select(startswith("sha256:")) | sub("^sha256:"; "")' <<< "$release_json") || {
+            log_echo "${RED}The official age release did not provide a SHA-256 digest for $asset_name.${RESET}"
+            return 1
+        }
+    fi
+
+    if command -v age-keygen >/dev/null 2>&1 &&
+        [[ "$(age-keygen --version 2>/dev/null)" == "v${version}" ]] &&
+        age-keygen --help 2>&1 | grep -q -- '-pq'; then
+        log_echo "${GREEN}Latest age release ${version} is already installed.${RESET}"
+        return 0
+    fi
     work_dir=$(mktemp -d "${TMPDIR:-/tmp}/tailmox-age.XXXXXX") || return 1
     archive="$work_dir/age.tar.gz"
 
@@ -306,7 +341,7 @@ function install_post_quantum_age() {
         log_echo "${RED}Installed age does not support post-quantum identities.${RESET}"
         return 1
     fi
-    log_echo "${GREEN}Installed age ${version} with post-quantum identity support.${RESET}"
+    log_echo "${GREEN}Installed latest age release ${version} with post-quantum identity support.${RESET}"
 }
 
 # Install dependencies
@@ -324,10 +359,8 @@ function install_dependencies() {
         fi
     done
 
-    if ! command -v age-keygen >/dev/null 2>&1 || ! age-keygen --help 2>&1 | grep -q -- '-pq'; then
-        log_echo "${YELLOW}Installing age with post-quantum identity support...${RESET}"
-        install_post_quantum_age || return 1
-    fi
+    log_echo "${YELLOW}Checking the latest age release with post-quantum identity support...${RESET}"
+    install_post_quantum_age || return 1
 }
 
 # Install Tailscale if it is not already installed
