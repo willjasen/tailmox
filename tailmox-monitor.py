@@ -703,6 +703,7 @@ INDEX_HTML = """<!doctype html>
     const qualityClass = (value, warn, bad) => !Number.isFinite(value) ? "bad" : value >= bad ? "bad" : value >= warn ? "warn" : "good";
     const metricCell = (value, text, warn, bad) => `<span class="metric-cell ${qualityClass(value, warn, bad)}">${text}</span>`;
     const number = value => Number.isFinite(value) ? value.toLocaleString() : "auto";
+    const timeLabel = value => new Date(value * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
     const seriesColors = ["#38bdf8", "#2dd4bf", "#a78bfa", "#fb7185", "#f59e0b", "#22c55e", "#e879f9", "#60a5fa"];
     const svg = (name, attrs = {}, content = "") => `<${name} ${Object.entries(attrs).map(([key, value]) => `${key}="${value}"`).join(" ")}>${content}</${name}>`;
     const renderLineChart = (chart, history, valueKey, emptyText, formatLabel = number) => {
@@ -732,6 +733,9 @@ INDEX_HTML = """<!doctype html>
         svg("text", { x: 10, y: top + 4 }, formatLabel(chartMax)),
         svg("text", { x: 10, y: y({ [valueKey]: midValue }) + 4 }, formatLabel(Math.round(midValue))),
         svg("text", { x: 10, y: height - bottom + 4 }, formatLabel(chartMin)),
+        svg("text", { x: left, y: height - 12 }, timeLabel(minTime)),
+        svg("text", { x: width / 2 - 34, y: height - 12 }, timeLabel(minTime + (maxTime - minTime) / 2)),
+        svg("text", { x: width - right - 72, y: height - 12 }, timeLabel(maxTime)),
         `<polyline class="series" points="${points}"></polyline>`,
         history.map(sample => svg("circle", { class: "point", cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 3 })).join(""),
       ].join("");
@@ -804,6 +808,9 @@ INDEX_HTML = """<!doctype html>
         svg("text", { x: 10, y: top + 4 }, ms(chartMax)),
         svg("text", { x: 10, y: top + (height - top - bottom) / 2 + 4 }, ms(midValue)),
         svg("text", { x: 10, y: height - bottom + 4 }, ms(chartMin)),
+        svg("text", { x: left, y: height - 12 }, timeLabel(minTime)),
+        svg("text", { x: width / 2 - 34, y: height - 12 }, timeLabel(minTime + (maxTime - minTime) / 2)),
+        svg("text", { x: width - right - 72, y: height - 12 }, timeLabel(maxTime)),
         paths,
       ].join("");
     };
