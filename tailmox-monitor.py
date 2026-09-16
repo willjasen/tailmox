@@ -1281,6 +1281,12 @@ def collect_cmap_knet_history():
 
 def influx_cmap_knet_history():
     config = influx_config()
+    current_members = collect_corosync_members()
+    active_nodeids = {
+        member.get("nodeid")
+        for member in current_members
+        if member.get("nodeid") and member.get("status") == "joined"
+    }
     node_names = {
         node.get("nodeid"): node.get("name")
         for node in collect_configured_nodes()
@@ -1305,6 +1311,8 @@ from(bucket: "{escape_string(config["bucket"])}")
         link = row.get("link")
         metric = row.get("metric")
         if timestamp is None or value is None or not nodeid or not link or not metric:
+            continue
+        if active_nodeids and nodeid not in active_nodeids:
             continue
         key = (nodeid, link)
         series = by_link.setdefault(
