@@ -15,6 +15,7 @@ import os
 import pathlib
 import socket
 import subprocess
+import threading
 import time
 import re
 import urllib.error
@@ -23,11 +24,12 @@ import urllib.request
 import secrets
 from urllib.parse import urlparse
 
+import tailmox_config
+
 
 HOST = os.environ.get("TAILMOX_MONITOR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TAILMOX_MONITOR_PORT", "8088"))
 INFLUX_ENV_FILE = os.environ.get("TAILMOX_INFLUXDB_ENV_FILE", "/etc/tailmox-monitor.env")
-TAILMOX_CONF_FILE = pathlib.Path(os.environ.get("TAILMOX_CONF_FILE", "/etc/pve/tailmox/tailmox.conf"))
 STATE_FILE = pathlib.Path(os.environ.get("TAILMOX_CLUSTER_STATE_FILE", "/etc/pve/tailmox/state.json"))
 LINK_QUALITY_TTL_SECONDS = 30
 LINK_QUALITY_CACHE = {"generatedAt": 0, "links": []}
@@ -41,6 +43,83 @@ MEMBER_COUNT_HISTORY_LIMIT = 120
 MEMBER_COUNT_HISTORY = []
 CMAP_STATS_INTERVAL_SECONDS = int(os.environ.get("TAILMOX_CMAP_STATS_INTERVAL_SECONDS", "5"))
 CMAP_STATS_THREAD_STARTED = False
+TAILMOX_COMMAND = os.environ.get(
+    "TAILMOX_COMMAND", str(pathlib.Path(__file__).with_name("tailmox"))
+)
+ACTION_OUTPUT_LIMIT = 100_000
+ACTION_LOCK = threading.Lock()
+ACTION_STATE = {
+    "action": None,
+    "status": "idle",
+    "startedAt": None,
+    "finishedAt": None,
+    "exitCode": None,
+    "output": "No Tailmox workflow has run from this page yet.",
+}
+ACTION_COMMANDS = {
+    "test": ["test"],
+    "backup-create": ["backups", "create"],
+    "stage": ["stage"],
+    "analytics-install": ["analytics", "install"],
+    "analytics-restart": ["analytics", "restart"],
+    "analytics-uninstall": ["analytics", "uninstall"],
+}
+
+
+def action_snapshot():
+    with ACTION_LOCK:
+        return dict(ACTION_STATE)
+
+
+def _run_action(action, auth_key):
+    environment = os.environ.copy()
+    if action == "stage" and auth_key:
+        environment["TAILMOX_AUTH_KEY"] = auth_key
+    try:
+        completed = subprocess.run(
+            [TAILMOX_COMMAND, *ACTION_COMMANDS[action]],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3600,
+            env=environment,
+        )
+        output = "\n".join(
+            part.strip() for part in (completed.stdout, completed.stderr) if part.strip()
+        )
+        exit_code = completed.returncode
+        status = "succeeded" if exit_code == 0 else "failed"
+    except (OSError, subprocess.TimeoutExpired) as error:
+        output = str(error)
+        exit_code = 124 if isinstance(error, subprocess.TimeoutExpired) else 127
+        status = "failed"
+    with ACTION_LOCK:
+        ACTION_STATE.update(
+            status=status,
+            finishedAt=int(time.time()),
+            exitCode=exit_code,
+            output=(output or "Workflow completed without output.")[-ACTION_OUTPUT_LIMIT:],
+        )
+
+
+def start_action(action, payload):
+    if action not in ACTION_COMMANDS:
+        raise ValueError("Unknown Tailmox workflow.")
+    auth_key = str(payload.get("authKey", "")).strip() if action == "stage" else ""
+    with ACTION_LOCK:
+        if ACTION_STATE["status"] == "running":
+            raise RuntimeError("Another Tailmox workflow is already running.")
+        ACTION_STATE.update(
+            action=action,
+            status="running",
+            startedAt=int(time.time()),
+            finishedAt=None,
+            exitCode=None,
+            output="Workflow started. Waiting for output...",
+        )
+    thread = threading.Thread(target=_run_action, args=(action, auth_key), daemon=True)
+    thread.start()
+    return action_snapshot()
 
 
 def run_command(command, timeout=5):
@@ -65,15 +144,19 @@ def run_command(command, timeout=5):
 
 
 def influx_config():
-    values = read_tailmox_conf_file()
-    if not values:
-        values = read_influx_env_file()
-    return {
-        "url": values.get("TAILMOX_INFLUXDB_URL", os.environ.get("TAILMOX_INFLUXDB_URL", "")).rstrip("/"),
-        "token": values.get("TAILMOX_INFLUXDB_TOKEN", os.environ.get("TAILMOX_INFLUXDB_TOKEN", "")),
-        "org": values.get("TAILMOX_INFLUXDB_ORG", os.environ.get("TAILMOX_INFLUXDB_ORG", "")),
-        "bucket": values.get("TAILMOX_INFLUXDB_BUCKET", os.environ.get("TAILMOX_INFLUXDB_BUCKET", "")),
-    }
+    try:
+        config = tailmox_config.current_config()["influxdb"]
+        if tailmox_config.CONFIG_FILE.is_file() and os.path.isfile(INFLUX_ENV_FILE):
+            os.unlink(INFLUX_ENV_FILE)
+        return {
+            "url": str(config.get("url", "")).rstrip("/"),
+            "token": str(config.get("token", "")),
+            "org": str(config.get("org", "")),
+            "bucket": str(config.get("bucket", "")),
+        }
+    except (OSError, tailmox_config.ConfigError) as error:
+        INFLUX_STATE["lastError"] = str(error)
+        return {"url": "", "token": "", "org": "", "bucket": ""}
 
 
 def read_env_config_file(path):
@@ -91,48 +174,58 @@ def read_env_config_file(path):
     return config
 
 
-def read_tailmox_conf_file():
-    return read_env_config_file(TAILMOX_CONF_FILE)
-
-
 def read_influx_env_file():
     return read_env_config_file(INFLUX_ENV_FILE)
 
 
-def shell_quote_env(value):
-    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def write_tailmox_conf_file(values):
-    TAILMOX_CONF_FILE.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
-    temporary = TAILMOX_CONF_FILE.with_name(f".{TAILMOX_CONF_FILE.name}.tmp")
-    with open(temporary, "w", encoding="utf-8") as handle:
-        handle.write("# Tailmox cluster-distributed settings\n")
-        handle.write("# This file is replicated by the Proxmox cluster filesystem.\n")
-        for key, value in values.items():
-            handle.write(f"{key}={shell_quote_env(value)}\n")
-    os.chmod(temporary, 0o640)
-    os.replace(temporary, TAILMOX_CONF_FILE)
-
-
 def save_influx_config(data):
-    current = read_tailmox_conf_file() or read_influx_env_file()
+    current_document = tailmox_config.current_config()
+    current = current_document["influxdb"]
     token = str(data.get("token", "")).strip()
     if not token:
-        token = current.get("TAILMOX_INFLUXDB_TOKEN", os.environ.get("TAILMOX_INFLUXDB_TOKEN", ""))
+        token = str(current.get("token", ""))
 
-    next_config = {
-        "TAILMOX_INFLUXDB_URL": str(data.get("url", "")).strip().rstrip("/"),
-        "TAILMOX_INFLUXDB_TOKEN": token,
-        "TAILMOX_INFLUXDB_ORG": str(data.get("org", "")).strip(),
-        "TAILMOX_INFLUXDB_BUCKET": str(data.get("bucket", "")).strip(),
+    next_config = dict(current_document)
+    next_config["influxdb"] = {
+        "url": str(data.get("url", "")).strip().rstrip("/"),
+        "token": token,
+        "org": str(data.get("org", "")).strip(),
+        "bucket": str(data.get("bucket", "")).strip(),
     }
-
-    write_tailmox_conf_file(next_config)
-    os.environ.update(next_config)
+    proposal = tailmox_config.propose_config(next_config, "Update InfluxDB export settings")
     INFLUX_STATE["lastWriteAt"] = None
     INFLUX_STATE["lastError"] = None
-    return influx_settings_payload()
+    payload = influx_settings_payload()
+    payload["proposal"] = proposal
+    return payload
+
+
+def initialize_encrypted_configuration(identity_result):
+    tailmox_config.enroll_local_host()
+    legacy = read_influx_env_file()
+    if tailmox_config.CONFIG_FILE.is_file() or not legacy:
+        return identity_result
+    pending = [
+        proposal
+        for proposal in tailmox_config.list_proposals()
+        if not proposal.get("activated") and not proposal.get("error")
+    ]
+    if pending:
+        identity_result["migrationProposal"] = pending[0]
+        return identity_result
+    config = tailmox_config.current_config()
+    config["influxdb"] = {
+        "url": legacy.get("TAILMOX_INFLUXDB_URL", "").rstrip("/"),
+        "token": legacy.get("TAILMOX_INFLUXDB_TOKEN", ""),
+        "org": legacy.get("TAILMOX_INFLUXDB_ORG", ""),
+        "bucket": legacy.get("TAILMOX_INFLUXDB_BUCKET", ""),
+    }
+    identity_result["migrationProposal"] = tailmox_config.propose_config(
+        config, "Migrate legacy InfluxDB settings to encrypted storage"
+    )
+    if identity_result["migrationProposal"].get("activated"):
+        os.unlink(INFLUX_ENV_FILE)
+    return identity_result
 
 
 def influx_settings_payload():
@@ -1198,6 +1291,14 @@ INDEX_HTML = """<!doctype html>
     input:focus { outline: 2px solid rgba(56,189,248,0.34); border-color: var(--accent); }
     button, .button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(56,189,248,0.42); border-radius: 8px; padding: 10px 14px; color: #e0f2fe; background: rgba(14,116,144,0.32); font: inherit; font-weight: 800; text-decoration: none; cursor: pointer; }
     .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .workflow-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .workflow { border: 1px solid rgba(148,163,184,0.22); border-radius: 8px; padding: 14px; background: rgba(2,6,23,0.28); }
+    .workflow h3 { margin: 0 0 7px; font-size: 16px; }
+    .workflow p { min-height: 42px; margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.45; }
+    .workflow input { margin-bottom: 10px; }
+    .danger { border-color: rgba(239,68,68,0.5); color: #fecaca; background: rgba(127,29,29,0.3); }
+    button:disabled { cursor: wait; opacity: 0.5; }
+    .action-meta { margin: 10px 0; color: var(--muted); }
     .message { min-height: 20px; color: var(--muted); }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -1225,7 +1326,7 @@ INDEX_HTML = """<!doctype html>
     .log-quorum { color: #ddd6fe; }
     .log-totem { color: #99f6e4; }
     a { color: var(--accent); }
-    @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } }
+    @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid, .workflow-grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } }
   </style>
 </head>
 <body>
@@ -1238,6 +1339,16 @@ INDEX_HTML = """<!doctype html>
       <div class="pill" id="overall"><span class="dot"></span><span>Loading</span></div>
     </header>
     <section class="grid">
+      <div class="panel full">
+        <h2>Tailmox controls</h2>
+        <div class="workflow-grid">
+          <div class="workflow"><h3>Stage this host</h3><p>Install prerequisites, connect Tailscale, configure certificates, and start the monitor without joining a Proxmox cluster.</p><input id="stageAuthKey" type="password" autocomplete="new-password" placeholder="Optional Tailscale auth key"><button class="workflow-button" data-action="stage">Run tailmox stage</button></div>
+          <div class="workflow"><h3>Analytics</h3><p>Manage the once-per-minute analytics service. Existing monitoring history is preserved by restart and uninstall.</p><div class="actions"><button class="workflow-button" data-action="analytics-install">Install</button><button class="workflow-button" data-action="analytics-restart">Restart</button><button class="workflow-button danger" data-action="analytics-uninstall">Uninstall</button></div></div>
+          <div class="workflow"><h3>Maintenance</h3><p>Run Tailmox's local test suite or create a root-only snapshot of the current cluster configuration.</p><div class="actions"><button class="workflow-button" data-action="test">Run tests</button><button class="workflow-button" data-action="backup-create">Create backup</button></div></div>
+        </div>
+        <div class="action-meta" id="actionMeta">Checking workflow status...</div>
+        <pre id="actionOutput">Loading...</pre>
+      </div>
       <div class="panel" id="tailmoxPanel"><h2>Tailmox</h2><div class="metric" id="tailmoxState">...</div><div class="muted" id="tailmoxDetail"></div></div>
       <div class="panel" id="corosyncPanel"><h2>Corosync</h2><div class="metric" id="corosyncState">...</div><div class="muted" id="corosyncEnabled"></div></div>
       <div class="panel" id="quorumPanel"><h2>Quorum</h2><div class="metric" id="quorumState">...</div><div class="muted" id="votes"></div></div>
@@ -1256,6 +1367,7 @@ INDEX_HTML = """<!doctype html>
   </main>
   <div class="chart-tooltip" id="chartTooltip"></div>
   <script>
+    const csrfToken = "__CSRF_TOKEN__";
     const text = (id, value) => document.getElementById(id).textContent = value || "unknown";
     const setPanelStatus = (id, status) => {
       const panel = document.getElementById(id);
@@ -1538,6 +1650,50 @@ INDEX_HTML = """<!doctype html>
       ].join("");
       attachChartTooltips(chart);
     };
+    const actionLabel = value => ({
+      "test": "tailmox test", "backup-create": "tailmox backups create",
+      "stage": "tailmox stage", "analytics-install": "tailmox analytics install",
+      "analytics-restart": "tailmox analytics restart", "analytics-uninstall": "tailmox analytics uninstall",
+    }[value] || "Tailmox workflow");
+    const renderAction = data => {
+      const running = data.status === "running";
+      document.querySelectorAll(".workflow-button").forEach(button => button.disabled = running);
+      document.getElementById("actionMeta").textContent = data.status === "idle"
+        ? "No workflow is running."
+        : `${actionLabel(data.action)} · ${data.status}${Number.isInteger(data.exitCode) ? ` · exit ${data.exitCode}` : ""}`;
+      document.getElementById("actionOutput").textContent = data.output || "No output.";
+    };
+    const refreshAction = async () => {
+      try {
+        const response = await fetch("/api/actions", { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to read workflow status.");
+        renderAction(data);
+      } catch (error) { document.getElementById("actionMeta").textContent = error.message; }
+    };
+    const runAction = async action => {
+      if (action === "analytics-uninstall" && !window.confirm("Uninstall the Tailmox analytics service? Monitoring history will be preserved.")) return;
+      const authInput = document.getElementById("stageAuthKey");
+      const payload = action === "stage" ? { authKey: authInput.value } : {};
+      document.querySelectorAll(".workflow-button").forEach(button => button.disabled = true);
+      try {
+        const response = await fetch(`/api/actions/${action}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+          body: JSON.stringify(payload),
+        });
+        authInput.value = "";
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Unable to start workflow.");
+        renderAction(data);
+      } catch (error) {
+        authInput.value = "";
+        document.getElementById("actionMeta").textContent = error.message;
+        document.querySelectorAll(".workflow-button").forEach(button => button.disabled = false);
+      }
+    };
+    document.querySelectorAll(".workflow-button").forEach(button => button.addEventListener("click", () => runAction(button.dataset.action)));
+
     async function refreshStatus() {
       const response = await fetch("/api/status", { cache: "no-store" });
       const data = await response.json();
@@ -1600,7 +1756,9 @@ INDEX_HTML = """<!doctype html>
       ]);
     }
     refresh();
+    refreshAction();
     setInterval(refreshStatus, 15000);
+    setInterval(refreshAction, 2000);
     setInterval(refreshMtuHistory, 15000);
     setInterval(refreshMemberCountHistory, 15000);
     setInterval(refreshLinkQuality, 30000);
@@ -1636,6 +1794,10 @@ EDIT_INFLUX_HTML = """<!doctype html>
     .message { min-height: 20px; color: var(--muted); }
     .ok { color: #bbf7d0; }
     .error { color: #fecdd3; }
+    textarea { width: 100%; min-height: 92px; box-sizing: border-box; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 11px 12px; color: var(--text); background: rgba(2,6,23,0.42); font: 13px ui-monospace, monospace; }
+    .security-grid { display: grid; gap: 12px; margin-bottom: 20px; }
+    .proposal { border: 1px solid rgba(148,163,184,0.28); border-radius: 8px; padding: 12px; }
+    .proposal-actions { display: flex; gap: 8px; margin-top: 10px; }
   </style>
 </head>
 <body>
@@ -1647,6 +1809,17 @@ EDIT_INFLUX_HTML = """<!doctype html>
       </div>
       <a class="button" href="/">Back to monitor</a>
     </header>
+    <section class="panel security-grid">
+      <h2>Encryption &amp; host signing</h2>
+      <div class="muted" id="securityStatus">Checking this host...</div>
+      <textarea id="ageIdentity" autocomplete="off" spellcheck="false" placeholder="AGE-SECRET-KEY-PQ-1..."></textarea>
+      <div class="actions">
+        <button type="button" id="createIdentity">Create Tailmox age identity</button>
+        <button type="button" id="addIdentity">Add existing identity</button>
+      </div>
+      <div class="message" id="securityMessage"></div>
+      <div id="proposals"></div>
+    </section>
     <section class="panel">
       <h2>Export Destination</h2>
       <form id="influxForm">
@@ -1664,6 +1837,85 @@ EDIT_INFLUX_HTML = """<!doctype html>
   <script>
     const csrfToken = "__CSRF_TOKEN__";
     const message = document.getElementById("message");
+    const securityMessage = document.getElementById("securityMessage");
+    const identityInput = document.getElementById("ageIdentity");
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        cache: "no-store",
+        ...options,
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken, ...(options.headers || {}) },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Tailmox request failed.");
+      return data;
+    }
+    async function loadSecurity() {
+      try {
+        const data = await api("/api/security");
+        document.getElementById("securityStatus").textContent = data.identity.configured
+          ? `${data.identity.postQuantum ? "Post-quantum age identity" : "Classic imported age identity"} ready · dedicated Ed25519 signer ready on ${data.identity.host}`
+          : "Create the cluster identity on the first host, or add the existing cluster identity here.";
+        document.getElementById("createIdentity").disabled = Boolean(data.identity.recipient);
+        const proposals = document.getElementById("proposals");
+        proposals.replaceChildren(...data.proposals.filter(item => !item.activated).map(item => {
+          const card = document.createElement("div");
+          card.className = "proposal";
+          const title = document.createElement("strong");
+          title.textContent = item.error ? item.proposalId : `Revision ${item.revision} · ${item.summary}`;
+          const detail = document.createElement("div");
+          detail.className = "muted";
+          detail.textContent = item.error || `Proposed by ${item.proposer}; ${Object.values(item.receipts).filter(value => value === "accepted").length} of ${Object.keys(item.receipts).length} hosts accepted.`;
+          card.append(title, detail);
+          if (!item.error && item.receipts[data.identity.host] !== "accepted") {
+            const actions = document.createElement("div");
+            actions.className = "proposal-actions";
+            for (const decision of ["accepted", "rejected"]) {
+              const button = document.createElement("button");
+              button.type = "button";
+              button.textContent = decision === "accepted" ? "Accept" : "Reject";
+              button.addEventListener("click", async () => {
+                try {
+                  await api(`/api/proposals/${item.proposalId}`, { method: "POST", body: JSON.stringify({ decision }) });
+                  await loadSecurity();
+                  await loadSettings();
+                } catch (error) { securityMessage.textContent = error.message; }
+              });
+              actions.append(button);
+            }
+            card.append(actions);
+          }
+          return card;
+        }));
+      } catch (error) {
+        securityMessage.className = "message error";
+        securityMessage.textContent = error.message;
+      }
+    }
+    async function configureIdentity(operation) {
+      securityMessage.className = "message";
+      securityMessage.textContent = operation === "create" ? "Creating keys..." : "Checking identity...";
+      try {
+        const data = await api("/api/security", {
+          method: "POST",
+          body: JSON.stringify({ operation, identity: identityInput.value }),
+        });
+        if (data.identity) {
+          identityInput.value = data.identity;
+          securityMessage.textContent = "Post-quantum identity created. Back it up now, then add this same identity on every Tailmox host.";
+        } else {
+          identityInput.value = "";
+          securityMessage.textContent = "Identity added to this host.";
+        }
+        securityMessage.className = "message ok";
+        await loadSecurity();
+        await loadSettings();
+      } catch (error) {
+        securityMessage.className = "message error";
+        securityMessage.textContent = error.message;
+      }
+    }
+    document.getElementById("createIdentity").addEventListener("click", () => configureIdentity("create"));
+    document.getElementById("addIdentity").addEventListener("click", () => configureIdentity("import"));
     async function loadSettings() {
       const response = await fetch("/api/influxdb", { cache: "no-store" });
       const data = await response.json();
@@ -1692,12 +1944,16 @@ EDIT_INFLUX_HTML = """<!doctype html>
         document.getElementById("token").value = "";
         document.getElementById("token").placeholder = data.tokenConfigured ? "Current token is saved; leave blank to keep it" : "Paste an InfluxDB token";
         message.className = "message ok";
-        message.textContent = data.enabled ? "Saved to tailmox.conf. Export is enabled." : "Saved to tailmox.conf. Add all fields to enable export.";
+        message.textContent = data.proposal?.activated
+          ? "Saved and activated after host approval."
+          : "Proposal saved. Every registered host must accept it before activation.";
+        await loadSecurity();
       } else {
         message.className = "message error";
         message.textContent = data.error || "Unable to save settings.";
       }
     });
+    loadSecurity();
     loadSettings();
   </script>
 </body>
@@ -1724,13 +1980,32 @@ class Handler(BaseHTTPRequestHandler):
         login = request_identity(self.headers)
         if login:
             return login
-        self.send_json(403, {"error": "InfluxDB settings require Tailscale Serve user identity."})
+        self.send_json(403, {"error": "Tailmox settings require Tailscale Serve user identity."})
         return None
+
+    def read_json_request(self):
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as error:
+            raise ValueError("Invalid request length.") from error
+        if length < 0 or length > 1024 * 1024:
+            raise ValueError("The request is too large.")
+        value = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        if not isinstance(value, dict):
+            raise ValueError("Expected a JSON object.")
+        return value
 
     def do_GET(self):
         path = urlparse(self.path).path
         if path in ("/", "/index.html"):
-            self.send_body(200, "text/html; charset=utf-8", INDEX_HTML)
+            if not self.require_tailscale_user():
+                return
+            self.send_body(
+                200,
+                "text/html; charset=utf-8",
+                INDEX_HTML.replace("__CSRF_TOKEN__", CSRF_TOKEN),
+                {"Set-Cookie": "tailmox_csrf=1; Path=/; SameSite=Strict; Secure"},
+            )
         elif path == "/editInfluxDB":
             if not self.require_tailscale_user():
                 return
@@ -1754,12 +2029,29 @@ class Handler(BaseHTTPRequestHandler):
             if not self.require_tailscale_user():
                 return
             self.send_json(200, influx_settings_payload())
+        elif path == "/api/security":
+            if not self.require_tailscale_user():
+                return
+            try:
+                self.send_json(
+                    200,
+                    {
+                        "identity": tailmox_config.identity_status(),
+                        "proposals": tailmox_config.list_proposals(),
+                    },
+                )
+            except tailmox_config.ConfigError as error:
+                self.send_json(409, {"error": str(error)})
+        elif path == "/api/actions":
+            if not self.require_tailscale_user():
+                return
+            self.send_json(200, action_snapshot())
         else:
             self.send_body(404, "text/plain; charset=utf-8", "not found")
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path != "/api/influxdb":
+        if path != "/api/influxdb" and path != "/api/security" and not path.startswith("/api/proposals/") and not path.startswith("/api/actions/"):
             self.send_body(404, "text/plain; charset=utf-8", "not found")
             return
         if not self.require_tailscale_user():
@@ -1769,11 +2061,37 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         try:
-            length = int(self.headers.get("Content-Length", "0"))
-            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
-            settings = save_influx_config(payload)
-            self.send_json(200, settings)
-        except (OSError, json.JSONDecodeError) as error:
+            payload = self.read_json_request()
+            if path.startswith("/api/actions/"):
+                self.send_json(202, start_action(path.removeprefix("/api/actions/"), payload))
+                return
+            if path == "/api/influxdb":
+                self.send_json(200, save_influx_config(payload))
+                return
+            if path == "/api/security":
+                operation = payload.get("operation")
+                if operation == "create":
+                    result = tailmox_config.create_identity()
+                elif operation == "import":
+                    result = tailmox_config.install_identity(str(payload.get("identity", "")))
+                else:
+                    raise ValueError("Unknown identity operation.")
+                self.send_json(200, initialize_encrypted_configuration(result))
+                return
+            proposal_id = path.removeprefix("/api/proposals/")
+            self.send_json(
+                200,
+                tailmox_config.decide_proposal(
+                    proposal_id, str(payload.get("decision", ""))
+                ),
+            )
+        except (ValueError, json.JSONDecodeError, UnicodeError) as error:
+            self.send_json(400, {"error": str(error)})
+        except RuntimeError as error:
+            self.send_json(409, {"error": str(error)})
+        except tailmox_config.ConfigError as error:
+            self.send_json(409, {"error": str(error)})
+        except OSError as error:
             self.send_json(500, {"error": str(error)})
 
     def log_message(self, fmt, *args):

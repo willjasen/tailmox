@@ -7,7 +7,6 @@ Wants=network-online.target
 Type=simple
 Environment=TAILMOX_MONITOR_HOST=127.0.0.1
 Environment=TAILMOX_MONITOR_PORT=8088
-EnvironmentFile=-/etc/tailmox-monitor.env
 ExecStart=/usr/bin/python3 @TAILMOX_DIR@/tailmox-monitor.py
 Restart=on-failure
 RestartSec=5

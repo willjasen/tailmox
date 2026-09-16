@@ -262,7 +262,7 @@ function check_script_directory() {
 function install_dependencies() {
     log_echo "${YELLOW}Checking for required dependencies...${RESET}"
 
-    local dependencies=(curl expect git jq python3)
+    local dependencies=(age curl expect git jq openssl python3)
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
             log_echo "${YELLOW}$dep not found. Installing...${RESET}"
@@ -272,6 +272,12 @@ function install_dependencies() {
             :
         fi
     done
+
+    if ! command -v age-keygen >/dev/null 2>&1 ||
+        ! age-keygen --help 2>&1 | grep -q -- '-pq'; then
+        log_echo "${RED}Tailmox requires age 1.3.0 or newer for post-quantum configuration encryption.${RESET}"
+        return 1
+    fi
 }
 
 # Install Tailscale if it is not already installed
@@ -820,6 +826,7 @@ if [ "${1:-}" != "info" ]; then
 fi
 
 # Parse the script parameters
+AUTH_KEY="${TAILMOX_AUTH_KEY:-}"
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         info) show_info; exit 0 ;;
@@ -850,7 +857,7 @@ install_dependencies
 install_tailscale
 
 # Start Tailscale; use auth key if supplied
-start_tailscale $AUTH_KEY
+start_tailscale "$AUTH_KEY"
 
 ### Now that Tailscale is running...
 

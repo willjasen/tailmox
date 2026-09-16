@@ -146,16 +146,52 @@ Tailmox installs a lightweight monitoring interface as `tailmox-monitor.service`
 
 The monitor includes corosync-specific details: whether the `corosync` service is active and enabled, whether the cluster is quorate, expected and current votes, corosync transport, configured and active member information from `corosync-cmapctl`, quorum node details from `corosync-quorumtool`, cluster member count over time, link-quality history for each peer, and recent `corosync` journal entries. Configured cluster members that are not active in corosync are shown as offline.
 
-To export monitor data to InfluxDB 2.x, create `/etc/tailmox-monitor.env` on the node and restart `tailmox-monitor.service`:
+The same page is also the Tailmox control console. A signed-in Tailscale user
+can run `tailmox stage`, install, restart, or uninstall `tailmox analytics`, run
+the local test suite, and create a root-only configuration backup. Only one
+workflow runs at a time and its output is shown on the page. A Tailscale auth
+key entered for staging is passed through a private process environment, is
+cleared from the browser field immediately, and is never placed in command
+arguments or saved in the clustered configuration.
 
-```
-TAILMOX_INFLUXDB_URL=https://influxdb.example.com
-TAILMOX_INFLUXDB_TOKEN=your-token
-TAILMOX_INFLUXDB_ORG=your-org
-TAILMOX_INFLUXDB_BUCKET=your-bucket
-```
+InfluxDB credentials are configured only from the monitor UI at
+`/monitor/editInfluxDB`. On the first host, create the dedicated Tailmox age
+identity and back it up when it is displayed. Tailmox requires age 1.3.0 or
+newer and generates a hybrid ML-KEM-768 + X25519 identity beginning with
+`AGE-SECRET-KEY-PQ-1`; it never silently falls back to a classic X25519 key.
+Add that same identity from the web UI on every other Tailmox host. Its private value is stored locally as
+`/etc/tailmox/identity.txt` with root-only permissions and is never written to
+the Proxmox clustered filesystem.
 
-When configured, Tailmox writes `tailmox_cluster_status`, `tailmox_corosync_member`, `tailmox_corosync_link_quality`, and `tailmox_corosync_config` measurements using InfluxDB line protocol. The cluster status measurement includes active, configured, quorum, and offline node counts. `tailmox_corosync_config` includes the global knet MTU setting, PMTUD interval, knet ping interval and timeout, token timing, consensus timing, max network delay, and related corosync config values. If the env file is absent, the monitor runs without exporting data. The same settings can also be edited from the monitor UI at `/editInfluxDB` when accessed through Tailscale Serve with user identity headers.
+Tailmox stores the age-encrypted configuration at
+`/etc/pve/tailmox/config.age`. Each host also generates its own dedicated
+Ed25519 configuration-signing key at
+`/etc/tailmox/signing-key.pem`. This is a Tailmox-only OpenSSL key: it is not an
+SSH host key, is never placed in `authorized_keys`, and is not used for login.
+Only its public key is placed in the clustered security registry.
+
+Configuration changes are proposals signed by the host that created them.
+Every registered host verifies and accepts the exact encrypted revision from
+its own monitor UI. Tailmox activates the revision only after all registered
+hosts have written valid signed acceptance receipts. A rejection or missing
+receipt keeps the previous configuration active. The proposing host records
+its own acceptance when it creates the proposal.
+
+An existing `/etc/tailmox-monitor.env` is treated as legacy plaintext. After
+the age identity and host signer are initialized, the web interface proposes
+an encrypted migration. The plaintext file is removed only after that proposal
+is activated. The monitor service no longer loads credentials from an
+environment file.
+
+When configured, Tailmox writes `tailmox_cluster_status`,
+`tailmox_corosync_member`, `tailmox_corosync_link_quality`, and
+`tailmox_corosync_config` measurements using InfluxDB line protocol. The
+cluster status measurement includes active, configured, quorum, and offline
+node counts. `tailmox_corosync_config` includes the global knet MTU setting,
+PMTUD interval, knet ping interval and timeout, token timing, consensus timing,
+max network delay, and related corosync config values. If the encrypted
+settings are incomplete or cannot be decrypted, the monitor continues without
+exporting data and reports the configuration error in the web interface.
 
 The older periodic test collector is still available as `tailmox analytics`. It records `tailmox test` results, latency summaries, and cluster samples in SQLite, and can be installed as `tailmox-analytics.service` with `tailmox analytics install`.
 
