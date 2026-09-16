@@ -146,17 +146,26 @@ def run_command(command, timeout=5):
 def influx_config():
     try:
         config = tailmox_config.current_config()["influxdb"]
-        if tailmox_config.CONFIG_FILE.is_file() and os.path.isfile(INFLUX_ENV_FILE):
-            os.unlink(INFLUX_ENV_FILE)
-        return {
+        normalized = {
             "url": str(config.get("url", "")).rstrip("/"),
             "token": str(config.get("token", "")),
             "org": str(config.get("org", "")),
             "bucket": str(config.get("bucket", "")),
         }
+        if all(normalized.values()):
+            return normalized
     except (OSError, tailmox_config.ConfigError) as error:
         INFLUX_STATE["lastError"] = str(error)
-        return {"url": "", "token": "", "org": "", "bucket": ""}
+
+    legacy = read_env_config_file(TAILMOX_CONF_FILE)
+    if not legacy:
+        legacy = read_influx_env_file()
+    return {
+        "url": legacy.get("TAILMOX_INFLUXDB_URL", "").rstrip("/"),
+        "token": legacy.get("TAILMOX_INFLUXDB_TOKEN", ""),
+        "org": legacy.get("TAILMOX_INFLUXDB_ORG", ""),
+        "bucket": legacy.get("TAILMOX_INFLUXDB_BUCKET", ""),
+    }
 
 
 def read_env_config_file(path):
