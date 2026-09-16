@@ -155,7 +155,7 @@ TAILMOX_INFLUXDB_ORG=your-org
 TAILMOX_INFLUXDB_BUCKET=your-bucket
 ```
 
-When configured, Tailmox writes `tailmox_cluster_status` and `tailmox_corosync_link_quality` measurements using InfluxDB line protocol. If the env file is absent, the monitor runs without exporting data. The same settings can also be edited from the monitor UI at `/editInfluxDB` when accessed through Tailscale Serve with user identity headers.
+When configured, Tailmox writes `tailmox_cluster_status`, `tailmox_corosync_link_quality`, and `tailmox_corosync_mtu` measurements using InfluxDB line protocol. If the env file is absent, the monitor runs without exporting data. The same settings can also be edited from the monitor UI at `/editInfluxDB` when accessed through Tailscale Serve with user identity headers.
 
 ---
 

@@ -27,6 +27,8 @@ LINK_QUALITY_TTL_SECONDS = 30
 LINK_QUALITY_CACHE = {"generatedAt": 0, "links": []}
 INFLUX_STATE = {"lastWriteAt": None, "lastError": None}
 CSRF_TOKEN = secrets.token_urlsafe(32)
+MTU_HISTORY_LIMIT = 120
+MTU_HISTORY = []
 
 
 def run_command(command, timeout=5):
@@ -284,6 +286,64 @@ def collect_corosync_members():
     return parse_corosync_members(members["stdout"]) if members["stdout"] else []
 
 
+def parse_cmap_value(output, key):
+    for line in output.splitlines():
+        match = re.match(rf"{re.escape(key)} .* = (.*)", line.strip())
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def collect_mtu_status():
+    now = int(time.time())
+    cmap = run_command(["corosync-cmapctl", "runtime.config.totem.knet_mtu", "runtime.config.totem.knet_pmtud_interval"])
+    raw_mtu = parse_cmap_value(cmap["stdout"], "runtime.config.totem.knet_mtu")
+    raw_interval = parse_cmap_value(cmap["stdout"], "runtime.config.totem.knet_pmtud_interval")
+
+    try:
+        mtu = int(raw_mtu) if raw_mtu is not None else None
+    except ValueError:
+        mtu = None
+
+    try:
+        pmtud_interval = int(raw_interval) if raw_interval is not None else None
+    except ValueError:
+        pmtud_interval = None
+
+    sample = {
+        "timestamp": now,
+        "configuredMtu": mtu,
+        "displayMtu": None if mtu == 0 else mtu,
+        "automatic": mtu == 0,
+        "pmtudIntervalSeconds": pmtud_interval,
+    }
+    if not MTU_HISTORY or MTU_HISTORY[-1]["timestamp"] != now:
+        MTU_HISTORY.append(sample)
+        del MTU_HISTORY[:-MTU_HISTORY_LIMIT]
+        export_mtu_status(sample)
+
+    return {
+        "generatedAt": now,
+        "current": sample,
+        "history": MTU_HISTORY,
+    }
+
+
+def export_mtu_status(sample):
+    line = line_protocol(
+        "tailmox_corosync_mtu",
+        {"host": socket.gethostname()},
+        {
+            "configured_mtu": sample.get("configuredMtu"),
+            "display_mtu": sample.get("displayMtu"),
+            "automatic": sample.get("automatic"),
+            "pmtud_interval_seconds": sample.get("pmtudIntervalSeconds"),
+        },
+        sample["timestamp"],
+    )
+    write_influx([line] if line else [])
+
+
 def collect_link_quality():
     now = int(time.time())
     if now - LINK_QUALITY_CACHE["generatedAt"] < LINK_QUALITY_TTL_SECONDS:
@@ -405,6 +465,7 @@ def collect_status():
         "corosync": {
             "members": corosync_members,
             "quorumNodes": quorum_nodes,
+            "mtu": collect_mtu_status()["current"],
             "rawStatus": pvecm["stdout"],
             "rawQuorum": quorum["stdout"],
             "recentLogs": journal["stdout"].splitlines()[-25:] if journal["stdout"] else [],
@@ -480,6 +541,11 @@ INDEX_HTML = """<!doctype html>
     th { color: #bae6fd; font-size: 13px; font-weight: 700; }
     td { color: #e2e8f0; }
     tr:hover td { background: rgba(56,189,248,0.08); }
+    .chart { width: 100%; height: 220px; display: block; background: rgba(2,6,23,0.42); border: 1px solid rgba(148,163,184,0.18); border-radius: 8px; }
+    .chart text { fill: var(--muted); font-size: 12px; }
+    .chart .grid-line { stroke: rgba(148,163,184,0.18); stroke-width: 1; }
+    .chart .series { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .chart .point { fill: var(--accent); }
     pre { white-space: pre-wrap; overflow: auto; margin: 0; color: #cbd5e1; font-size: 13px; line-height: 1.45; background: rgba(2,6,23,0.42); border-radius: 6px; padding: 12px; }
     a { color: var(--accent); }
     @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
@@ -502,6 +568,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel"><h2>InfluxDB</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div><div style="margin-top: 10px;"><a href="/editInfluxDB">Edit settings</a></div></div>
       <div class="panel wide"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>ID</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
+      <div class="panel full"><h2>Global MTU Over Time</h2><div class="muted" id="mtuDetail">Loading MTU history...</div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over time"></svg></div>
       <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
       <div class="panel full"><h2>Recent Corosync Logs</h2><pre id="logs">Loading...</pre></div>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
@@ -512,8 +579,44 @@ INDEX_HTML = """<!doctype html>
     const yesNo = value => value ? "active" : "inactive";
     const ms = value => Number.isFinite(value) ? `${value.toFixed(1)} ms` : "unknown";
     const percent = value => Number.isFinite(value) ? `${value.toFixed(1)}%` : "unknown";
+    const number = value => Number.isFinite(value) ? value.toLocaleString() : "auto";
+    const svg = (name, attrs = {}, content = "") => `<${name} ${Object.entries(attrs).map(([key, value]) => `${key}="${value}"`).join(" ")}>${content}</${name}>`;
     const renderLinkQuality = links => {
       document.getElementById("linkQuality").innerHTML = (links || []).map(link => `<tr><td>${link.ip || ""}</td><td>${link.status || ""}</td><td>${percent(link.packetLossPercent)}</td><td>${ms(link.avgMs)}</td><td>${ms(link.maxMs)}</td><td>${ms(link.jitterMs)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td></tr>`).join("") || "<tr><td colspan='7'>No remote corosync links measured</td></tr>";
+    };
+    const renderMtu = data => {
+      const current = data.current || {};
+      const history = (data.history || []).filter(sample => Number.isFinite(sample.displayMtu));
+      const detail = current.automatic ? `Configured global knet MTU: auto; PMTUD interval: ${current.pmtudIntervalSeconds || "unknown"}s` : `Configured global knet MTU: ${number(current.configuredMtu)} bytes; PMTUD interval: ${current.pmtudIntervalSeconds || "unknown"}s`;
+      text("mtuDetail", `${detail}. Samples kept: ${(data.history || []).length}.`);
+
+      const chart = document.getElementById("mtuChart");
+      if (!history.length) {
+        chart.innerHTML = svg("text", { x: 32, y: 112 }, "Global MTU is automatic, so there is no fixed byte value to plot yet.");
+        return;
+      }
+
+      const width = 900, height = 220, left = 58, right = 20, top = 20, bottom = 38;
+      const minTime = history[0].timestamp;
+      const maxTime = history[history.length - 1].timestamp || minTime + 1;
+      const values = history.map(sample => sample.displayMtu);
+      const minValue = Math.min(...values);
+      const maxValue = Math.max(...values);
+      const span = Math.max(1, maxValue - minValue);
+      const x = sample => left + ((sample.timestamp - minTime) / Math.max(1, maxTime - minTime)) * (width - left - right);
+      const y = sample => top + (1 - ((sample.displayMtu - minValue) / span)) * (height - top - bottom);
+      const points = history.map(sample => `${x(sample).toFixed(1)},${y(sample).toFixed(1)}`).join(" ");
+      const midValue = minValue + span / 2;
+      chart.innerHTML = [
+        svg("line", { class: "grid-line", x1: left, y1: top, x2: left, y2: height - bottom }),
+        svg("line", { class: "grid-line", x1: left, y1: height - bottom, x2: width - right, y2: height - bottom }),
+        svg("line", { class: "grid-line", x1: left, y1: top, x2: width - right, y2: top }),
+        svg("text", { x: 10, y: top + 4 }, number(maxValue)),
+        svg("text", { x: 10, y: y({ displayMtu: midValue }) + 4 }, number(Math.round(midValue))),
+        svg("text", { x: 10, y: height - bottom + 4 }, number(minValue)),
+        `<polyline class="series" points="${points}"></polyline>`,
+        history.map(sample => svg("circle", { class: "point", cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 3 })).join(""),
+      ].join("");
     };
     async function refreshStatus() {
       const response = await fetch("/api/status", { cache: "no-store" });
@@ -532,6 +635,7 @@ INDEX_HTML = """<!doctype html>
       text("tailscaleName", data.tailscale.self.DNSName || data.tailscale.self.HostName || "");
       text("influxState", data.influxdb.enabled ? "enabled" : "off");
       text("influxDetail", data.influxdb.lastError ? `error: ${data.influxdb.lastError}` : (data.influxdb.lastWriteAt ? `last write: ${new Date(data.influxdb.lastWriteAt * 1000).toLocaleTimeString()}` : "not configured"));
+      renderMtu({ current: data.corosync.mtu, history: [data.corosync.mtu].filter(Boolean) });
       document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.ip || member.name || ""}</td><td>${member.nodeid || ""}</td><td>${member.status || ""}</td></tr>`).join("") || "<tr><td colspan='3'>No member data available</td></tr>";
       document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${node.name || ""}</td><td>${node.nodeid || ""}</td><td>${node.votes || ""}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
       text("logs", (data.corosync.recentLogs || []).join("\\n") || "No recent corosync logs available.");
@@ -543,12 +647,19 @@ INDEX_HTML = """<!doctype html>
       const data = await response.json();
       renderLinkQuality(data.links);
     }
+    async function refreshMtuHistory() {
+      const response = await fetch("/api/mtu-history", { cache: "no-store" });
+      const data = await response.json();
+      renderMtu(data);
+    }
     async function refresh() {
       await refreshStatus();
+      refreshMtuHistory();
       refreshLinkQuality();
     }
     refresh();
     setInterval(refreshStatus, 15000);
+    setInterval(refreshMtuHistory, 15000);
     setInterval(refreshLinkQuality, 30000);
   </script>
 </body>
@@ -689,6 +800,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, collect_status())
         elif path == "/api/link-quality":
             self.send_json(200, collect_link_quality())
+        elif path == "/api/mtu-history":
+            self.send_json(200, collect_mtu_status())
         elif path == "/api/influxdb":
             if not self.require_tailscale_user():
                 return
