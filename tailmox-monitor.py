@@ -1498,6 +1498,7 @@ INDEX_HTML = """<!doctype html>
   <div class="chart-tooltip" id="chartTooltip"></div>
   <script>
     const csrfToken = "__CSRF_TOKEN__";
+    const apiPrefix = window.location.pathname.startsWith("/monitor/") ? "/monitor" : (window.location.pathname.startsWith("/control/") ? "/control" : "");
     const text = (id, value) => document.getElementById(id).textContent = value || "unknown";
     const setPanelStatus = (id, status) => {
       const panel = document.getElementById(id);
@@ -1897,7 +1898,7 @@ INDEX_HTML = """<!doctype html>
     };
     const refreshAction = async () => {
       try {
-        const response = await fetch("/api/actions", { cache: "no-store" });
+        const response = await fetch(`${apiPrefix}/api/actions`, { cache: "no-store" });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Unable to read workflow status.");
         renderAction(data);
@@ -1927,7 +1928,7 @@ INDEX_HTML = """<!doctype html>
     document.querySelectorAll(".workflow-button").forEach(button => button.addEventListener("click", () => runAction(button.dataset.action)));
 
     async function refreshStatus() {
-      const response = await fetch("/api/status", { cache: "no-store" });
+      const response = await fetch(`${apiPrefix}/api/status`, { cache: "no-store" });
       const data = await response.json();
       document.getElementById("subtitle").textContent = `${data.hostname} refreshed ${new Date(data.generatedAt * 1000).toLocaleString()}`;
       const overall = document.getElementById("overall");
@@ -1959,28 +1960,28 @@ INDEX_HTML = """<!doctype html>
     }
     async function refreshLinkQuality() {
       document.getElementById("linkQuality").innerHTML = "<tr><td colspan='9'><span class='loading'><span class='spinner'></span>Measuring corosync link quality...</span></td></tr>";
-      const response = await fetch("/api/link-quality", { cache: "no-store" });
+      const response = await fetch(`${apiPrefix}/api/link-quality`, { cache: "no-store" });
       const data = await response.json();
       renderLinkQuality(data.links);
       await refreshLinkQualityHistory();
     }
     async function refreshLinkQualityHistory() {
-      const response = await fetch("/api/link-quality-history", { cache: "no-store" });
+      const response = await fetch(`${apiPrefix}/api/link-quality-history`, { cache: "no-store" });
       const data = await response.json();
       renderLinkQualityHistory(data);
     }
     async function refreshMtuHistory() {
-      const response = await fetch("/api/mtu-history", { cache: "no-store" });
+      const response = await fetch(`${apiPrefix}/api/mtu-history`, { cache: "no-store" });
       const data = await response.json();
       renderMtu(data);
     }
     async function refreshMemberCountHistory() {
-      const response = await fetch("/api/member-count-history", { cache: "no-store" });
+      const response = await fetch(`${apiPrefix}/api/member-count-history`, { cache: "no-store" });
       const data = await response.json();
       renderMemberCount(data);
     }
     async function refreshCmapKnetHistory() {
-      const response = await fetch("/api/cmap-knet-history", { cache: "no-store" });
+      const response = await fetch(`${apiPrefix}/api/cmap-knet-history`, { cache: "no-store" });
       const data = await response.json();
       renderCmapKnetHistory(data);
     }
@@ -2096,7 +2097,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
   </main>
   <script>
     const csrfToken = "__CSRF_TOKEN__";
-    const apiPrefix = window.location.pathname.startsWith("/control/") ? "/control" : "";
+    const apiPrefix = window.location.pathname.startsWith("/monitor/") ? "/monitor" : (window.location.pathname.startsWith("/control/") ? "/control" : "");
     const message = document.getElementById("message");
     const securityMessage = document.getElementById("securityMessage");
     const identityInput = document.getElementById("ageIdentity");
