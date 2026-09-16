@@ -39,6 +39,37 @@ common_env=(
     TAILMOX_AGE_KEYGEN_COMMAND="$MOCK_BIN/age-keygen"
 )
 
+env "${common_env[@]}" python3 - <<'PY'
+from unittest import mock
+
+import tailmox_config as config
+
+target = config.CLUSTER_DIR / "pmxcfs-write-test.json"
+with mock.patch.object(config.os, "fchmod", side_effect=PermissionError(1, "Operation not permitted")), \
+     mock.patch.object(config.os, "chmod", side_effect=PermissionError(1, "Operation not permitted")):
+    config.atomic_write(target, b'{"safe":true}\n', 0o644)
+assert target.read_bytes() == b'{"safe":true}\n'
+PY
+
+RECOVERY_DIR="$TEST_TMP/recovery"
+mkdir -p "$RECOVERY_DIR"
+printf '%s\n' AGE-SECRET-KEY-PQ-1TAILMOXCLUSTERIDENTITY > "$RECOVERY_DIR/identity.txt"
+env \
+    PYTHONPATH="$TEST_ROOT" \
+    TAILMOX_CONFIG_DIR="$RECOVERY_DIR/cluster" \
+    TAILMOX_PVE_CONFIG_DIR="$RECOVERY_DIR/pve" \
+    TAILMOX_AGE_COMMAND="$MOCK_BIN/age" \
+    TAILMOX_AGE_KEYGEN_COMMAND="$MOCK_BIN/age-keygen" \
+    TAILMOX_AGE_IDENTITY_FILE="$RECOVERY_DIR/identity.txt" \
+    python3 - <<'PY'
+import tailmox_config as config
+
+recovered = config.create_identity()
+assert recovered["identity"] == "AGE-SECRET-KEY-PQ-1TAILMOXCLUSTERIDENTITY"
+assert recovered["recipient"] == "age1pq1tailmoxclusterrecipient"
+assert config.security_document()["ageRecipient"] == recovered["recipient"]
+PY
+
 env "${common_env[@]}" \
     TAILMOX_HOSTNAME=pve1 \
     TAILMOX_AGE_IDENTITY_FILE="$TEST_TMP/pve1/identity.txt" \

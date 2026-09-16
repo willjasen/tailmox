@@ -66,6 +66,14 @@ def sha256(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+def is_cluster_path(path: pathlib.Path) -> bool:
+    try:
+        path.resolve().relative_to(CLUSTER_DIR.resolve())
+    except ValueError:
+        return False
+    return True
+
+
 def run(command: list[str], *, input_value: bytes | None = None) -> subprocess.CompletedProcess[bytes]:
     try:
         return subprocess.run(
@@ -88,14 +96,19 @@ def atomic_write(path: pathlib.Path, value: bytes, mode: int = 0o600) -> None:
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     try:
-        os.fchmod(descriptor, mode)
         with os.fdopen(descriptor, "wb") as temporary:
+            descriptor = -1
+            if not is_cluster_path(path):
+                os.fchmod(temporary.fileno(), mode)
             temporary.write(value)
             temporary.flush()
             os.fsync(temporary.fileno())
         os.replace(temporary_name, path)
-        os.chmod(path, mode)
+        if not is_cluster_path(path):
+            os.chmod(path, mode)
     except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
         try:
             os.unlink(temporary_name)
         except OSError:
@@ -186,13 +199,19 @@ def install_identity(identity_text: str) -> dict[str, Any]:
 def create_identity() -> dict[str, Any]:
     if security_document().get("ageRecipient"):
         raise ConfigError("This cluster already has a Tailmox age identity; add that identity instead.")
-    try:
-        generated = run([AGE_KEYGEN_COMMAND, "-pq"]).stdout.decode()
-    except ConfigError as error:
-        raise ConfigError(
-            "Tailmox requires age 1.3.0 or newer to create a post-quantum identity."
-        ) from error
-    secret = identity_secret(generated)
+    if IDENTITY_FILE.is_file():
+        try:
+            secret = identity_secret(IDENTITY_FILE.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError) as error:
+            raise ConfigError("The incomplete local Tailmox identity cannot be recovered.") from error
+    else:
+        try:
+            generated = run([AGE_KEYGEN_COMMAND, "-pq"]).stdout.decode()
+        except ConfigError as error:
+            raise ConfigError(
+                "Tailmox requires age 1.3.0 or newer to create a post-quantum identity."
+            ) from error
+        secret = identity_secret(generated)
     if not secret.startswith("AGE-SECRET-KEY-PQ-1"):
         raise ConfigError("age-keygen did not create a post-quantum Tailmox identity.")
     result = install_identity(secret)
