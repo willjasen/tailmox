@@ -1281,6 +1281,11 @@ def collect_cmap_knet_history():
 
 def influx_cmap_knet_history():
     config = influx_config()
+    node_names = {
+        node.get("nodeid"): node.get("name")
+        for node in collect_configured_nodes()
+        if node.get("nodeid") and node.get("name")
+    }
     rows = influx_query(f'''
 from(bucket: "{escape_string(config["bucket"])}")
   |> range(start: -6h)
@@ -1305,7 +1310,8 @@ from(bucket: "{escape_string(config["bucket"])}")
         series = by_link.setdefault(
             key,
             {
-                "name": f"node {nodeid} link {link}",
+                "name": f"{node_names.get(nodeid, f'node {nodeid}')} link {link}",
+                "hostname": node_names.get(nodeid),
                 "nodeid": nodeid,
                 "link": link,
                 "samples": {},
@@ -1482,7 +1488,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel" id="quorumPanel"><h2>Quorum</h2><div class="metric" id="quorumState">...</div><div class="muted" id="votes"></div></div>
       <div class="panel" id="clusterPanel"><h2>Cluster</h2><div class="metric" id="clusterName">...</div><div class="muted" id="transport"></div></div>
       <div class="panel" id="tailscalePanel"><h2>Tailscale</h2><div class="metric" id="tailscaleState">...</div><div class="muted" id="tailscaleName"></div></div>
-      <div class="panel" id="influxPanel"><h2>InfluxDB &amp; encryption</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div><div style="margin-top: 10px;"><a href="/editInfluxDB">Import age identity or edit settings</a></div></div>
+      <div class="panel" id="influxPanel"><h2>InfluxDB &amp; encryption</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div><div style="margin-top: 10px;"><a href="settings">Edit InfluxDB settings</a> · <a href="id">Manage age identity</a></div></div>
       <div class="panel wide-primary"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>Peer IP</th><th>ID</th><th>Votes</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
       <div class="panel full"><h2>Global MTU Over Time</h2><div class="muted" id="mtuDetail">Loading MTU history...</div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over time"></svg></div>
@@ -2241,7 +2247,14 @@ EDIT_INFLUX_HTML = """<!doctype html>
 """
 
 
-ID_HTML = EDIT_INFLUX_HTML
+ID_HTML = re.sub(
+    r'    <section class="panel">\n      <h2>Export Destination</h2>.*?    </section>\n',
+    "",
+    EDIT_INFLUX_HTML,
+    count=1,
+    flags=re.DOTALL,
+).replace("    loadSecurity();\n    loadSettings();", "    loadSecurity();")
+SETTINGS_HTML = EDIT_INFLUX_HTML
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -2310,7 +2323,25 @@ class Handler(BaseHTTPRequestHandler):
             self.send_body(
                 200,
                 "text/html; charset=utf-8",
-                EDIT_INFLUX_HTML.replace("__CSRF_TOKEN__", CSRF_TOKEN),
+                ID_HTML.replace("__CSRF_TOKEN__", CSRF_TOKEN),
+                {"Set-Cookie": "tailmox_csrf=1; Path=/; SameSite=Strict; Secure"},
+            )
+        elif path == "/settings":
+            if not self.require_tailscale_user():
+                return
+            try:
+                identity_loaded = bool(tailmox_config.identity_status().get("configured"))
+            except tailmox_config.ConfigError:
+                identity_loaded = False
+            if not identity_loaded:
+                self.send_response(302)
+                self.send_header("Location", "/id")
+                self.end_headers()
+                return
+            self.send_body(
+                200,
+                "text/html; charset=utf-8",
+                SETTINGS_HTML.replace("__CSRF_TOKEN__", CSRF_TOKEN),
                 {"Set-Cookie": "tailmox_csrf=1; Path=/; SameSite=Strict; Secure"},
             )
         elif path == "/api/status":
