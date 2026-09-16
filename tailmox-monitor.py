@@ -218,6 +218,18 @@ def parse_quorum(output):
     return nodes
 
 
+def parse_configured_nodes(output):
+    by_index = {}
+    for line in output.splitlines():
+        match = re.match(r"nodelist\.node\.(\d+)\.([a-z0-9_]+) .* = (.*)", line.strip())
+        if not match:
+            continue
+        index, key, value = match.groups()
+        node = by_index.setdefault(index, {})
+        node[key] = value.strip()
+    return sorted(by_index.values(), key=lambda node: int_or_none(node.get("nodeid")) or 0)
+
+
 def parse_corosync_members(output):
     members = []
     by_nodeid = {}
@@ -289,6 +301,42 @@ def measure_link_quality(members, local_ips, measured_at):
 def collect_corosync_members():
     members = run_command(["corosync-cmapctl", "runtime.members"])
     return parse_corosync_members(members["stdout"]) if members["stdout"] else []
+
+
+def collect_configured_nodes():
+    nodes = run_command(["corosync-cmapctl", "nodelist"])
+    return parse_configured_nodes(nodes["stdout"]) if nodes["stdout"] else []
+
+
+def corosync_member_health(configured_nodes, corosync_members, quorum_nodes):
+    members_by_nodeid = {member.get("nodeid"): member for member in corosync_members}
+    quorum_by_nodeid = {node.get("nodeid"): node for node in quorum_nodes}
+    configured_by_nodeid = {node.get("nodeid"): node for node in configured_nodes}
+    nodeids = sorted(
+        {nodeid for nodeid in [*configured_by_nodeid, *members_by_nodeid, *quorum_by_nodeid] if nodeid},
+        key=lambda nodeid: int_or_none(nodeid) or 0,
+    )
+    health = []
+    for nodeid in nodeids:
+        configured = configured_by_nodeid.get(nodeid, {})
+        member = members_by_nodeid.get(nodeid, {})
+        quorum = quorum_by_nodeid.get(nodeid, {})
+        status = member.get("status") or "offline"
+        health.append(
+            {
+                "nodeid": nodeid,
+                "name": configured.get("name") or quorum.get("name") or member.get("name") or "",
+                "ip": member.get("ip") or configured.get("ring0_addr") or "",
+                "votes": int_or_none(configured.get("quorum_votes")) or int_or_none(quorum.get("votes")),
+                "local": bool(quorum.get("local")),
+                "status": status,
+                "active": status == "joined",
+                "configured": nodeid in configured_by_nodeid,
+                "join_count": member.get("join_count"),
+                "config_version": member.get("config_version"),
+            }
+        )
+    return health
 
 
 def parse_cmap_value(output, key):
@@ -473,23 +521,22 @@ def export_link_quality(links, timestamp):
     write_influx([line for line in lines if line])
 
 
-def export_corosync_members(members, quorum_nodes, timestamp):
-    quorum_by_nodeid = {node.get("nodeid"): node for node in quorum_nodes}
+def export_corosync_members(members, timestamp):
     lines = []
     hostname = socket.gethostname()
     for member in members:
-        quorum = quorum_by_nodeid.get(member.get("nodeid"), {})
         lines.append(
             line_protocol(
                 "tailmox_corosync_member",
                 {"host": hostname, "nodeid": member.get("nodeid"), "member_ip": member.get("ip")},
                 {
-                    "joined": member.get("status") == "joined",
+                    "joined": member.get("active"),
+                    "configured": member.get("configured"),
                     "status": member.get("status"),
                     "join_count": int_or_none(member.get("join_count")),
                     "config_version": int_or_none(member.get("config_version")),
-                    "votes": int_or_none(quorum.get("votes")),
-                    "local": bool(quorum.get("local")),
+                    "votes": int_or_none(member.get("votes")),
+                    "local": bool(member.get("local")),
                 },
                 timestamp,
             )
@@ -523,13 +570,15 @@ def export_status(status):
             "expected_votes": integer(cluster.get("expectedVotes")),
             "total_votes": integer(cluster.get("totalVotes")),
             "highest_expected": integer(cluster.get("highestExpected")),
-            "member_count": len(status["corosync"]["members"]),
+            "member_count": sum(1 for member in status["corosync"]["members"] if member.get("active")),
             "quorum_node_count": len(status["corosync"]["quorumNodes"]),
+            "configured_node_count": len(status["corosync"]["configuredNodes"]),
+            "offline_node_count": sum(1 for member in status["corosync"]["members"] if not member.get("active")),
         },
         timestamp,
     )
     write_influx([line] if line else [])
-    export_corosync_members(status["corosync"]["members"], status["corosync"]["quorumNodes"], timestamp)
+    export_corosync_members(status["corosync"]["members"], timestamp)
 
 
 def collect_status():
@@ -544,6 +593,8 @@ def collect_status():
     pvecm_fields = parse_pvecm_status(pvecm["stdout"]) if pvecm["stdout"] else {}
     quorum_nodes = parse_quorum(quorum["stdout"]) if quorum["stdout"] else []
     corosync_members = collect_corosync_members()
+    configured_nodes = collect_configured_nodes()
+    member_health = corosync_member_health(configured_nodes, corosync_members, quorum_nodes)
 
     tailscale_data = {}
     if tailscale["stdout"]:
@@ -557,7 +608,8 @@ def collect_status():
     quorate = pvecm_fields.get("quorate")
     corosync_active = service["stdout"] == "active"
     pve_cluster_active = pve_cluster["stdout"] == "active"
-    healthy = corosync_active and pve_cluster_active and quorate == "Yes"
+    offline_members = [member for member in member_health if not member.get("active")]
+    healthy = corosync_active and pve_cluster_active and quorate == "Yes" and not offline_members
     member_count_sample = {
         "timestamp": int(time.time()),
         "memberCount": len(corosync_members),
@@ -593,7 +645,10 @@ def collect_status():
             "highestExpected": pvecm_fields.get("highest_expected"),
         },
         "corosync": {
-            "members": corosync_members,
+            "members": member_health,
+            "activeMembers": corosync_members,
+            "configuredNodes": configured_nodes,
+            "offlineMembers": offline_members,
             "quorumNodes": quorum_nodes,
             "mtu": collect_mtu_status()["current"],
             "memberCount": member_count_sample,
@@ -671,7 +726,8 @@ INDEX_HTML = """<!doctype html>
     .tag { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: 12px; font-weight: 800; text-transform: uppercase; }
     .tag.good { color: #bbf7d0; background: rgba(34,197,94,0.18); border: 1px solid rgba(34,197,94,0.34); }
     .tag.slow, .tag.jittery { color: #fde68a; background: rgba(245,158,11,0.18); border: 1px solid rgba(245,158,11,0.34); }
-    .tag.loss, .tag.unknown { color: #fecdd3; background: rgba(244,63,94,0.18); border: 1px solid rgba(244,63,94,0.34); }
+    .tag.loss, .tag.unknown, .tag.offline { color: #fecdd3; background: rgba(244,63,94,0.18); border: 1px solid rgba(244,63,94,0.34); }
+    .tag.joined { color: #bbf7d0; background: rgba(34,197,94,0.18); border: 1px solid rgba(34,197,94,0.34); }
     .metric-cell { border-radius: 6px; padding: 4px 8px; font-weight: 800; }
     .metric-cell.good { color: #bbf7d0; background: rgba(34,197,94,0.12); }
     .metric-cell.warn { color: #fde68a; background: rgba(245,158,11,0.14); }
@@ -719,7 +775,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel"><h2>Cluster</h2><div class="metric" id="clusterName">...</div><div class="muted" id="transport"></div></div>
       <div class="panel"><h2>Tailscale</h2><div class="metric" id="tailscaleState">...</div><div class="muted" id="tailscaleName"></div></div>
       <div class="panel"><h2>InfluxDB</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div><div style="margin-top: 10px;"><a href="/editInfluxDB">Edit settings</a></div></div>
-      <div class="panel wide"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>ID</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
+      <div class="panel wide"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>Peer IP</th><th>ID</th><th>Votes</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
       <div class="panel full"><h2>Global MTU Over Time</h2><div class="muted" id="mtuDetail">Loading MTU history...</div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over time"></svg></div>
       <div class="panel full"><h2>Cluster Members Over Time</h2><div class="muted" id="memberCountDetail">Loading member history...</div><svg class="chart" id="memberCountChart" viewBox="0 0 900 220" role="img" aria-label="Cluster members over time"></svg></div>
@@ -866,7 +922,7 @@ INDEX_HTML = """<!doctype html>
       text("tailscaleName", data.tailscale.self.DNSName || data.tailscale.self.HostName || "");
       text("influxState", data.influxdb.enabled ? "enabled" : "off");
       text("influxDetail", data.influxdb.lastError ? `error: ${data.influxdb.lastError}` : (data.influxdb.lastWriteAt ? `last write: ${new Date(data.influxdb.lastWriteAt * 1000).toLocaleTimeString()}` : "not configured"));
-      document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.ip || member.name || ""}</td><td>${member.nodeid || ""}</td><td>${member.status || ""}</td></tr>`).join("") || "<tr><td colspan='3'>No member data available</td></tr>";
+      document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.name || ""}${member.local ? " (local)" : ""}</td><td>${member.ip || ""}</td><td>${member.nodeid || ""}</td><td>${number(member.votes)}</td><td><span class="tag ${member.active ? "joined" : "offline"}">${member.active ? "active" : "offline"}</span></td></tr>`).join("") || "<tr><td colspan='5'>No member data available</td></tr>";
       document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${node.name || ""}</td><td>${node.nodeid || ""}</td><td>${node.votes || ""}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
       text("logs", (data.corosync.recentLogs || []).join("\\n") || "No recent corosync logs available.");
       text("raw", data.corosync.rawStatus || "No pvecm status output available.");

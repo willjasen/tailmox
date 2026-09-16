@@ -144,7 +144,7 @@ Tailmox installs a lightweight monitoring interface as `tailmox-monitor.service`
 - `https://HOSTNAME.MAGICDNS_NAME.ts.net/monitor`
 - `https://tailmox.MAGICDNS_NAME.ts.net/monitor`
 
-The monitor includes corosync-specific details: whether the `corosync` service is active and enabled, whether the cluster is quorate, expected and current votes, corosync transport, member/ring information from `corosync-cmapctl`, quorum node details from `corosync-quorumtool`, cluster member count over time, link-quality history for each peer, and recent `corosync` journal entries.
+The monitor includes corosync-specific details: whether the `corosync` service is active and enabled, whether the cluster is quorate, expected and current votes, corosync transport, configured and active member information from `corosync-cmapctl`, quorum node details from `corosync-quorumtool`, cluster member count over time, link-quality history for each peer, and recent `corosync` journal entries. Configured cluster members that are not active in corosync are shown as offline.
 
 To export monitor data to InfluxDB 2.x, create `/etc/tailmox-monitor.env` on the node and restart `tailmox-monitor.service`:
 
@@ -155,7 +155,7 @@ TAILMOX_INFLUXDB_ORG=your-org
 TAILMOX_INFLUXDB_BUCKET=your-bucket
 ```
 
-When configured, Tailmox writes `tailmox_cluster_status`, `tailmox_corosync_member`, `tailmox_corosync_link_quality`, and `tailmox_corosync_config` measurements using InfluxDB line protocol. `tailmox_corosync_config` includes the global knet MTU setting, PMTUD interval, knet ping interval and timeout, token timing, consensus timing, max network delay, and related corosync config values. If the env file is absent, the monitor runs without exporting data. The same settings can also be edited from the monitor UI at `/editInfluxDB` when accessed through Tailscale Serve with user identity headers.
+When configured, Tailmox writes `tailmox_cluster_status`, `tailmox_corosync_member`, `tailmox_corosync_link_quality`, and `tailmox_corosync_config` measurements using InfluxDB line protocol. The cluster status measurement includes active, configured, quorum, and offline node counts. `tailmox_corosync_config` includes the global knet MTU setting, PMTUD interval, knet ping interval and timeout, token timing, consensus timing, max network delay, and related corosync config values. If the env file is absent, the monitor runs without exporting data. The same settings can also be edited from the monitor UI at `/editInfluxDB` when accessed through Tailscale Serve with user identity headers.
 
 ---
 
