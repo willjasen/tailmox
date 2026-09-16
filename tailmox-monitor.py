@@ -1300,7 +1300,7 @@ from(bucket: "{escape_string(config["bucket"])}")
         elif field == "quorate":
             sample["quorate"] = influx_bool(row, "_value")
     history = sorted(by_timestamp.values(), key=lambda sample: sample["timestamp"])
-    return [sample for sample in history if sample["memberCount"] is not None]
+    return [sample for sample in history if sample.get("memberCount") is not None]
 
 
 def collect_cmap_knet_history():
