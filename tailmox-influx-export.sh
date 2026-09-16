@@ -72,6 +72,25 @@ collect_once() {
         fi
     done < <(sed $'s/\033\\[[0-9;]*m//g' "$output_file")
 
+    local cmap_pattern='^([^[:space:]]+) \(([^)]+)\) = ([0-9]+)$'
+    while IFS= read -r line; do
+        if [[ "$line" =~ $cmap_pattern ]]; then
+            local cmap_path="${BASH_REMATCH[1]}"
+            local cmap_type="${BASH_REMATCH[2]}"
+            local cmap_value="${BASH_REMATCH[3]}"
+            if [[ "$cmap_path" == stats.knet.node*.link*.* && "$cmap_type" != str ]]; then
+                local cmap_node cmap_link cmap_metric cmap_tags
+                cmap_node=${cmap_path#stats.knet.node}
+                cmap_node=${cmap_node%%.*}
+                cmap_link=${cmap_path#*.link}
+                cmap_link=${cmap_link%%.*}
+                cmap_metric=${cmap_path##*.}
+                cmap_tags="host=$(escape_tag "$hostname"),path=$(escape_tag "$cmap_path"),family=knet,scope=node${cmap_node},nodeid=$(escape_tag "$cmap_node"),link=$(escape_tag "$cmap_link"),metric=$(escape_tag "$cmap_metric")"
+                printf 'tailmox_corosync_cmap_stat,%s value=%si %s\n' "$cmap_tags" "$cmap_value" "$timestamp" >>"$payload_file"
+            fi
+        fi
+    done < <(corosync-cmapctl -m stats 2>/dev/null || true)
+
     if [[ -s "$payload_file" ]]; then
         curl --fail --silent --show-error \
             --max-time 10 \
