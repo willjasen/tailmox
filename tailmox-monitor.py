@@ -2045,7 +2045,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
         <h1>InfluxDB Settings</h1>
         <div class="muted">Configure cluster-distributed Tailmox monitor exports.</div>
       </div>
-      <a class="button" href="/">Back to monitor</a>
+      <a class="button" href="./">Back to monitor</a>
     </header>
     <section class="panel security-grid">
       <h2>Encryption &amp; host signing</h2>
@@ -2074,11 +2074,12 @@ EDIT_INFLUX_HTML = """<!doctype html>
   </main>
   <script>
     const csrfToken = "__CSRF_TOKEN__";
+    const apiPrefix = window.location.pathname.startsWith("/control/") ? "/control" : "";
     const message = document.getElementById("message");
     const securityMessage = document.getElementById("securityMessage");
     const identityInput = document.getElementById("ageIdentity");
     async function api(path, options = {}) {
-      const response = await fetch(path, {
+      const response = await fetch(`${apiPrefix}${path}`, {
         cache: "no-store",
         ...options,
         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken, ...(options.headers || {}) },
@@ -2155,7 +2156,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
     document.getElementById("createIdentity").addEventListener("click", () => configureIdentity("create"));
     document.getElementById("addIdentity").addEventListener("click", () => configureIdentity("import"));
     async function loadSettings() {
-      const response = await fetch("/api/influxdb", { cache: "no-store" });
+      const response = await fetch(`${apiPrefix}/api/influxdb`, { cache: "no-store" });
       const data = await response.json();
       document.getElementById("url").value = data.url || "";
       document.getElementById("org").value = data.org || "";
@@ -2172,7 +2173,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
         bucket: document.getElementById("bucket").value,
         token: document.getElementById("token").value,
       };
-      const response = await fetch("/api/influxdb", {
+      const response = await fetch(`${apiPrefix}/api/influxdb`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
         body: JSON.stringify(body),
