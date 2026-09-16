@@ -1083,6 +1083,16 @@ INDEX_HTML = """<!doctype html>
     .tag.slow, .tag.jittery { color: #fde68a; background: rgba(245,158,11,0.18); border: 1px solid rgba(245,158,11,0.34); }
     .tag.loss, .tag.unknown, .tag.offline { color: #fecdd3; background: rgba(244,63,94,0.18); border: 1px solid rgba(244,63,94,0.34); }
     .tag.joined { color: #bbf7d0; background: rgba(34,197,94,0.18); border: 1px solid rgba(34,197,94,0.34); }
+    .summary-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: -2px 0 12px; color: var(--muted); }
+    .summary-chip { display: inline-flex; align-items: baseline; gap: 6px; border: 1px solid rgba(148,163,184,0.24); border-radius: 8px; padding: 7px 10px; background: rgba(2,6,23,0.24); }
+    .summary-chip strong { color: #f8fafc; font-size: 15px; }
+    .summary-chip span { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+    .summary-chip.good { border-color: rgba(34,197,94,0.36); background: rgba(20,83,45,0.18); }
+    .summary-chip.good strong, .summary-chip.good span { color: #bbf7d0; }
+    .summary-chip.warn { border-color: rgba(245,158,11,0.42); background: rgba(120,53,15,0.18); }
+    .summary-chip.warn strong, .summary-chip.warn span { color: #fde68a; }
+    .summary-chip.bad { border-color: rgba(244,63,94,0.42); background: rgba(127,29,29,0.18); }
+    .summary-chip.bad strong, .summary-chip.bad span { color: #fecdd3; }
     .metric-cell { border-radius: 6px; padding: 4px 8px; font-weight: 800; }
     .metric-cell.good { color: #bbf7d0; background: rgba(34,197,94,0.12); }
     .metric-cell.warn { color: #fde68a; background: rgba(245,158,11,0.14); }
@@ -1167,6 +1177,10 @@ INDEX_HTML = """<!doctype html>
     const qualityClass = (value, warn, bad) => !Number.isFinite(value) ? "bad" : value >= bad ? "bad" : value >= warn ? "warn" : "good";
     const metricCell = (value, text, warn, bad) => `<span class="metric-cell ${qualityClass(value, warn, bad)}">${text}</span>`;
     const number = value => Number.isFinite(value) ? value.toLocaleString() : "auto";
+    const detailChips = (id, chips) => {
+      document.getElementById(id).className = "summary-chips";
+      document.getElementById(id).innerHTML = chips.map(chip => `<span class="summary-chip ${chip.status || ""}"><strong>${escapeHtml(chip.value)}</strong><span>${escapeHtml(chip.label)}</span></span>`).join("");
+    };
     const timeLabel = value => new Date(value * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
     const dateTimeLabel = value => Number.isFinite(value) ? new Date(value * 1000).toLocaleString() : "unknown";
     const seriesColors = ["#38bdf8", "#2dd4bf", "#a78bfa", "#fb7185", "#f59e0b", "#22c55e", "#e879f9", "#60a5fa"];
@@ -1323,8 +1337,12 @@ INDEX_HTML = """<!doctype html>
       const discovered = Number.isFinite(current.discoveredGlobalMtu);
       const configured = current.automatic ? "auto" : `${number(current.configuredMtu)} bytes`;
       const plotted = discovered ? `${number(current.discoveredGlobalMtu)} bytes discovered` : configured;
-      const detail = `Global data MTU: ${plotted}; configured knet MTU: ${configured}; PMTUD interval: ${current.pmtudIntervalSeconds || "unknown"}s`;
-      text("mtuDetail", `${detail}. Samples kept: ${(data.history || []).length}.`);
+      detailChips("mtuDetail", [
+        { value: plotted, label: "global data MTU", status: discovered ? "good" : "warn" },
+        { value: configured, label: "configured knet MTU" },
+        { value: current.pmtudIntervalSeconds ? `${number(current.pmtudIntervalSeconds)}s` : "unknown", label: "PMTUD interval" },
+        { value: number((data.history || []).length), label: "samples" },
+      ]);
 
       const chart = document.getElementById("mtuChart");
       if (!history.length) {
@@ -1351,8 +1369,13 @@ INDEX_HTML = """<!doctype html>
       const current = data.current || {};
       const history = (data.history || []).filter(sample => Number.isFinite(sample.memberCount));
       const offline = Number.isFinite(current.offlineNodeCount) ? current.offlineNodeCount : Math.max(0, (current.configuredNodeCount || 0) - (current.memberCount || 0));
-      const quorum = current.quorate === false ? "not quorate" : "quorate";
-      text("memberCountDetail", `Current members: ${number(current.memberCount)} of ${number(current.configuredNodeCount)} configured; ${number(offline)} offline; ${quorum}. Samples kept: ${(data.history || []).length}.`);
+      const quorumStatus = current.quorate === false ? "bad" : (offline ? "warn" : "good");
+      detailChips("memberCountDetail", [
+        { value: `${number(current.memberCount)} / ${number(current.configuredNodeCount)}`, label: "members online", status: offline ? "warn" : "good" },
+        { value: number(offline), label: "offline", status: offline ? "warn" : "good" },
+        { value: current.quorate === false ? "no quorum" : "quorate", label: "quorum", status: quorumStatus },
+        { value: number((data.history || []).length), label: "samples" },
+      ]);
       renderMemberCountChart(document.getElementById("memberCountChart"), history);
     };
     const renderLinkQualityHistory = data => {
@@ -1364,7 +1387,11 @@ INDEX_HTML = """<!doctype html>
         samples: (item.samples || []).filter(sample => Number.isFinite(sample.avgMs)),
       })).filter(item => item.samples.length);
       const totalSamples = series.reduce((sum, item) => sum + item.samples.length, 0);
-      text("linkQualityGraphDetail", `Average latency by host. Series: ${series.length}; samples: ${totalSamples}.`);
+      detailChips("linkQualityGraphDetail", [
+        { value: number(series.length), label: "hosts" },
+        { value: number(totalSamples), label: "samples" },
+        { value: "average", label: "latency metric" },
+      ]);
       legend.innerHTML = series.map(item => `<span class="legend-item"><span class="swatch" style="background:${item.color}"></span>${item.name}</span>`).join("");
       if (!series.length) {
         chart.innerHTML = svg("text", { x: 32, y: 112 }, "No link-quality history collected yet.");
