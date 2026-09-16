@@ -236,6 +236,18 @@ def ensure_signing_key() -> str:
     return public_key
 
 
+def signing_public_key() -> str | None:
+    if not SIGNING_KEY_FILE.is_file():
+        return None
+    private_key = SIGNING_KEY_FILE.read_bytes()
+    public_key = run(
+        [OPENSSL_COMMAND, "pkey", "-pubout"], input_value=private_key
+    ).stdout.decode("ascii")
+    if "BEGIN PUBLIC KEY" not in public_key or "END PUBLIC KEY" not in public_key:
+        raise ConfigError("The Tailmox host signing key is invalid.")
+    return public_key
+
+
 def enroll_local_host() -> dict[str, Any]:
     with LOCK:
         public_key = ensure_signing_key()
@@ -264,6 +276,7 @@ def identity_status() -> dict[str, Any]:
         "recipientFingerprint": sha256(local_recipient.encode())[:16] if local_recipient else None,
         "host": HOSTNAME,
         "signingKeyConfigured": SIGNING_KEY_FILE.is_file(),
+        "signingPublicKey": signing_public_key(),
         "trustedHosts": sorted(security["hosts"]),
     }
 

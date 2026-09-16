@@ -2244,6 +2244,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
     .identity-detail span:first-child { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
     .identity-detail span:last-child { overflow-wrap: anywhere; }
     .identity-detail .recipient { font: 12px ui-monospace, monospace; }
+    .identity-detail .public-key { white-space: pre-wrap; font: 11px/1.35 ui-monospace, monospace; }
     .proposal { border: 1px solid rgba(148,163,184,0.28); border-radius: 8px; padding: 12px; }
     .proposal-actions { display: flex; gap: 8px; margin-top: 10px; }
   </style>
@@ -2277,6 +2278,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
         <div class="identity-detail"><span>Cluster match</span><span id="identityMatch"></span></div>
         <div class="identity-detail"><span>Host signer</span><span id="identitySigner"></span></div>
         <div class="identity-detail"><span>Fingerprint</span><span class="recipient" id="identityFingerprint"></span></div>
+        <div class="identity-detail"><span>Public signing key</span><span class="public-key" id="identitySigningPublicKey"></span></div>
         <div class="identity-detail"><span>Public recipient</span><span class="recipient" id="identityRecipient"></span></div>
       </div>
       <div id="identitySetup">
@@ -2366,6 +2368,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
           document.getElementById("identityMatch").textContent = identity.matchesCluster ? "Verified" : "Not registered or does not match";
           document.getElementById("identitySigner").textContent = identity.signingKeyConfigured ? "Dedicated Ed25519 key loaded" : "Not created yet";
           document.getElementById("identityFingerprint").textContent = identity.recipientFingerprint || "Unavailable";
+          document.getElementById("identitySigningPublicKey").textContent = identity.signingPublicKey || "Unavailable";
           const recipient = identity.recipient || "";
           document.getElementById("identityRecipient").textContent = recipient.length > 32
             ? `${recipient.slice(0, 18)}…${recipient.slice(-10)}`
