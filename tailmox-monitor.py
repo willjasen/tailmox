@@ -1152,7 +1152,7 @@ INDEX_HTML = """<!doctype html>
     const seriesColors = ["#38bdf8", "#2dd4bf", "#a78bfa", "#fb7185", "#f59e0b", "#22c55e", "#e879f9", "#60a5fa"];
     const svg = (name, attrs = {}, content = "") => `<${name} ${Object.entries(attrs).map(([key, value]) => `${key}="${value}"`).join(" ")}>${content}</${name}>`;
     const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
-    const tooltipText = lines => escapeHtml(lines.filter(line => line !== null && line !== undefined && line !== "").join("\n"));
+    const tooltipText = lines => escapeHtml(lines.filter(line => line !== null && line !== undefined && line !== "").join("\\n"));
     const hideChartTooltip = () => document.getElementById("chartTooltip").classList.remove("visible");
     const moveChartTooltip = event => {
       const tooltip = document.getElementById("chartTooltip");
