@@ -258,6 +258,7 @@ show_usage() {
  "      ${blue}install${reset}                  Install and start the analytics monitor" \
  "      ${blue}restart${reset}                  Restart the analytics monitor" \
  "      ${blue}uninstall${reset}                Stop and remove the analytics monitor" \
+ "  tailmox ${blue}influx${reset} [install|restart|uninstall] Export test latency to InfluxDB" \
  "  tailmox ${blue}self-test${reset}          Run the regression test suite" \
  "  tailmox ${blue}help${reset}               Show this help" \
  '' \
@@ -434,6 +435,13 @@ case "${1:-}" in
             *)
                 exec "$TAILMOX_ROOT/tailmox-monitor" "$@"
                 ;;
+        esac
+        ;;
+    influx)
+        shift
+        case "${1:-}" in
+            install|restart|uninstall) action="$1"; shift; [[ "$#" -eq 0 ]] || { printf 'tailmox influx %s does not accept arguments.\n' "$action" >&2; exit 2; }; exec "$TAILMOX_ROOT/tailmox.sh" "--influx-$action" ;;
+            *) printf 'Usage: tailmox influx [install|restart|uninstall]\n' >&2; exit 2 ;;
         esac
         ;;
     test|self-test)

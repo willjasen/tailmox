@@ -266,6 +266,12 @@ exporting data and reports the configuration error in the web interface.
 
 The older periodic test collector is still available as `tailmox analytics`. It records `tailmox test` results, latency summaries, and cluster samples in SQLite, and can be installed as `tailmox-analytics.service` with `tailmox analytics install`.
 
+To export the latency and TCP results from `tailmox test` to InfluxDB, configure
+InfluxDB in the monitor settings, then run `tailmox influx install`. The exporter
+runs the test once per minute and writes `tailmox_icmp` and `tailmox_tcp`
+measurements. Use `tailmox influx restart` or `tailmox influx uninstall` to
+manage it.
+
 ---
 
 ### 🧪 Testing 🧪

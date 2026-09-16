@@ -1764,6 +1764,30 @@ while [[ "$#" -gt 0 ]]; do
             backup_proxmox_cluster_configuration
             exit $?
             ;;
+        --influx-install|--influx-restart|--influx-uninstall)
+            action="${1#--influx-}"
+            systemd_dir="${TAILMOX_SYSTEMD_DIR:-/etc/systemd/system}"
+            service_name="${TAILMOX_INFLUX_SERVICE:-tailmox-influx.service}"
+            service_source="$(dirname "${BASH_SOURCE[0]}")/tailmox-influx.service"
+            service_target="$systemd_dir/$service_name"
+            [[ -f "$service_source" ]] || { printf 'Missing InfluxDB service definition.\n' >&2; exit 1; }
+            if [[ "$action" == install ]]; then
+                if [[ -e "$service_target" ]] && { ! grep -Fqx 'Description=Tailmox test metrics InfluxDB exporter' "$service_target" || ! grep -Fq 'tailmox-influx-export.sh' "$service_target"; }; then
+                    printf 'Refusing to replace unrelated service: %s\n' "$service_target" >&2
+                    exit 1
+                fi
+                install -d -m 0755 "$systemd_dir" || exit 1
+                sed "s|@TAILMOX_DIR@|$(dirname "${BASH_SOURCE[0]}")|g" "$service_source" > "$service_target" || exit 1
+            elif [[ ! -e "$service_target" ]]; then printf 'Tailmox InfluxDB exporter is not installed.\n' >&2; exit 1
+            elif ! grep -Fqx 'Description=Tailmox test metrics InfluxDB exporter' "$service_target" || ! grep -Fq 'tailmox-influx-export.sh' "$service_target"; then
+                printf 'Refusing to modify unrelated service: %s\n' "$service_target" >&2
+                exit 1
+            fi
+            if [[ "$action" == uninstall ]]; then systemctl disable --now "$service_name" && rm -f "$service_target" && systemctl daemon-reload || exit 1; printf 'Tailmox InfluxDB exporter uninstalled.\n'; exit 0; fi
+            systemctl daemon-reload && systemctl enable "$service_name" && systemctl restart "$service_name" || exit 1
+            printf 'Tailmox InfluxDB exporter %s.\n' "$( [[ "$action" == install ]] && printf 'installed and running' || printf 'restarted' )"
+            exit 0
+            ;;
         --staging) STAGING="true"; log_echo "${YELLOW}Staging mode enabled.${RESET}"; ;;
         --auth-key) AUTH_KEY="$2"; log_echo "${YELLOW}Using auth key for Tailscale...${RESET}"; shift; ;;
         *) log_echo "${RED}Unknown parameter: $1${RESET}"; exit 1 ;;

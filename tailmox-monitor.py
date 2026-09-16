@@ -1033,6 +1033,43 @@ def collect_link_quality_history():
     }
 
 
+def influx_test_history():
+    config = influx_config()
+    rows = influx_query(f'''
+from(bucket: "{escape_string(config["bucket"])}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => (r._measurement == "tailmox_icmp" or r._measurement == "tailmox_tcp") and r.host == "{escape_string(socket.gethostname())}")
+  |> filter(fn: (r) => r._field == "average_ms" or r._field == "maximum_ms" or r._field == "latency_ms" or r._field == "packets_received" or r._field == "packets_sent")
+  |> sort(columns: ["_time"])
+  |> limit(n: 2880)
+''')
+    groups = {}
+    for row in rows:
+        timestamp = influx_time(row.get("_time"))
+        if timestamp is None:
+            continue
+        measurement = row.get("_measurement")
+        key = (measurement, row.get("node") or f"port {row.get('port', 'unknown')}")
+        group = groups.setdefault(key, {"name": key[1], "kind": measurement, "samples": {}})
+        sample = group["samples"].setdefault(timestamp, {"timestamp": timestamp})
+        field = row.get("_field")
+        value = influx_float(row, "_value")
+        if field in ("average_ms", "latency_ms"):
+            sample["avgMs"] = value
+        elif field == "maximum_ms":
+            sample["maxMs"] = value
+        elif field == "packets_received":
+            sample["received"] = influx_int(row, "_value")
+        elif field == "packets_sent":
+            sample["sent"] = influx_int(row, "_value")
+    return [{"name": key[1], "kind": key[0], "samples": sorted(value["samples"].values(), key=lambda item: item["timestamp"])[-720:]}
+            for key, value in sorted(groups.items())]
+
+
+def collect_test_history():
+    return {"generatedAt": int(time.time()), "series": influx_test_history()}
+
+
 def influx_link_quality_history():
     config = influx_config()
     rows = influx_query(f'''
@@ -1437,8 +1474,9 @@ from(bucket: "{escape_string(config["bucket"])}")
 
 
 HEALTH_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tailmox Health</title><style>
-:root{color-scheme:dark;--line:#334155;--text:#e5e7eb;--muted:#9ca3af}body{margin:0;min-height:100vh;color:var(--text);font:16px system-ui,sans-serif;background:linear-gradient(135deg,#0b1020,#14213d)}main{max-width:760px;margin:auto;padding:clamp(24px,7vw,64px) 20px}header{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:28px}h1{margin:0 0 6px;font-size:32px}p{color:var(--muted);margin:0}.pill{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-weight:700;white-space:nowrap}.good{color:#bbf7d0;border-color:#347b51;background:#14532d55}.warn{color:#fde68a;border-color:#8a641f;background:#78350f55}.bad{color:#fecdd3;border-color:#8f3042;background:#7f1d1d55}.issues{display:grid;gap:10px}.issue,.clear{padding:17px 18px;border:1px solid var(--line);border-radius:10px;background:#111827dd}.issue{border-left:4px solid #f59e0b}.issue.bad{border-left-color:#ef4444}.issue strong{display:block;margin-bottom:4px}.clear{text-align:center;color:#bbf7d0;border-color:#347b51;background:#14532d33}a{color:#7dd3fc;display:inline-block;margin-top:24px}@media(max-width:540px){header{display:block}.pill{display:inline-block;margin-top:15px}}</style></head><body><main><header><div><h1>Cluster health</h1><p id="updated">Checking current status…</p></div><div class="pill" id="overall">Checking…</div></header><section class="issues" id="issues"><div class="issue">Loading health checks…</div></section><a href="/">Open detailed monitor</a></main><script>
-const apiPrefix=(window.location.pathname==="/monitor/health"||window.location.pathname.startsWith("/monitor/"))?"/monitor":"";document.querySelector("a").href=`${apiPrefix}/`;const issues=document.getElementById("issues"),overall=document.getElementById("overall"),add=(title,detail,bad=false)=>{const item=document.createElement("div");item.className=`issue ${bad?"bad":""}`;item.innerHTML=`<strong>${title}</strong><span>${detail}</span>`;issues.append(item)};
+:root{color-scheme:dark;--line:#334155;--text:#e5e7eb;--muted:#9ca3af}body{margin:0;min-height:100vh;color:var(--text);font:16px system-ui,sans-serif;background:linear-gradient(135deg,#0b1020,#14213d)}main{max-width:760px;margin:auto;padding:clamp(24px,7vw,64px) 20px}header{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:28px}h1{margin:0 0 6px;font-size:32px}p{color:var(--muted);margin:0}.pill{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-weight:700;white-space:nowrap}.good{color:#bbf7d0;border-color:#347b51;background:#14532d55}.warn{color:#fde68a;border-color:#8a641f;background:#78350f55}.bad{color:#fecdd3;border-color:#8f3042;background:#7f1d1d55}.issues{display:grid;gap:10px}.issue,.clear{padding:17px 18px;border:1px solid var(--line);border-radius:10px;background:#111827dd}.issue{border-left:4px solid #f59e0b}.issue.bad{border-left-color:#ef4444}.issue strong{display:block;margin-bottom:4px}.clear{text-align:center;color:#bbf7d0;border-color:#347b51;background:#14532d33}a{color:#7dd3fc;display:inline-block;margin-top:24px}label{color:var(--muted);font-size:13px}select{margin-left:4px;padding:7px;border:1px solid var(--line);border-radius:7px;color:var(--text);background:#111827}@media(max-width:540px){header{display:block}.pill{display:inline-block;margin-top:15px}}
+</style></head><body><main><header><div><h1>Tailmox Monitor</h1><p>Cluster health at a glance</p></div><div><label>Page <select id="page"><option value="health">Health</option><option value="monitor">Monitor</option><option value="settings">Settings</option><option value="id">ID</option><option value="disable">Disable Tailmox</option></select></label><div class="pill" id="overall">Checking…</div></div></header><section><h2>Cluster health</h2><p id="updated">Checking current status…</p></section><section class="issues" id="issues"><div class="issue">Loading health checks…</div></section><a href="/">Open detailed monitor</a></main><script>
+const apiPrefix=(window.location.pathname==="/monitor/health"||window.location.pathname.startsWith("/monitor/"))?"/monitor":"";document.querySelector("a").href=`${apiPrefix}/`;document.getElementById("page").addEventListener("change",event=>{const target=event.target.value;window.location.href=target==="health"?`${apiPrefix}/health`:target==="monitor"?`${apiPrefix}/`:`${apiPrefix}/${target}`});const issues=document.getElementById("issues"),overall=document.getElementById("overall"),add=(title,detail,bad=false)=>{const item=document.createElement("div");item.className=`issue ${bad?"bad":""}`;item.innerHTML=`<strong>${title}</strong><span>${detail}</span>`;issues.append(item)};
 async function load(){try{const [sr,lr]=await Promise.all([fetch(`${apiPrefix}/api/status`,{cache:"no-store"}),fetch(`${apiPrefix}/api/link-quality`,{cache:"no-store"})]),data=await sr.json(),links=await lr.json();if(!sr.ok)throw Error(data.error||"Unable to read cluster status.");issues.replaceChildren();if(!data.services?.corosync?.active)add("Corosync is offline","The cluster communication service is not active.",true);if(!data.services?.pveCluster?.active)add("Proxmox cluster service is offline","The pve-cluster service is not active.",true);const offline=data.corosync?.offlineMembers||[];if(offline.length)add(`${offline.length} host${offline.length===1?" is":"s are"} offline`,offline.map(m=>m.name||m.ip||`node ${m.nodeid}`).join(", "),data.cluster?.quorate!=="Yes");if(data.cluster?.quorate!=="Yes")add("Cluster has no quorum","Cluster operations may be unsafe until quorum is restored.",true);for(const link of(links.links||[])){const peer=link.hostname||link.ip||"peer";if(link.quality==="loss")add(`Packet loss to ${peer}`,`${link.packetLossPercent??"unknown"}% packet loss.`);else if(link.quality==="jittery")add(`High jitter to ${peer}`,`${(link.jitterMs??0).toFixed(1)} ms jitter.`);else if(link.quality==="slow")add(`High latency to ${peer}`,`${(link.avgMs??0).toFixed(1)} ms average latency.`);else if(link.quality==="unknown")add(`Link quality unavailable for ${peer}`,"The peer could not be measured.",true)}if(!issues.children.length){const item=document.createElement("div");item.className="clear";item.textContent="No problems detected";issues.append(item)}const attention=issues.querySelector(".issue");overall.textContent=attention?"Needs attention":"Healthy";overall.className=`pill ${attention?(attention.classList.contains("bad")?"bad":"warn"):"good"}`;document.getElementById("updated").textContent=`${data.hostname||"Host"} · updated ${new Date(data.generatedAt*1000).toLocaleString()}`}catch(error){issues.replaceChildren();add("Health check unavailable",error.message,true);overall.textContent="Unavailable";overall.className="pill bad"}}load();setInterval(load,30000);
 </script></body></html>
 """
@@ -1597,6 +1635,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel full"><h2>Link Quality Over Time</h2><div class="muted" id="linkQualityGraphDetail">Loading link-quality history...</div><svg class="chart" id="linkQualityChart" viewBox="0 0 900 220" role="img" aria-label="Link quality over time"></svg><div class="legend" id="linkQualityLegend"></div></div>
       <div class="panel full"><h2>Corosync Knet Latency and Jitter (microseconds)</h2><div class="muted" id="cmapLatencyDetail">Loading cmap Knet history...</div><svg class="chart" id="cmapLatencyChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet average latency in microseconds over time"></svg><div class="legend" id="cmapLatencyLegend"></div></div>
       <div class="panel full"><h2>Corosync Knet Packets and Errors (count per interval)</h2><div class="muted" id="cmapPacketDetail">Loading cmap Knet packet history...</div><svg class="chart" id="cmapPacketChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet packet and error count per collection interval over time"></svg><div class="legend" id="cmapPacketLegend"></div></div>
+      <div class="panel full"><h2>Tailmox Test Latency (last 24 hours)</h2><div class="muted" id="testHistoryDetail">Loading exported test history...</div><svg class="chart" id="testHistoryChart" viewBox="0 0 900 220" role="img" aria-label="Tailmox test latency over time"></svg><div class="legend" id="testHistoryLegend"></div></div>
       <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Hostname</th><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
       <div class="panel full"><h2>Recent Corosync Logs</h2><pre id="logs">Loading...</pre></div>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
@@ -2000,6 +2039,11 @@ INDEX_HTML = """<!doctype html>
         { value: number(errorSamples.reduce((sum, sample) => sum + sample.errorDelta, 0)), label: "new errors", status: errorSamples.length ? "bad" : "good" },
       ]);
     };
+    const renderTestHistory = data => {
+      const series = (data.series || []).map(item => ({ ...item, color: item.kind === "tailmox_tcp" ? "#f59e0b" : seriesColors[0] }));
+      const result = renderCmapSeriesChart(document.getElementById("testHistoryChart"), document.getElementById("testHistoryLegend"), series, "avgMs", { label: "Average latency", axisLabel: "ms", format: ms, emptyText: "No exported tailmox test samples yet." });
+      detailChips("testHistoryDetail", [{ value: number(result.seriesCount), label: "targets" }, { value: number(result.sampleCount), label: "samples" }, { value: "24h", label: "window" }]);
+    };
     const actionLabel = value => ({
       "test": "tailmox test", "backup-create": "tailmox backups create",
       "stage": "tailmox stage", "analytics-install": "tailmox analytics install",
@@ -2030,6 +2074,14 @@ INDEX_HTML = """<!doctype html>
     const showActionOutput = () => { if (!actionDialog.open) actionDialog.showModal(); };
     document.getElementById("showActionOutput").addEventListener("click", showActionOutput);
     document.getElementById("closeActionOutput").addEventListener("click", () => actionDialog.close());
+    try {
+      const previousStatus = JSON.parse(localStorage.getItem("tailmox-overall-status") || "null");
+      const overall = document.getElementById("overall");
+      if (previousStatus?.className && previousStatus?.label) {
+        overall.className = previousStatus.className;
+        overall.lastElementChild.textContent = previousStatus.label;
+      }
+    } catch { /* Ignore unavailable or malformed browser storage. */ }
     const runAction = async action => {
       if (action === "analytics-uninstall" && !window.confirm("Uninstall the Tailmox analytics service? Monitoring history will be preserved.")) return;
       const authInput = document.getElementById("stageAuthKey");
@@ -2060,8 +2112,10 @@ INDEX_HTML = """<!doctype html>
       const data = await response.json();
       document.getElementById("subtitle").textContent = `${data.hostname} refreshed ${new Date(data.generatedAt * 1000).toLocaleString()}`;
       const overall = document.getElementById("overall");
+      const statusLabel = data.overall === "healthy" ? "Healthy" : "Needs attention";
       overall.className = `pill ${data.overall === "healthy" ? "ok" : "warn"}`;
-      overall.lastElementChild.textContent = data.overall === "healthy" ? "Healthy" : "Needs attention";
+      overall.lastElementChild.textContent = statusLabel;
+      localStorage.setItem("tailmox-overall-status", JSON.stringify({ className: overall.className, label: statusLabel }));
       text("tailmoxState", data.tailmox.active ? "active" : (data.tailmox.status || "unknown"));
       const redeployButton = document.getElementById("redeployButton");
       const updateAvailable = Boolean(data.tailmoxUpdate?.available);
@@ -2119,12 +2173,17 @@ INDEX_HTML = """<!doctype html>
       const data = await response.json();
       renderCmapKnetHistory(data);
     }
+    async function refreshTestHistory() {
+      const response = await fetch(`${apiPrefix}/api/test-history`, { cache: "no-store" });
+      renderTestHistory(await response.json());
+    }
     async function refresh() {
       await refreshStatus();
       await Promise.allSettled([
         refreshMtuHistory(),
         refreshMemberCountHistory(),
         refreshCmapKnetHistory(),
+        refreshTestHistory(),
         refreshLinkQuality(),
       ]);
     }
@@ -2253,6 +2312,13 @@ EDIT_INFLUX_HTML = """<!doctype html>
     const apiPrefix = (window.location.pathname === "/monitor" || window.location.pathname.startsWith("/monitor/")) ? "/monitor" : (window.location.pathname === "/control" || window.location.pathname.startsWith("/control/") ? "/control" : "");
     const pagePicker = document.getElementById("pagePicker");
     const overall = document.getElementById("overall");
+    try {
+      const previousStatus = JSON.parse(localStorage.getItem("tailmox-overall-status") || "null");
+      if (previousStatus?.className && previousStatus?.label) {
+        overall.className = previousStatus.className;
+        overall.lastElementChild.textContent = previousStatus.label;
+      }
+    } catch { /* Ignore unavailable or malformed browser storage. */ }
     const currentPage = window.location.pathname.endsWith("/id") ? "id" : window.location.pathname.endsWith("/settings") ? "settings" : "./";
     pagePicker.value = currentPage;
     pagePicker.addEventListener("change", event => {
@@ -2260,11 +2326,12 @@ EDIT_INFLUX_HTML = """<!doctype html>
       window.location.href = apiPrefix ? `${apiPrefix}/${target}` : event.target.value;
     });
     fetch(`${apiPrefix}/api/status`, { cache: "no-store" }).then(response => response.json()).then(data => {
+      const statusLabel = data.overall === "healthy" ? "Healthy" : "Needs attention";
       overall.className = `pill ${data.overall === "healthy" ? "ok" : "warn"}`;
-      overall.lastElementChild.textContent = data.overall === "healthy" ? "Healthy" : "Needs attention";
+      overall.lastElementChild.textContent = statusLabel;
+      localStorage.setItem("tailmox-overall-status", JSON.stringify({ className: overall.className, label: statusLabel }));
     }).catch(() => {
-      overall.className = "pill warn";
-      overall.lastElementChild.textContent = "Needs attention";
+      // Preserve the last confirmed status while the page/API is unavailable.
     });
     const message = document.getElementById("message");
     const securityMessage = document.getElementById("securityMessage");
@@ -2470,6 +2537,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+        if path == "/monitor" or path.startswith("/monitor/"):
+            path = path.removeprefix("/monitor") or "/"
         if path == "/health":
             self.send_body(200, "text/html; charset=utf-8", HEALTH_HTML)
         elif path in ("/", "/index.html"):
@@ -2552,6 +2621,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, collect_member_count_history())
         elif path == "/api/cmap-knet-history":
             self.send_json(200, collect_cmap_knet_history())
+        elif path == "/api/test-history":
+            self.send_json(200, collect_test_history())
         elif path == "/api/influxdb":
             if not self.require_tailscale_user():
                 return
