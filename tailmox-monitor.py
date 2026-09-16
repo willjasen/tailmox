@@ -27,6 +27,7 @@ from urllib.parse import urlparse
 HOST = os.environ.get("TAILMOX_MONITOR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TAILMOX_MONITOR_PORT", "8088"))
 INFLUX_ENV_FILE = os.environ.get("TAILMOX_INFLUXDB_ENV_FILE", "/etc/tailmox-monitor.env")
+TAILMOX_CONF_FILE = pathlib.Path(os.environ.get("TAILMOX_CONF_FILE", "/etc/pve/tailmox/tailmox.conf"))
 STATE_FILE = pathlib.Path(os.environ.get("TAILMOX_CLUSTER_STATE_FILE", "/etc/pve/tailmox/state.json"))
 LINK_QUALITY_TTL_SECONDS = 30
 LINK_QUALITY_CACHE = {"generatedAt": 0, "links": []}
@@ -62,18 +63,21 @@ def run_command(command, timeout=5):
 
 
 def influx_config():
+    values = read_tailmox_conf_file()
+    if not values:
+        values = read_influx_env_file()
     return {
-        "url": os.environ.get("TAILMOX_INFLUXDB_URL", "").rstrip("/"),
-        "token": os.environ.get("TAILMOX_INFLUXDB_TOKEN", ""),
-        "org": os.environ.get("TAILMOX_INFLUXDB_ORG", ""),
-        "bucket": os.environ.get("TAILMOX_INFLUXDB_BUCKET", ""),
+        "url": values.get("TAILMOX_INFLUXDB_URL", os.environ.get("TAILMOX_INFLUXDB_URL", "")).rstrip("/"),
+        "token": values.get("TAILMOX_INFLUXDB_TOKEN", os.environ.get("TAILMOX_INFLUXDB_TOKEN", "")),
+        "org": values.get("TAILMOX_INFLUXDB_ORG", os.environ.get("TAILMOX_INFLUXDB_ORG", "")),
+        "bucket": values.get("TAILMOX_INFLUXDB_BUCKET", os.environ.get("TAILMOX_INFLUXDB_BUCKET", "")),
     }
 
 
-def read_influx_env_file():
+def read_env_config_file(path):
     config = {}
     try:
-        with open(INFLUX_ENV_FILE, "r", encoding="utf-8") as handle:
+        with open(path, "r", encoding="utf-8") as handle:
             for line in handle:
                 stripped = line.strip()
                 if not stripped or stripped.startswith("#") or "=" not in stripped:
@@ -85,12 +89,32 @@ def read_influx_env_file():
     return config
 
 
+def read_tailmox_conf_file():
+    return read_env_config_file(TAILMOX_CONF_FILE)
+
+
+def read_influx_env_file():
+    return read_env_config_file(INFLUX_ENV_FILE)
+
+
 def shell_quote_env(value):
     return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def write_tailmox_conf_file(values):
+    TAILMOX_CONF_FILE.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+    temporary = TAILMOX_CONF_FILE.with_name(f".{TAILMOX_CONF_FILE.name}.tmp")
+    with open(temporary, "w", encoding="utf-8") as handle:
+        handle.write("# Tailmox cluster-distributed settings\n")
+        handle.write("# This file is replicated by the Proxmox cluster filesystem.\n")
+        for key, value in values.items():
+            handle.write(f"{key}={shell_quote_env(value)}\n")
+    os.chmod(temporary, 0o640)
+    os.replace(temporary, TAILMOX_CONF_FILE)
+
+
 def save_influx_config(data):
-    current = read_influx_env_file()
+    current = read_tailmox_conf_file() or read_influx_env_file()
     token = str(data.get("token", "")).strip()
     if not token:
         token = current.get("TAILMOX_INFLUXDB_TOKEN", os.environ.get("TAILMOX_INFLUXDB_TOKEN", ""))
@@ -102,11 +126,7 @@ def save_influx_config(data):
         "TAILMOX_INFLUXDB_BUCKET": str(data.get("bucket", "")).strip(),
     }
 
-    with open(INFLUX_ENV_FILE, "w", encoding="utf-8") as handle:
-        handle.write("# Tailmox monitor InfluxDB export settings\n")
-        for key, value in next_config.items():
-            handle.write(f"{key}={shell_quote_env(value)}\n")
-
+    write_tailmox_conf_file(next_config)
     os.environ.update(next_config)
     INFLUX_STATE["lastWriteAt"] = None
     INFLUX_STATE["lastError"] = None
@@ -1504,7 +1524,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
     <header>
       <div>
         <h1>InfluxDB Settings</h1>
-        <div class="muted">Configure Tailmox monitor exports for this node.</div>
+        <div class="muted">Configure cluster-distributed Tailmox monitor exports.</div>
       </div>
       <a class="button" href="/">Back to monitor</a>
     </header>
@@ -1553,7 +1573,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
         document.getElementById("token").value = "";
         document.getElementById("token").placeholder = data.tokenConfigured ? "Current token is saved; leave blank to keep it" : "Paste an InfluxDB token";
         message.className = "message ok";
-        message.textContent = data.enabled ? "Saved. Export is enabled." : "Saved. Add all fields to enable export.";
+        message.textContent = data.enabled ? "Saved to tailmox.conf. Export is enabled." : "Saved to tailmox.conf. Add all fields to enable export.";
       } else {
         message.className = "message error";
         message.textContent = data.error || "Unable to save settings.";
