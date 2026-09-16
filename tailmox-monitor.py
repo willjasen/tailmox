@@ -866,8 +866,6 @@ INDEX_HTML = """<!doctype html>
       text("tailscaleName", data.tailscale.self.DNSName || data.tailscale.self.HostName || "");
       text("influxState", data.influxdb.enabled ? "enabled" : "off");
       text("influxDetail", data.influxdb.lastError ? `error: ${data.influxdb.lastError}` : (data.influxdb.lastWriteAt ? `last write: ${new Date(data.influxdb.lastWriteAt * 1000).toLocaleTimeString()}` : "not configured"));
-      renderMtu({ current: data.corosync.mtu, history: [data.corosync.mtu].filter(Boolean) });
-      renderMemberCount({ current: data.corosync.memberCount, history: [data.corosync.memberCount].filter(Boolean) });
       document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.ip || member.name || ""}</td><td>${member.nodeid || ""}</td><td>${member.status || ""}</td></tr>`).join("") || "<tr><td colspan='3'>No member data available</td></tr>";
       document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${node.name || ""}</td><td>${node.nodeid || ""}</td><td>${node.votes || ""}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
       text("logs", (data.corosync.recentLogs || []).join("\\n") || "No recent corosync logs available.");
@@ -878,6 +876,7 @@ INDEX_HTML = """<!doctype html>
       const response = await fetch("/api/link-quality", { cache: "no-store" });
       const data = await response.json();
       renderLinkQuality(data.links);
+      await refreshLinkQualityHistory();
     }
     async function refreshLinkQualityHistory() {
       const response = await fetch("/api/link-quality-history", { cache: "no-store" });
@@ -896,10 +895,11 @@ INDEX_HTML = """<!doctype html>
     }
     async function refresh() {
       await refreshStatus();
-      refreshMtuHistory();
-      refreshMemberCountHistory();
-      refreshLinkQuality();
-      refreshLinkQualityHistory();
+      await Promise.allSettled([
+        refreshMtuHistory(),
+        refreshMemberCountHistory(),
+        refreshLinkQuality(),
+      ]);
     }
     refresh();
     setInterval(refreshStatus, 15000);
