@@ -735,14 +735,10 @@ INDEX_HTML = """<!doctype html>
     .wide-primary { grid-column: span 3; }
     .full { grid-column: 1 / -1; }
     .panel { position: relative; overflow: hidden; border: 1px solid rgba(148,163,184,0.28); border-radius: 8px; padding: 16px; background: linear-gradient(180deg, rgba(17,24,39,0.94), rgba(15,23,42,0.94)); box-shadow: 0 14px 34px rgba(0,0,0,0.24); }
-    .panel::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; background: var(--accent); }
-    .panel:nth-child(1)::before { background: var(--teal); }
-    .panel:nth-child(2)::before { background: var(--warn); }
-    .panel:nth-child(3)::before { background: var(--violet); }
-    .panel:nth-child(4)::before { background: var(--accent); }
-    .panel:nth-child(5)::before { background: var(--good); }
-    .panel:nth-child(6)::before { background: var(--teal); }
-    .panel:nth-child(7)::before { background: var(--rose); }
+    .panel::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; background: rgba(148,163,184,0.36); }
+    .panel.status-good::before { background: var(--good); box-shadow: 0 0 20px rgba(34,197,94,0.32); }
+    .panel.status-warn::before { background: var(--warn); box-shadow: 0 0 20px rgba(245,158,11,0.32); }
+    .panel.status-bad::before { background: var(--bad); box-shadow: 0 0 20px rgba(239,68,68,0.32); }
     .metric { font-size: 28px; font-weight: 800; color: #f8fafc; }
     .pill { display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(148,163,184,0.32); border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 700; background: rgba(15,23,42,0.72); }
     .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 18px var(--bad); }
@@ -804,11 +800,11 @@ INDEX_HTML = """<!doctype html>
       <div class="pill" id="overall"><span class="dot"></span><span>Loading</span></div>
     </header>
     <section class="grid">
-      <div class="panel"><h2>Corosync</h2><div class="metric" id="corosyncState">...</div><div class="muted" id="corosyncEnabled"></div></div>
-      <div class="panel"><h2>Quorum</h2><div class="metric" id="quorumState">...</div><div class="muted" id="votes"></div></div>
-      <div class="panel"><h2>Cluster</h2><div class="metric" id="clusterName">...</div><div class="muted" id="transport"></div></div>
-      <div class="panel"><h2>Tailscale</h2><div class="metric" id="tailscaleState">...</div><div class="muted" id="tailscaleName"></div></div>
-      <div class="panel"><h2>InfluxDB</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div><div style="margin-top: 10px;"><a href="/editInfluxDB">Edit settings</a></div></div>
+      <div class="panel" id="corosyncPanel"><h2>Corosync</h2><div class="metric" id="corosyncState">...</div><div class="muted" id="corosyncEnabled"></div></div>
+      <div class="panel" id="quorumPanel"><h2>Quorum</h2><div class="metric" id="quorumState">...</div><div class="muted" id="votes"></div></div>
+      <div class="panel" id="clusterPanel"><h2>Cluster</h2><div class="metric" id="clusterName">...</div><div class="muted" id="transport"></div></div>
+      <div class="panel" id="tailscalePanel"><h2>Tailscale</h2><div class="metric" id="tailscaleState">...</div><div class="muted" id="tailscaleName"></div></div>
+      <div class="panel" id="influxPanel"><h2>InfluxDB</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div><div style="margin-top: 10px;"><a href="/editInfluxDB">Edit settings</a></div></div>
       <div class="panel wide-primary"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>Peer IP</th><th>ID</th><th>Votes</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
       <div class="panel full"><h2>Global MTU Over Time</h2><div class="muted" id="mtuDetail">Loading MTU history...</div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over time"></svg></div>
@@ -821,6 +817,11 @@ INDEX_HTML = """<!doctype html>
   </main>
   <script>
     const text = (id, value) => document.getElementById(id).textContent = value || "unknown";
+    const setPanelStatus = (id, status) => {
+      const panel = document.getElementById(id);
+      panel.classList.remove("status-good", "status-warn", "status-bad");
+      panel.classList.add(`status-${status}`);
+    };
     const yesNo = value => value ? "active" : "inactive";
     const ms = value => Number.isFinite(value) ? `${value.toFixed(1)} ms` : "unknown";
     const percent = value => Number.isFinite(value) ? `${value.toFixed(1)}%` : "unknown";
@@ -1017,6 +1018,12 @@ INDEX_HTML = """<!doctype html>
       text("tailscaleName", data.tailscale.self.DNSName || data.tailscale.self.HostName || "");
       text("influxState", data.influxdb.enabled ? "enabled" : "off");
       text("influxDetail", data.influxdb.lastError ? `error: ${data.influxdb.lastError}` : (data.influxdb.lastWriteAt ? `last write: ${new Date(data.influxdb.lastWriteAt * 1000).toLocaleTimeString()}` : "not configured"));
+      const offlineCount = (data.corosync.offlineMembers || []).length;
+      setPanelStatus("corosyncPanel", data.services.corosync.active ? (offlineCount ? "warn" : "good") : "bad");
+      setPanelStatus("quorumPanel", data.cluster.quorate === "Yes" ? (offlineCount ? "warn" : "good") : "bad");
+      setPanelStatus("clusterPanel", data.cluster.name ? (offlineCount ? "warn" : "good") : "bad");
+      setPanelStatus("tailscalePanel", data.tailscale.backendState === "Running" ? "good" : "bad");
+      setPanelStatus("influxPanel", data.influxdb.enabled ? (data.influxdb.lastError ? "bad" : "good") : "warn");
       document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.name || ""}${member.local ? " (local)" : ""}</td><td>${member.ip || ""}</td><td>${member.nodeid || ""}</td><td>${number(member.votes)}</td><td><span class="tag ${member.active ? "joined" : "offline"}">${member.active ? "active" : "offline"}</span></td></tr>`).join("") || "<tr><td colspan='5'>No member data available</td></tr>";
       document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${node.name || ""}</td><td>${node.nodeid || ""}</td><td>${node.votes || ""}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
       renderLogs(data.corosync.recentLogs);
