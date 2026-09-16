@@ -2087,7 +2087,13 @@ EDIT_INFLUX_HTML = """<!doctype html>
         <h1>Tailmox Identity &amp; InfluxDB Settings</h1>
         <div class="muted">Load the cluster age identity, approve host configuration, and configure monitor exports.</div>
       </div>
-      <a class="button" href="./">Back to monitor</a>
+      <label class="page-picker">Page
+        <select id="pagePicker" aria-label="Tailmox page">
+          <option value="id">ID</option>
+          <option value="settings">Settings</option>
+          <option value="./">Monitor</option>
+        </select>
+      </label>
     </header>
     <section class="panel security-grid">
       <h2>Encryption &amp; host signing</h2>
@@ -2131,6 +2137,12 @@ EDIT_INFLUX_HTML = """<!doctype html>
   <script>
     const csrfToken = "__CSRF_TOKEN__";
     const apiPrefix = window.location.pathname.startsWith("/monitor/") ? "/monitor" : (window.location.pathname.startsWith("/control/") ? "/control" : "");
+    const pagePicker = document.getElementById("pagePicker");
+    const currentPage = window.location.pathname.endsWith("/id") ? "id" : window.location.pathname.endsWith("/settings") ? "settings" : "./";
+    pagePicker.value = currentPage;
+    pagePicker.addEventListener("change", event => {
+      window.location.href = event.target.value;
+    });
     const message = document.getElementById("message");
     const securityMessage = document.getElementById("securityMessage");
     const identityInput = document.getElementById("ageIdentity");
