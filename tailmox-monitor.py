@@ -29,6 +29,8 @@ INFLUX_STATE = {"lastWriteAt": None, "lastError": None}
 CSRF_TOKEN = secrets.token_urlsafe(32)
 MTU_HISTORY_LIMIT = 120
 MTU_HISTORY = []
+MEMBER_COUNT_HISTORY_LIMIT = 120
+MEMBER_COUNT_HISTORY = []
 
 
 def run_command(command, timeout=5):
@@ -489,9 +491,17 @@ def collect_status():
     corosync_active = service["stdout"] == "active"
     pve_cluster_active = pve_cluster["stdout"] == "active"
     healthy = corosync_active and pve_cluster_active and quorate == "Yes"
+    member_count_sample = {
+        "timestamp": int(time.time()),
+        "memberCount": len(corosync_members),
+        "quorumNodeCount": len(quorum_nodes),
+    }
+    if not MEMBER_COUNT_HISTORY or MEMBER_COUNT_HISTORY[-1]["timestamp"] != member_count_sample["timestamp"]:
+        MEMBER_COUNT_HISTORY.append(member_count_sample)
+        del MEMBER_COUNT_HISTORY[:-MEMBER_COUNT_HISTORY_LIMIT]
 
     status = {
-        "generatedAt": int(time.time()),
+        "generatedAt": member_count_sample["timestamp"],
         "hostname": socket.gethostname(),
         "overall": "healthy" if healthy else "attention",
         "services": {
@@ -519,6 +529,7 @@ def collect_status():
             "members": corosync_members,
             "quorumNodes": quorum_nodes,
             "mtu": collect_mtu_status()["current"],
+            "memberCount": member_count_sample,
             "rawStatus": pvecm["stdout"],
             "rawQuorum": quorum["stdout"],
             "recentLogs": journal["stdout"].splitlines()[-25:] if journal["stdout"] else [],
@@ -540,6 +551,21 @@ def collect_status():
     }
     export_status(status)
     return status
+
+
+def collect_member_count_history():
+    if not MEMBER_COUNT_HISTORY:
+        status = collect_status()
+        return {
+            "generatedAt": status["generatedAt"],
+            "current": status["corosync"]["memberCount"],
+            "history": MEMBER_COUNT_HISTORY,
+        }
+    return {
+        "generatedAt": int(time.time()),
+        "current": MEMBER_COUNT_HISTORY[-1],
+        "history": MEMBER_COUNT_HISTORY,
+    }
 
 
 INDEX_HTML = """<!doctype html>
@@ -626,6 +652,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel wide"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>ID</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
       <div class="panel full"><h2>Global MTU Over Time</h2><div class="muted" id="mtuDetail">Loading MTU history...</div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over time"></svg></div>
+      <div class="panel full"><h2>Cluster Members Over Time</h2><div class="muted" id="memberCountDetail">Loading member history...</div><svg class="chart" id="memberCountChart" viewBox="0 0 900 220" role="img" aria-label="Cluster members over time"></svg></div>
       <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Hostname</th><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
       <div class="panel full"><h2>Recent Corosync Logs</h2><pre id="logs">Loading...</pre></div>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
@@ -641,6 +668,37 @@ INDEX_HTML = """<!doctype html>
     const metricCell = (value, text, warn, bad) => `<span class="metric-cell ${qualityClass(value, warn, bad)}">${text}</span>`;
     const number = value => Number.isFinite(value) ? value.toLocaleString() : "auto";
     const svg = (name, attrs = {}, content = "") => `<${name} ${Object.entries(attrs).map(([key, value]) => `${key}="${value}"`).join(" ")}>${content}</${name}>`;
+    const renderLineChart = (chart, history, valueKey, emptyText, formatLabel = number) => {
+      if (!history.length) {
+        chart.innerHTML = svg("text", { x: 32, y: 112 }, emptyText);
+        return;
+      }
+      const width = 900, height = 220, left = 58, right = 20, top = 20, bottom = 38;
+      const minTime = history[0].timestamp;
+      const maxTime = history[history.length - 1].timestamp || minTime + 1;
+      const values = history.map(sample => sample[valueKey]);
+      const minValue = Math.min(...values);
+      const maxValue = Math.max(...values);
+      const flat = minValue === maxValue;
+      const padding = flat ? Math.max(1, Math.round(maxValue * 0.05)) : 0;
+      const chartMin = Math.max(0, minValue - padding);
+      const chartMax = maxValue + padding;
+      const span = Math.max(1, chartMax - chartMin);
+      const x = sample => left + ((sample.timestamp - minTime) / Math.max(1, maxTime - minTime)) * (width - left - right);
+      const y = sample => top + (1 - ((sample[valueKey] - chartMin) / span)) * (height - top - bottom);
+      const points = history.map(sample => `${x(sample).toFixed(1)},${y(sample).toFixed(1)}`).join(" ");
+      const midValue = chartMin + span / 2;
+      chart.innerHTML = [
+        svg("line", { class: "grid-line", x1: left, y1: top, x2: left, y2: height - bottom }),
+        svg("line", { class: "grid-line", x1: left, y1: height - bottom, x2: width - right, y2: height - bottom }),
+        svg("line", { class: "grid-line", x1: left, y1: top, x2: width - right, y2: top }),
+        svg("text", { x: 10, y: top + 4 }, formatLabel(chartMax)),
+        svg("text", { x: 10, y: y({ [valueKey]: midValue }) + 4 }, formatLabel(Math.round(midValue))),
+        svg("text", { x: 10, y: height - bottom + 4 }, formatLabel(chartMin)),
+        `<polyline class="series" points="${points}"></polyline>`,
+        history.map(sample => svg("circle", { class: "point", cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 3 })).join(""),
+      ].join("");
+    };
     const renderLinkQuality = links => {
       document.getElementById("linkQuality").innerHTML = (links || []).map(link => `<tr><td>${link.hostname || "unknown"}</td><td>${link.ip || ""}</td><td>${link.status || ""}</td><td>${metricCell(link.packetLossPercent, percent(link.packetLossPercent), 0.1, 1)}</td><td>${metricCell(link.avgMs, ms(link.avgMs), 50, 150)}</td><td>${metricCell(link.maxMs, ms(link.maxMs), 100, 250)}</td><td>${metricCell(link.jitterMs, ms(link.jitterMs), 10, 20)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td><td>${localTime(link.lastUpdatedAt)}</td></tr>`).join("") || "<tr><td colspan='9'>No remote corosync links measured</td></tr>";
     };
@@ -659,31 +717,13 @@ INDEX_HTML = """<!doctype html>
         return;
       }
 
-      const width = 900, height = 220, left = 58, right = 20, top = 20, bottom = 38;
-      const minTime = history[0].timestamp;
-      const maxTime = history[history.length - 1].timestamp || minTime + 1;
-      const values = history.map(sample => sample.displayMtu);
-      const minValue = Math.min(...values);
-      const maxValue = Math.max(...values);
-      const flat = minValue === maxValue;
-      const padding = flat ? Math.max(10, Math.round(maxValue * 0.05)) : 0;
-      const chartMin = Math.max(0, minValue - padding);
-      const chartMax = maxValue + padding;
-      const span = Math.max(1, chartMax - chartMin);
-      const x = sample => left + ((sample.timestamp - minTime) / Math.max(1, maxTime - minTime)) * (width - left - right);
-      const y = sample => top + (1 - ((sample.displayMtu - chartMin) / span)) * (height - top - bottom);
-      const points = history.map(sample => `${x(sample).toFixed(1)},${y(sample).toFixed(1)}`).join(" ");
-      const midValue = chartMin + span / 2;
-      chart.innerHTML = [
-        svg("line", { class: "grid-line", x1: left, y1: top, x2: left, y2: height - bottom }),
-        svg("line", { class: "grid-line", x1: left, y1: height - bottom, x2: width - right, y2: height - bottom }),
-        svg("line", { class: "grid-line", x1: left, y1: top, x2: width - right, y2: top }),
-        svg("text", { x: 10, y: top + 4 }, chartMax === 0 ? "auto" : number(chartMax)),
-        svg("text", { x: 10, y: y({ displayMtu: midValue }) + 4 }, Math.round(midValue) === 0 ? "auto" : number(Math.round(midValue))),
-        svg("text", { x: 10, y: height - bottom + 4 }, chartMin === 0 ? "auto" : number(chartMin)),
-        `<polyline class="series" points="${points}"></polyline>`,
-        history.map(sample => svg("circle", { class: "point", cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 3 })).join(""),
-      ].join("");
+      renderLineChart(chart, history, "displayMtu", "No global MTU samples collected yet.", value => value === 0 ? "auto" : number(value));
+    };
+    const renderMemberCount = data => {
+      const current = data.current || {};
+      const history = (data.history || []).filter(sample => Number.isFinite(sample.memberCount));
+      text("memberCountDetail", `Current members: ${number(current.memberCount)}; quorum nodes: ${number(current.quorumNodeCount)}. Samples kept: ${(data.history || []).length}.`);
+      renderLineChart(document.getElementById("memberCountChart"), history, "memberCount", "No member-count samples collected yet.");
     };
     async function refreshStatus() {
       const response = await fetch("/api/status", { cache: "no-store" });
@@ -703,6 +743,7 @@ INDEX_HTML = """<!doctype html>
       text("influxState", data.influxdb.enabled ? "enabled" : "off");
       text("influxDetail", data.influxdb.lastError ? `error: ${data.influxdb.lastError}` : (data.influxdb.lastWriteAt ? `last write: ${new Date(data.influxdb.lastWriteAt * 1000).toLocaleTimeString()}` : "not configured"));
       renderMtu({ current: data.corosync.mtu, history: [data.corosync.mtu].filter(Boolean) });
+      renderMemberCount({ current: data.corosync.memberCount, history: [data.corosync.memberCount].filter(Boolean) });
       document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.ip || member.name || ""}</td><td>${member.nodeid || ""}</td><td>${member.status || ""}</td></tr>`).join("") || "<tr><td colspan='3'>No member data available</td></tr>";
       document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${node.name || ""}</td><td>${node.nodeid || ""}</td><td>${node.votes || ""}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
       text("logs", (data.corosync.recentLogs || []).join("\\n") || "No recent corosync logs available.");
@@ -719,14 +760,21 @@ INDEX_HTML = """<!doctype html>
       const data = await response.json();
       renderMtu(data);
     }
+    async function refreshMemberCountHistory() {
+      const response = await fetch("/api/member-count-history", { cache: "no-store" });
+      const data = await response.json();
+      renderMemberCount(data);
+    }
     async function refresh() {
       await refreshStatus();
       refreshMtuHistory();
+      refreshMemberCountHistory();
       refreshLinkQuality();
     }
     refresh();
     setInterval(refreshStatus, 15000);
     setInterval(refreshMtuHistory, 15000);
+    setInterval(refreshMemberCountHistory, 15000);
     setInterval(refreshLinkQuality, 30000);
   </script>
 </body>
@@ -869,6 +917,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, collect_link_quality())
         elif path == "/api/mtu-history":
             self.send_json(200, collect_mtu_status())
+        elif path == "/api/member-count-history":
+            self.send_json(200, collect_member_count_history())
         elif path == "/api/influxdb":
             if not self.require_tailscale_user():
                 return
