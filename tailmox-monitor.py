@@ -319,13 +319,18 @@ def collect_mtu_status():
         "runtime.config.totem.knet_compression_level",
     ]
     cmap = run_command(["corosync-cmapctl", *cmap_keys])
+    journal = run_command(["journalctl", "-u", "corosync", "-n", "250", "--no-pager"], timeout=8)
     raw_mtu = parse_cmap_value(cmap["stdout"], "runtime.config.totem.knet_mtu")
     mtu = int_or_none(raw_mtu)
+    discovered_mtu = None
+    for match in re.finditer(r"Global data MTU changed to:\s*([0-9]+)", journal["stdout"]):
+        discovered_mtu = int_or_none(match.group(1))
 
     sample = {
         "timestamp": now,
         "configuredMtu": mtu,
-        "displayMtu": mtu,
+        "discoveredGlobalMtu": discovered_mtu,
+        "displayMtu": discovered_mtu if discovered_mtu is not None else mtu,
         "automatic": mtu == 0,
         "pmtudIntervalSeconds": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.knet_pmtud_interval")),
         "knetPingIntervalMs": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.interface.0.knet_ping_interval")),
@@ -358,6 +363,7 @@ def export_mtu_status(sample):
         {"host": socket.gethostname()},
         {
             "configured_mtu": sample.get("configuredMtu"),
+            "discovered_global_mtu": sample.get("discoveredGlobalMtu"),
             "display_mtu": sample.get("displayMtu"),
             "automatic": sample.get("automatic"),
             "pmtud_interval_seconds": sample.get("pmtudIntervalSeconds"),
@@ -621,7 +627,10 @@ INDEX_HTML = """<!doctype html>
     const renderMtu = data => {
       const current = data.current || {};
       const history = (data.history || []).filter(sample => Number.isFinite(sample.displayMtu));
-      const detail = current.automatic ? `Configured global knet MTU: auto; PMTUD interval: ${current.pmtudIntervalSeconds || "unknown"}s` : `Configured global knet MTU: ${number(current.configuredMtu)} bytes; PMTUD interval: ${current.pmtudIntervalSeconds || "unknown"}s`;
+      const discovered = Number.isFinite(current.discoveredGlobalMtu);
+      const configured = current.automatic ? "auto" : `${number(current.configuredMtu)} bytes`;
+      const plotted = discovered ? `${number(current.discoveredGlobalMtu)} bytes discovered` : configured;
+      const detail = `Global data MTU: ${plotted}; configured knet MTU: ${configured}; PMTUD interval: ${current.pmtudIntervalSeconds || "unknown"}s`;
       text("mtuDetail", `${detail}. Samples kept: ${(data.history || []).length}.`);
 
       const chart = document.getElementById("mtuChart");
@@ -636,18 +645,22 @@ INDEX_HTML = """<!doctype html>
       const values = history.map(sample => sample.displayMtu);
       const minValue = Math.min(...values);
       const maxValue = Math.max(...values);
-      const span = Math.max(1, maxValue - minValue);
+      const flat = minValue === maxValue;
+      const padding = flat ? Math.max(10, Math.round(maxValue * 0.05)) : 0;
+      const chartMin = Math.max(0, minValue - padding);
+      const chartMax = maxValue + padding;
+      const span = Math.max(1, chartMax - chartMin);
       const x = sample => left + ((sample.timestamp - minTime) / Math.max(1, maxTime - minTime)) * (width - left - right);
-      const y = sample => top + (1 - ((sample.displayMtu - minValue) / span)) * (height - top - bottom);
+      const y = sample => top + (1 - ((sample.displayMtu - chartMin) / span)) * (height - top - bottom);
       const points = history.map(sample => `${x(sample).toFixed(1)},${y(sample).toFixed(1)}`).join(" ");
-      const midValue = minValue + span / 2;
+      const midValue = chartMin + span / 2;
       chart.innerHTML = [
         svg("line", { class: "grid-line", x1: left, y1: top, x2: left, y2: height - bottom }),
         svg("line", { class: "grid-line", x1: left, y1: height - bottom, x2: width - right, y2: height - bottom }),
         svg("line", { class: "grid-line", x1: left, y1: top, x2: width - right, y2: top }),
-        svg("text", { x: 10, y: top + 4 }, maxValue === 0 ? "auto" : number(maxValue)),
+        svg("text", { x: 10, y: top + 4 }, chartMax === 0 ? "auto" : number(chartMax)),
         svg("text", { x: 10, y: y({ displayMtu: midValue }) + 4 }, Math.round(midValue) === 0 ? "auto" : number(Math.round(midValue))),
-        svg("text", { x: 10, y: height - bottom + 4 }, minValue === 0 ? "auto" : number(minValue)),
+        svg("text", { x: 10, y: height - bottom + 4 }, chartMin === 0 ? "auto" : number(chartMin)),
         `<polyline class="series" points="${points}"></polyline>`,
         history.map(sample => svg("circle", { class: "point", cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 3 })).join(""),
       ].join("");
