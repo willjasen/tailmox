@@ -60,8 +60,8 @@ if grep -Fq -- '--base-path' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
     exit 1
 fi
 
-if grep -Fq -- '--writable' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
-    printf 'FAIL: ttyd allowed browser input to the host process\n'
+if ! grep -Fq -- '--writable' "$TAILMOX_SYSTEMD_DIR/tailmox-web.service"; then
+    printf 'FAIL: approved workflows cannot receive migration confirmation\n'
     exit 1
 fi
 
