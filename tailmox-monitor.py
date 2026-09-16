@@ -637,6 +637,9 @@ def collect_status():
         "timestamp": int(time.time()),
         "memberCount": len(corosync_members),
         "quorumNodeCount": len(quorum_nodes),
+        "configuredNodeCount": len(configured_nodes),
+        "offlineNodeCount": len(offline_members),
+        "quorate": quorate == "Yes",
     }
     if not MEMBER_COUNT_HISTORY or MEMBER_COUNT_HISTORY[-1]["timestamp"] != member_count_sample["timestamp"]:
         MEMBER_COUNT_HISTORY.append(member_count_sample)
@@ -809,7 +812,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel wide-primary"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>Peer IP</th><th>ID</th><th>Votes</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
       <div class="panel full"><h2>Global MTU Over Time</h2><div class="muted" id="mtuDetail">Loading MTU history...</div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over time"></svg></div>
-      <div class="panel full"><h2>Cluster Members Over Time</h2><div class="muted" id="memberCountDetail">Loading member history...</div><svg class="chart" id="memberCountChart" viewBox="0 0 900 220" role="img" aria-label="Cluster members over time"></svg></div>
+      <div class="panel full"><h2>Cluster Members Over Time</h2><div class="muted" id="memberCountDetail">Loading member history...</div><svg class="chart" id="memberCountChart" viewBox="0 0 900 220" role="img" aria-label="Cluster members over time"></svg><div class="legend"><span class="legend-item"><span class="swatch" style="background:#22c55e"></span>All online</span><span class="legend-item"><span class="swatch" style="background:#f59e0b"></span>Quorate with offline hosts</span><span class="legend-item"><span class="swatch" style="background:#ef4444"></span>No quorum</span></div></div>
       <div class="panel full"><h2>Link Quality Over Time</h2><div class="muted" id="linkQualityGraphDetail">Loading link-quality history...</div><svg class="chart" id="linkQualityChart" viewBox="0 0 900 220" role="img" aria-label="Link quality over time"></svg><div class="legend" id="linkQualityLegend"></div></div>
       <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Hostname</th><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
       <div class="panel full"><h2>Recent Corosync Logs</h2><pre id="logs">Loading...</pre></div>
@@ -879,6 +882,51 @@ INDEX_HTML = """<!doctype html>
     const renderLinkQuality = links => {
       document.getElementById("linkQuality").innerHTML = (links || []).map(link => `<tr><td>${link.hostname || "unknown"}</td><td>${link.ip || ""}</td><td><span class="tag ${link.status === "offline" ? "offline" : "joined"}">${link.status || "unknown"}</span></td><td>${metricCell(link.packetLossPercent, percent(link.packetLossPercent), 0.1, 1)}</td><td>${metricCell(link.avgMs, ms(link.avgMs), 50, 150)}</td><td>${metricCell(link.maxMs, ms(link.maxMs), 100, 250)}</td><td>${metricCell(link.jitterMs, ms(link.jitterMs), 10, 20)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td><td>${localTime(link.lastUpdatedAt)}</td></tr>`).join("") || "<tr><td colspan='9'>No remote corosync links measured</td></tr>";
     };
+    const memberSampleColor = sample => {
+      if (sample.quorate === false) return "#ef4444";
+      if (Number.isFinite(sample.offlineNodeCount) && sample.offlineNodeCount > 0) return "#f59e0b";
+      if (Number.isFinite(sample.configuredNodeCount) && Number.isFinite(sample.memberCount) && sample.memberCount < sample.configuredNodeCount) return "#f59e0b";
+      return "#22c55e";
+    };
+    const renderMemberCountChart = (chart, history) => {
+      if (!history.length) {
+        chart.innerHTML = svg("text", { x: 32, y: 112 }, "No member-count samples collected yet.");
+        return;
+      }
+      const width = 900, height = 220, left = 58, right = 20, top = 20, bottom = 38;
+      const minTime = history[0].timestamp;
+      const maxTime = history[history.length - 1].timestamp || minTime + 1;
+      const values = history.map(sample => sample.memberCount);
+      const minValue = Math.min(...values);
+      const maxValue = Math.max(...values);
+      const flat = minValue === maxValue;
+      const padding = flat ? Math.max(1, Math.round(maxValue * 0.05)) : 0;
+      const chartMin = Math.max(0, minValue - padding);
+      const chartMax = maxValue + padding;
+      const span = Math.max(1, chartMax - chartMin);
+      const x = sample => left + ((sample.timestamp - minTime) / Math.max(1, maxTime - minTime)) * (width - left - right);
+      const y = sample => top + (1 - ((sample.memberCount - chartMin) / span)) * (height - top - bottom);
+      const midValue = chartMin + span / 2;
+      const segments = history.length === 1
+        ? ""
+        : history.slice(1).map((sample, index) => {
+            const previous = history[index];
+            return `<line x1="${x(previous).toFixed(1)}" y1="${y(previous).toFixed(1)}" x2="${x(sample).toFixed(1)}" y2="${y(sample).toFixed(1)}" stroke="${memberSampleColor(sample)}" stroke-width="3" stroke-linecap="round"></line>`;
+          }).join("");
+      chart.innerHTML = [
+        svg("line", { class: "grid-line", x1: left, y1: top, x2: left, y2: height - bottom }),
+        svg("line", { class: "grid-line", x1: left, y1: height - bottom, x2: width - right, y2: height - bottom }),
+        svg("line", { class: "grid-line", x1: left, y1: top, x2: width - right, y2: top }),
+        svg("text", { x: 10, y: top + 4 }, number(chartMax)),
+        svg("text", { x: 10, y: y({ memberCount: midValue }) + 4 }, number(Math.round(midValue))),
+        svg("text", { x: 10, y: height - bottom + 4 }, number(chartMin)),
+        svg("text", { x: left, y: height - 12 }, timeLabel(minTime)),
+        svg("text", { x: width / 2 - 34, y: height - 12 }, timeLabel(minTime + (maxTime - minTime) / 2)),
+        svg("text", { x: width - right - 72, y: height - 12 }, timeLabel(maxTime)),
+        segments,
+        history.map(sample => svg("circle", { cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 3, fill: memberSampleColor(sample) })).join(""),
+      ].join("");
+    };
     const renderMtu = data => {
       const current = data.current || {};
       const history = (data.history || []).filter(sample => Number.isFinite(sample.displayMtu));
@@ -899,8 +947,10 @@ INDEX_HTML = """<!doctype html>
     const renderMemberCount = data => {
       const current = data.current || {};
       const history = (data.history || []).filter(sample => Number.isFinite(sample.memberCount));
-      text("memberCountDetail", `Current members: ${number(current.memberCount)}; quorum nodes: ${number(current.quorumNodeCount)}. Samples kept: ${(data.history || []).length}.`);
-      renderLineChart(document.getElementById("memberCountChart"), history, "memberCount", "No member-count samples collected yet.");
+      const offline = Number.isFinite(current.offlineNodeCount) ? current.offlineNodeCount : Math.max(0, (current.configuredNodeCount || 0) - (current.memberCount || 0));
+      const quorum = current.quorate === false ? "not quorate" : "quorate";
+      text("memberCountDetail", `Current members: ${number(current.memberCount)} of ${number(current.configuredNodeCount)} configured; ${number(offline)} offline; ${quorum}. Samples kept: ${(data.history || []).length}.`);
+      renderMemberCountChart(document.getElementById("memberCountChart"), history);
     };
     const renderLinkQualityHistory = data => {
       const chart = document.getElementById("linkQualityChart");
