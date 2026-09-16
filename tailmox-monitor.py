@@ -210,10 +210,23 @@ def influx_query(flux, timeout=8):
         INFLUX_STATE["lastError"] = str(error)
         return []
 
-    lines = [line for line in body.splitlines() if line and not line.startswith("#")]
-    if not lines:
-        return []
-    return list(csv.DictReader(io.StringIO("\n".join(lines))))
+    rows = []
+    header = None
+    for row in csv.reader(io.StringIO(body)):
+        if not row:
+            header = None
+            continue
+        if row[0].startswith("#"):
+            continue
+        if "_time" in row or "_field" in row or "_measurement" in row:
+            header = row
+            continue
+        if not header:
+            continue
+        if len(row) < len(header):
+            row.extend([""] * (len(header) - len(row)))
+        rows.append(dict(zip(header, row)))
+    return rows
 
 
 def influx_time(value):
