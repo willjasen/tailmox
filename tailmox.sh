@@ -258,11 +258,62 @@ function check_script_directory() {
     log_echo "${GREEN}Running from the correct directory: $script_dir${RESET}"
 }
 
+# Install the upstream age release because Debian 13 currently packages age
+# 1.2.x, which cannot create Tailmox's required post-quantum identities.
+function install_post_quantum_age() {
+    local version="${TAILMOX_AGE_VERSION:-1.3.2}"
+    local architecture="${TAILMOX_AGE_ARCHITECTURE:-$(dpkg --print-architecture)}"
+    local install_dir="${TAILMOX_AGE_INSTALL_DIR:-/usr/local/bin}"
+    local checksum
+    local archive_url
+    local work_dir
+    local archive
+    local actual_checksum
+
+    case "$architecture" in
+        amd64)
+            checksum="${TAILMOX_AGE_SHA256:-cbe24006683f8eb669266162894b9a522a1af52f2665fbc63a4bb032ed26ac10}"
+            ;;
+        *)
+            log_echo "${RED}Tailmox does not have a pinned age checksum for architecture: $architecture${RESET}"
+            return 1
+            ;;
+    esac
+    archive_url="${TAILMOX_AGE_URL:-https://github.com/FiloSottile/age/releases/download/v${version}/age-v${version}-linux-${architecture}.tar.gz}"
+    work_dir=$(mktemp -d "${TMPDIR:-/tmp}/tailmox-age.XXXXXX") || return 1
+    archive="$work_dir/age.tar.gz"
+
+    if ! curl -fsSL --retry 3 --output "$archive" "$archive_url"; then
+        rm -rf "$work_dir"
+        log_echo "${RED}Unable to download age ${version}.${RESET}"
+        return 1
+    fi
+    actual_checksum=$(sha256sum "$archive" | awk '{print $1}')
+    if [[ "$actual_checksum" != "$checksum" ]] ||
+        ! tar -xzf "$archive" -C "$work_dir" ||
+        [[ ! -x "$work_dir/age/age" || ! -x "$work_dir/age/age-keygen" ]]; then
+        rm -rf "$work_dir"
+        log_echo "${RED}Unable to download and verify age ${version}.${RESET}"
+        return 1
+    fi
+
+    mkdir -p "$install_dir" || { rm -rf "$work_dir"; return 1; }
+    install -m 0755 "$work_dir/age/age" "$install_dir/age" || { rm -rf "$work_dir"; return 1; }
+    install -m 0755 "$work_dir/age/age-keygen" "$install_dir/age-keygen" || { rm -rf "$work_dir"; return 1; }
+    rm -rf "$work_dir"
+
+    if ! "$install_dir/age-keygen" --help 2>&1 | grep -q -- '-pq'; then
+        log_echo "${RED}Installed age does not support post-quantum identities.${RESET}"
+        return 1
+    fi
+    log_echo "${GREEN}Installed age ${version} with post-quantum identity support.${RESET}"
+}
+
 # Install dependencies
 function install_dependencies() {
     log_echo "${YELLOW}Checking for required dependencies...${RESET}"
 
-    local dependencies=(age curl expect git jq openssl python3)
+    local dependencies=(curl expect git jq openssl python3)
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
             log_echo "${YELLOW}$dep not found. Installing...${RESET}"
@@ -273,10 +324,9 @@ function install_dependencies() {
         fi
     done
 
-    if ! command -v age-keygen >/dev/null 2>&1 ||
-        ! age-keygen --help 2>&1 | grep -q -- '-pq'; then
-        log_echo "${RED}Tailmox requires age 1.3.0 or newer for post-quantum configuration encryption.${RESET}"
-        return 1
+    if ! command -v age-keygen >/dev/null 2>&1 || ! age-keygen --help 2>&1 | grep -q -- '-pq'; then
+        log_echo "${YELLOW}Installing age with post-quantum identity support...${RESET}"
+        install_post_quantum_age || return 1
     fi
 }
 
