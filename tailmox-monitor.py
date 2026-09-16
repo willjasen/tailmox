@@ -18,6 +18,8 @@ from urllib.parse import urlparse
 
 HOST = os.environ.get("TAILMOX_MONITOR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TAILMOX_MONITOR_PORT", "8088"))
+LINK_QUALITY_TTL_SECONDS = 30
+LINK_QUALITY_CACHE = {"generatedAt": 0, "links": []}
 
 
 def run_command(command, timeout=5):
@@ -141,20 +143,35 @@ def measure_link_quality(members, local_ips):
     return results
 
 
+def collect_corosync_members():
+    members = run_command(["corosync-cmapctl", "runtime.members"])
+    return parse_corosync_members(members["stdout"]) if members["stdout"] else []
+
+
+def collect_link_quality():
+    now = int(time.time())
+    if now - LINK_QUALITY_CACHE["generatedAt"] < LINK_QUALITY_TTL_SECONDS:
+        return LINK_QUALITY_CACHE
+
+    corosync_members = collect_corosync_members()
+    local_ips = set(run_command(["tailscale", "ip", "-4"])["stdout"].splitlines())
+    LINK_QUALITY_CACHE["generatedAt"] = now
+    LINK_QUALITY_CACHE["links"] = measure_link_quality(corosync_members, local_ips)
+    return LINK_QUALITY_CACHE
+
+
 def collect_status():
     service = run_command(["systemctl", "is-active", "corosync"])
     enabled = run_command(["systemctl", "is-enabled", "corosync"])
     pve_cluster = run_command(["systemctl", "is-active", "pve-cluster"])
     pvecm = run_command(["pvecm", "status"])
     quorum = run_command(["corosync-quorumtool", "-s"])
-    members = run_command(["corosync-cmapctl", "runtime.members"])
     tailscale = run_command(["tailscale", "status", "--json"])
     journal = run_command(["journalctl", "-u", "corosync", "-n", "25", "--no-pager"], timeout=8)
 
     pvecm_fields = parse_pvecm_status(pvecm["stdout"]) if pvecm["stdout"] else {}
     quorum_nodes = parse_quorum(quorum["stdout"]) if quorum["stdout"] else []
-    corosync_members = parse_corosync_members(members["stdout"]) if members["stdout"] else []
-    local_ips = set(run_command(["tailscale", "ip", "-4"])["stdout"].splitlines())
+    corosync_members = collect_corosync_members()
 
     tailscale_data = {}
     if tailscale["stdout"]:
@@ -198,13 +215,12 @@ def collect_status():
         "corosync": {
             "members": corosync_members,
             "quorumNodes": quorum_nodes,
-            "linkQuality": measure_link_quality(corosync_members, local_ips),
             "rawStatus": pvecm["stdout"],
             "rawQuorum": quorum["stdout"],
             "recentLogs": journal["stdout"].splitlines()[-25:] if journal["stdout"] else [],
             "errors": [
                 item["stderr"]
-                for item in [pvecm, quorum, members, journal]
+                for item in [pvecm, quorum, journal]
                 if item["stderr"] and item["returncode"] not in (0, 1)
             ],
         },
@@ -251,6 +267,9 @@ INDEX_HTML = """<!doctype html>
     .tag.good { color: #bbf7d0; background: rgba(34,197,94,0.18); border: 1px solid rgba(34,197,94,0.34); }
     .tag.slow, .tag.jittery { color: #fde68a; background: rgba(245,158,11,0.18); border: 1px solid rgba(245,158,11,0.34); }
     .tag.loss, .tag.unknown { color: #fecdd3; background: rgba(244,63,94,0.18); border: 1px solid rgba(244,63,94,0.34); }
+    .loading { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); }
+    .spinner { width: 16px; height: 16px; border: 2px solid rgba(148,163,184,0.28); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
     th { color: #bae6fd; font-size: 13px; font-weight: 700; }
@@ -287,7 +306,10 @@ INDEX_HTML = """<!doctype html>
     const yesNo = value => value ? "active" : "inactive";
     const ms = value => Number.isFinite(value) ? `${value.toFixed(1)} ms` : "unknown";
     const percent = value => Number.isFinite(value) ? `${value.toFixed(1)}%` : "unknown";
-    async function refresh() {
+    const renderLinkQuality = links => {
+      document.getElementById("linkQuality").innerHTML = (links || []).map(link => `<tr><td>${link.ip || ""}</td><td>${link.status || ""}</td><td>${percent(link.packetLossPercent)}</td><td>${ms(link.avgMs)}</td><td>${ms(link.maxMs)}</td><td>${ms(link.jitterMs)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td></tr>`).join("") || "<tr><td colspan='7'>No remote corosync links measured</td></tr>";
+    };
+    async function refreshStatus() {
       const response = await fetch("/api/status", { cache: "no-store" });
       const data = await response.json();
       document.getElementById("subtitle").textContent = `${data.hostname} refreshed ${new Date(data.generatedAt * 1000).toLocaleString()}`;
@@ -304,12 +326,22 @@ INDEX_HTML = """<!doctype html>
       text("tailscaleName", data.tailscale.self.DNSName || data.tailscale.self.HostName || "");
       document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.ip || member.name || ""}</td><td>${member.nodeid || ""}</td><td>${member.status || ""}</td></tr>`).join("") || "<tr><td colspan='3'>No member data available</td></tr>";
       document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${node.name || ""}</td><td>${node.nodeid || ""}</td><td>${node.votes || ""}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
-      document.getElementById("linkQuality").innerHTML = (data.corosync.linkQuality || []).map(link => `<tr><td>${link.ip || ""}</td><td>${link.status || ""}</td><td>${percent(link.packetLossPercent)}</td><td>${ms(link.avgMs)}</td><td>${ms(link.maxMs)}</td><td>${ms(link.jitterMs)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td></tr>`).join("") || "<tr><td colspan='7'>No remote corosync links measured</td></tr>";
       text("logs", (data.corosync.recentLogs || []).join("\\n") || "No recent corosync logs available.");
       text("raw", data.corosync.rawStatus || "No pvecm status output available.");
     }
+    async function refreshLinkQuality() {
+      document.getElementById("linkQuality").innerHTML = "<tr><td colspan='7'><span class='loading'><span class='spinner'></span>Measuring corosync link quality...</span></td></tr>";
+      const response = await fetch("/api/link-quality", { cache: "no-store" });
+      const data = await response.json();
+      renderLinkQuality(data.links);
+    }
+    async function refresh() {
+      await refreshStatus();
+      refreshLinkQuality();
+    }
     refresh();
-    setInterval(refresh, 15000);
+    setInterval(refreshStatus, 15000);
+    setInterval(refreshLinkQuality, 30000);
   </script>
 </body>
 </html>
@@ -332,6 +364,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_body(200, "text/html; charset=utf-8", INDEX_HTML)
         elif path == "/api/status":
             self.send_body(200, "application/json", json.dumps(collect_status()))
+        elif path == "/api/link-quality":
+            self.send_body(200, "application/json", json.dumps(collect_link_quality()))
         else:
             self.send_body(404, "text/plain; charset=utf-8", "not found")
 
