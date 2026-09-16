@@ -155,7 +155,7 @@ TAILMOX_INFLUXDB_ORG=your-org
 TAILMOX_INFLUXDB_BUCKET=your-bucket
 ```
 
-When configured, Tailmox writes `tailmox_cluster_status`, `tailmox_corosync_link_quality`, and `tailmox_corosync_config` measurements using InfluxDB line protocol. `tailmox_corosync_config` includes the global knet MTU setting, PMTUD interval, knet ping interval and timeout, token timing, consensus timing, max network delay, and related corosync config values. If the env file is absent, the monitor runs without exporting data. The same settings can also be edited from the monitor UI at `/editInfluxDB` when accessed through Tailscale Serve with user identity headers.
+When configured, Tailmox writes `tailmox_cluster_status`, `tailmox_corosync_member`, `tailmox_corosync_link_quality`, and `tailmox_corosync_config` measurements using InfluxDB line protocol. `tailmox_corosync_config` includes the global knet MTU setting, PMTUD interval, knet ping interval and timeout, token timing, consensus timing, max network delay, and related corosync config values. If the env file is absent, the monitor runs without exporting data. The same settings can also be edited from the monitor UI at `/editInfluxDB` when accessed through Tailscale Serve with user identity headers.
 
 ---
 

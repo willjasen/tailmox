@@ -451,7 +451,12 @@ def export_link_quality(links, timestamp):
         lines.append(
             line_protocol(
                 "tailmox_corosync_link_quality",
-                {"host": hostname, "peer_ip": link.get("ip"), "nodeid": link.get("nodeid")},
+                {
+                    "host": hostname,
+                    "peer_host": link.get("hostname"),
+                    "peer_ip": link.get("ip"),
+                    "nodeid": link.get("nodeid"),
+                },
                 {
                     "packet_loss_percent": link.get("packetLossPercent"),
                     "min_ms": link.get("minMs"),
@@ -459,7 +464,32 @@ def export_link_quality(links, timestamp):
                     "max_ms": link.get("maxMs"),
                     "jitter_ms": link.get("jitterMs"),
                     "quality": link.get("quality"),
+                    "status": link.get("status"),
                     "joined": link.get("status") == "joined",
+                },
+                timestamp,
+            )
+        )
+    write_influx([line for line in lines if line])
+
+
+def export_corosync_members(members, quorum_nodes, timestamp):
+    quorum_by_nodeid = {node.get("nodeid"): node for node in quorum_nodes}
+    lines = []
+    hostname = socket.gethostname()
+    for member in members:
+        quorum = quorum_by_nodeid.get(member.get("nodeid"), {})
+        lines.append(
+            line_protocol(
+                "tailmox_corosync_member",
+                {"host": hostname, "nodeid": member.get("nodeid"), "member_ip": member.get("ip")},
+                {
+                    "joined": member.get("status") == "joined",
+                    "status": member.get("status"),
+                    "join_count": int_or_none(member.get("join_count")),
+                    "config_version": int_or_none(member.get("config_version")),
+                    "votes": int_or_none(quorum.get("votes")),
+                    "local": bool(quorum.get("local")),
                 },
                 timestamp,
             )
@@ -484,8 +514,12 @@ def export_status(status):
         {
             "healthy": status["overall"] == "healthy",
             "corosync_active": services["corosync"]["active"],
+            "corosync_enabled": services["corosync"]["enabled"] == "enabled",
             "pve_cluster_active": services["pveCluster"]["active"],
             "quorate": cluster.get("quorate") == "Yes",
+            "config_version": integer(cluster.get("configVersion")),
+            "transport": cluster.get("transport"),
+            "secure_auth": cluster.get("secureAuth") == "on",
             "expected_votes": integer(cluster.get("expectedVotes")),
             "total_votes": integer(cluster.get("totalVotes")),
             "highest_expected": integer(cluster.get("highestExpected")),
@@ -495,6 +529,7 @@ def export_status(status):
         timestamp,
     )
     write_influx([line] if line else [])
+    export_corosync_members(status["corosync"]["members"], status["corosync"]["quorumNodes"], timestamp)
 
 
 def collect_status():
