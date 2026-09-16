@@ -22,6 +22,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import secrets
+import tempfile
 from urllib.parse import urlparse
 
 # Keep the sibling configuration module importable when this file is loaded
@@ -113,9 +114,14 @@ def _run_action(action, auth_key):
         if action == "redeploy":
             exit_code, output = run_redeploy()
         else:
-            completed = subprocess.run([TAILMOX_COMMAND, *ACTION_COMMANDS[action]], check=False,
-                                       capture_output=True, text=True, timeout=3600, env=environment)
-            output = "\n".join(part.strip() for part in (completed.stdout, completed.stderr) if part.strip())
+            with tempfile.TemporaryFile(mode="w+", encoding="utf-8") as output_file:
+                completed = subprocess.run(
+                    [TAILMOX_COMMAND, *ACTION_COMMANDS[action]], check=False,
+                    stdout=output_file, stderr=subprocess.STDOUT,
+                    timeout=3600, env=environment,
+                )
+                output_file.seek(0)
+                output = output_file.read().strip()
             exit_code = completed.returncode
         status = "succeeded" if exit_code == 0 else "failed"
     except (OSError, subprocess.TimeoutExpired) as error:
