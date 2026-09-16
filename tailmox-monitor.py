@@ -1910,7 +1910,7 @@ INDEX_HTML = """<!doctype html>
       const payload = action === "stage" ? { authKey: authInput.value } : {};
       document.querySelectorAll(".workflow-button").forEach(button => button.disabled = true);
       try {
-        const response = await fetch(`/api/actions/${action}`, {
+        const response = await fetch(`${apiPrefix}/api/actions/${action}`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
           body: JSON.stringify(payload),
@@ -2253,7 +2253,10 @@ class Handler(BaseHTTPRequestHandler):
         for key, value in (extra_headers or {}).items():
             self.send_header(key, value)
         self.end_headers()
-        self.wfile.write(encoded)
+        try:
+            self.wfile.write(encoded)
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
     def send_json(self, status, payload):
         self.send_body(status, "application/json", json.dumps(payload))
