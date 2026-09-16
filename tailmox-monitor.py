@@ -2034,6 +2034,8 @@ EDIT_INFLUX_HTML = """<!doctype html>
     .error { color: #fecdd3; }
     textarea { width: 100%; min-height: 92px; box-sizing: border-box; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 11px 12px; color: var(--text); background: rgba(2,6,23,0.42); font: 13px ui-monospace, monospace; }
     .security-grid { display: grid; gap: 12px; margin-bottom: 20px; }
+    #identitySetup, #identityBackup { display: grid; gap: 12px; }
+    #identitySetup[hidden], #identityBackup[hidden] { display: none; }
     .identity-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; padding: 12px; border: 1px solid rgba(34,197,94,0.35); border-radius: 8px; background: rgba(20,83,45,0.16); }
     .identity-detail { display: grid; gap: 4px; min-width: 0; }
     .identity-detail span:first-child { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
@@ -2063,10 +2065,16 @@ EDIT_INFLUX_HTML = """<!doctype html>
         <div class="identity-detail"><span>Fingerprint</span><span class="recipient" id="identityFingerprint"></span></div>
         <div class="identity-detail"><span>Public recipient</span><span class="recipient" id="identityRecipient"></span></div>
       </div>
-      <textarea id="ageIdentity" autocomplete="off" spellcheck="false" placeholder="AGE-SECRET-KEY-PQ-1..."></textarea>
-      <div class="actions">
-        <button type="button" id="createIdentity">Create Tailmox age identity</button>
-        <button type="button" id="addIdentity">Add existing identity</button>
+      <div id="identitySetup">
+        <textarea id="ageIdentity" autocomplete="off" spellcheck="false" placeholder="AGE-SECRET-KEY-PQ-1..."></textarea>
+        <div class="actions">
+          <button type="button" id="createIdentity">Create Tailmox age identity</button>
+          <button type="button" id="addIdentity">Add existing identity</button>
+        </div>
+      </div>
+      <div id="identityBackup" hidden>
+        <label>Back up this private identity now<textarea id="generatedIdentity" readonly></textarea></label>
+        <div class="muted">It will not be displayed again after this page is closed or refreshed.</div>
       </div>
       <div class="message" id="securityMessage"></div>
       <div id="proposals"></div>
@@ -2110,13 +2118,17 @@ EDIT_INFLUX_HTML = """<!doctype html>
           : `Create the cluster identity on the first host, or add the existing cluster identity here.${data.legacyConfiguration ? " Existing plaintext settings will remain active until the encrypted migration is approved." : ""}`;
         const details = document.getElementById("identityDetails");
         details.hidden = !identity.configured;
+        document.getElementById("identitySetup").hidden = Boolean(identity.recipient);
         if (identity.configured) {
           document.getElementById("identityType").textContent = identity.postQuantum ? "Post-quantum ML-KEM-768 + X25519" : "Classic age identity";
           document.getElementById("identityHost").textContent = identity.host;
           document.getElementById("identityMatch").textContent = identity.matchesCluster ? "Verified" : "Not registered or does not match";
           document.getElementById("identitySigner").textContent = identity.signingKeyConfigured ? "Dedicated Ed25519 key loaded" : "Not created yet";
           document.getElementById("identityFingerprint").textContent = identity.recipientFingerprint || "Unavailable";
-          document.getElementById("identityRecipient").textContent = identity.recipient || "Not registered yet";
+          const recipient = identity.recipient || "";
+          document.getElementById("identityRecipient").textContent = recipient.length > 32
+            ? `${recipient.slice(0, 18)}…${recipient.slice(-10)}`
+            : (recipient || "Not registered yet");
         }
         document.getElementById("createIdentity").disabled = Boolean(identity.recipient);
         const proposals = document.getElementById("proposals");
@@ -2163,7 +2175,9 @@ EDIT_INFLUX_HTML = """<!doctype html>
           body: JSON.stringify({ operation, identity: identityInput.value }),
         });
         if (data.identity) {
-          identityInput.value = data.identity;
+          document.getElementById("generatedIdentity").value = data.identity;
+          document.getElementById("identityBackup").hidden = false;
+          identityInput.value = "";
           securityMessage.textContent = "Post-quantum identity created. Back it up now, then add this same identity on every Tailmox host.";
         } else {
           identityInput.value = "";

@@ -11,5 +11,8 @@ grep -Fq 'href="./">Back to monitor' "$MONITOR"
 grep -Fq 'id="identityDetails" hidden' "$MONITOR"
 grep -Fq 'Post-quantum ML-KEM-768 + X25519' "$MONITOR"
 grep -Fq 'identity.signingKeyConfigured ? "Dedicated Ed25519 key loaded"' "$MONITOR"
+grep -Fq 'document.getElementById("identitySetup").hidden = Boolean(identity.recipient)' "$MONITOR"
+grep -Fq 'recipient.slice(0, 18)}…${recipient.slice(-10)' "$MONITOR"
+grep -Fq 'id="identityBackup" hidden' "$MONITOR"
 
 printf 'monitor control-prefix tests passed\n'
