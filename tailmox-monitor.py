@@ -16,14 +16,17 @@ import re
 import urllib.error
 import urllib.parse
 import urllib.request
+import secrets
 from urllib.parse import urlparse
 
 
 HOST = os.environ.get("TAILMOX_MONITOR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TAILMOX_MONITOR_PORT", "8088"))
+INFLUX_ENV_FILE = os.environ.get("TAILMOX_INFLUXDB_ENV_FILE", "/etc/tailmox-monitor.env")
 LINK_QUALITY_TTL_SECONDS = 30
 LINK_QUALITY_CACHE = {"generatedAt": 0, "links": []}
 INFLUX_STATE = {"lastWriteAt": None, "lastError": None}
+CSRF_TOKEN = secrets.token_urlsafe(32)
 
 
 def run_command(command, timeout=5):
@@ -54,6 +57,66 @@ def influx_config():
         "org": os.environ.get("TAILMOX_INFLUXDB_ORG", ""),
         "bucket": os.environ.get("TAILMOX_INFLUXDB_BUCKET", ""),
     }
+
+
+def read_influx_env_file():
+    config = {}
+    try:
+        with open(INFLUX_ENV_FILE, "r", encoding="utf-8") as handle:
+            for line in handle:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                key, value = stripped.split("=", 1)
+                config[key.strip()] = value.strip().strip('"').strip("'")
+    except FileNotFoundError:
+        pass
+    return config
+
+
+def shell_quote_env(value):
+    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def save_influx_config(data):
+    current = read_influx_env_file()
+    token = str(data.get("token", "")).strip()
+    if not token:
+        token = current.get("TAILMOX_INFLUXDB_TOKEN", os.environ.get("TAILMOX_INFLUXDB_TOKEN", ""))
+
+    next_config = {
+        "TAILMOX_INFLUXDB_URL": str(data.get("url", "")).strip().rstrip("/"),
+        "TAILMOX_INFLUXDB_TOKEN": token,
+        "TAILMOX_INFLUXDB_ORG": str(data.get("org", "")).strip(),
+        "TAILMOX_INFLUXDB_BUCKET": str(data.get("bucket", "")).strip(),
+    }
+
+    with open(INFLUX_ENV_FILE, "w", encoding="utf-8") as handle:
+        handle.write("# Tailmox monitor InfluxDB export settings\n")
+        for key, value in next_config.items():
+            handle.write(f"{key}={shell_quote_env(value)}\n")
+
+    os.environ.update(next_config)
+    INFLUX_STATE["lastWriteAt"] = None
+    INFLUX_STATE["lastError"] = None
+    return influx_settings_payload()
+
+
+def influx_settings_payload():
+    config = influx_config()
+    return {
+        "url": config["url"],
+        "org": config["org"],
+        "bucket": config["bucket"],
+        "tokenConfigured": bool(config["token"]),
+        "enabled": influx_enabled(),
+        "lastWriteAt": INFLUX_STATE["lastWriteAt"],
+        "lastError": INFLUX_STATE["lastError"],
+    }
+
+
+def request_identity(headers):
+    return headers.get("Tailscale-User-Login", "")
 
 
 def influx_enabled():
@@ -405,6 +468,13 @@ INDEX_HTML = """<!doctype html>
     .loading { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); }
     .spinner { width: 16px; height: 16px; border: 2px solid rgba(148,163,184,0.28); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+    form { display: grid; gap: 14px; max-width: 720px; }
+    label { display: grid; gap: 7px; color: #bae6fd; font-size: 13px; font-weight: 700; }
+    input { width: 100%; box-sizing: border-box; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 11px 12px; color: var(--text); background: rgba(2,6,23,0.42); font: inherit; }
+    input:focus { outline: 2px solid rgba(56,189,248,0.34); border-color: var(--accent); }
+    button, .button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(56,189,248,0.42); border-radius: 8px; padding: 10px 14px; color: #e0f2fe; background: rgba(14,116,144,0.32); font: inherit; font-weight: 800; text-decoration: none; cursor: pointer; }
+    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .message { min-height: 20px; color: var(--muted); }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
     th { color: #bae6fd; font-size: 13px; font-weight: 700; }
@@ -429,7 +499,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel"><h2>Quorum</h2><div class="metric" id="quorumState">...</div><div class="muted" id="votes"></div></div>
       <div class="panel"><h2>Cluster</h2><div class="metric" id="clusterName">...</div><div class="muted" id="transport"></div></div>
       <div class="panel"><h2>Tailscale</h2><div class="metric" id="tailscaleState">...</div><div class="muted" id="tailscaleName"></div></div>
-      <div class="panel"><h2>InfluxDB</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div></div>
+      <div class="panel"><h2>InfluxDB</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div><div style="margin-top: 10px;"><a href="/editInfluxDB">Edit settings</a></div></div>
       <div class="panel wide"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>ID</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
       <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
@@ -486,26 +556,164 @@ INDEX_HTML = """<!doctype html>
 """
 
 
+EDIT_INFLUX_HTML = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tailmox InfluxDB Settings</title>
+  <style>
+    :root { color-scheme: dark; --bg: #0b1020; --panel: #111827; --line: #334155; --text: #e5e7eb; --muted: #9ca3af; --accent: #38bdf8; --good: #22c55e; --bad: #ef4444; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: radial-gradient(circle at top left, rgba(56,189,248,0.18), transparent 34%), linear-gradient(135deg, #0b1020 0%, #111827 48%, #14213d 100%); color: var(--text); min-height: 100vh; }
+    main { max-width: 860px; margin: 0 auto; padding: 28px; }
+    header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 24px; }
+    h1 { font-size: 30px; margin: 0 0 6px; color: #f8fafc; }
+    h2 { font-size: 15px; margin: 0 0 14px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
+    .muted { color: var(--muted); }
+    .panel { position: relative; overflow: hidden; border: 1px solid rgba(148,163,184,0.28); border-radius: 8px; padding: 18px; background: linear-gradient(180deg, rgba(17,24,39,0.94), rgba(15,23,42,0.94)); box-shadow: 0 14px 34px rgba(0,0,0,0.24); }
+    .panel::before { content: ""; position: absolute; inset: 0 0 auto; height: 4px; background: var(--accent); }
+    form { display: grid; gap: 14px; }
+    label { display: grid; gap: 7px; color: #bae6fd; font-size: 13px; font-weight: 700; }
+    input { width: 100%; box-sizing: border-box; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 11px 12px; color: var(--text); background: rgba(2,6,23,0.42); font: inherit; }
+    input:focus { outline: 2px solid rgba(56,189,248,0.34); border-color: var(--accent); }
+    button, .button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(56,189,248,0.42); border-radius: 8px; padding: 10px 14px; color: #e0f2fe; background: rgba(14,116,144,0.32); font: inherit; font-weight: 800; text-decoration: none; cursor: pointer; }
+    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .message { min-height: 20px; color: var(--muted); }
+    .ok { color: #bbf7d0; }
+    .error { color: #fecdd3; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>InfluxDB Settings</h1>
+        <div class="muted">Configure Tailmox monitor exports for this node.</div>
+      </div>
+      <a class="button" href="/">Back to monitor</a>
+    </header>
+    <section class="panel">
+      <h2>Export Destination</h2>
+      <form id="influxForm">
+        <label>InfluxDB URL<input id="url" name="url" autocomplete="url" placeholder="https://influxdb.example.com"></label>
+        <label>Organization<input id="org" name="org" autocomplete="off"></label>
+        <label>Bucket<input id="bucket" name="bucket" autocomplete="off"></label>
+        <label>Token<input id="token" name="token" type="password" autocomplete="new-password" placeholder="Leave blank to keep the current token"></label>
+        <div class="actions">
+          <button type="submit">Save settings</button>
+          <span class="message" id="message"></span>
+        </div>
+      </form>
+    </section>
+  </main>
+  <script>
+    const csrfToken = "__CSRF_TOKEN__";
+    const message = document.getElementById("message");
+    async function loadSettings() {
+      const response = await fetch("/api/influxdb", { cache: "no-store" });
+      const data = await response.json();
+      document.getElementById("url").value = data.url || "";
+      document.getElementById("org").value = data.org || "";
+      document.getElementById("bucket").value = data.bucket || "";
+      document.getElementById("token").placeholder = data.tokenConfigured ? "Current token is saved; leave blank to keep it" : "Paste an InfluxDB token";
+    }
+    document.getElementById("influxForm").addEventListener("submit", async event => {
+      event.preventDefault();
+      message.className = "message";
+      message.textContent = "Saving...";
+      const body = {
+        url: document.getElementById("url").value,
+        org: document.getElementById("org").value,
+        bucket: document.getElementById("bucket").value,
+        token: document.getElementById("token").value,
+      };
+      const response = await fetch("/api/influxdb", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        document.getElementById("token").value = "";
+        document.getElementById("token").placeholder = data.tokenConfigured ? "Current token is saved; leave blank to keep it" : "Paste an InfluxDB token";
+        message.className = "message ok";
+        message.textContent = data.enabled ? "Saved. Export is enabled." : "Saved. Add all fields to enable export.";
+      } else {
+        message.className = "message error";
+        message.textContent = data.error || "Unable to save settings.";
+      }
+    });
+    loadSettings();
+  </script>
+</body>
+</html>
+"""
+
+
 class Handler(BaseHTTPRequestHandler):
-    def send_body(self, status, content_type, body):
+    def send_body(self, status, content_type, body, extra_headers=None):
         encoded = body.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-store")
+        for key, value in (extra_headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(encoded)
+
+    def send_json(self, status, payload):
+        self.send_body(status, "application/json", json.dumps(payload))
+
+    def require_tailscale_user(self):
+        login = request_identity(self.headers)
+        if login:
+            return login
+        self.send_json(403, {"error": "InfluxDB settings require Tailscale Serve user identity."})
+        return None
 
     def do_GET(self):
         path = urlparse(self.path).path
         if path in ("/", "/index.html"):
             self.send_body(200, "text/html; charset=utf-8", INDEX_HTML)
+        elif path == "/editInfluxDB":
+            if not self.require_tailscale_user():
+                return
+            self.send_body(
+                200,
+                "text/html; charset=utf-8",
+                EDIT_INFLUX_HTML.replace("__CSRF_TOKEN__", CSRF_TOKEN),
+                {"Set-Cookie": "tailmox_csrf=1; Path=/; SameSite=Strict; Secure"},
+            )
         elif path == "/api/status":
-            self.send_body(200, "application/json", json.dumps(collect_status()))
+            self.send_json(200, collect_status())
         elif path == "/api/link-quality":
-            self.send_body(200, "application/json", json.dumps(collect_link_quality()))
+            self.send_json(200, collect_link_quality())
+        elif path == "/api/influxdb":
+            if not self.require_tailscale_user():
+                return
+            self.send_json(200, influx_settings_payload())
         else:
             self.send_body(404, "text/plain; charset=utf-8", "not found")
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+        if path != "/api/influxdb":
+            self.send_body(404, "text/plain; charset=utf-8", "not found")
+            return
+        if not self.require_tailscale_user():
+            return
+        if self.headers.get("X-CSRF-Token") != CSRF_TOKEN:
+            self.send_json(403, {"error": "Invalid CSRF token."})
+            return
+
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+            settings = save_influx_config(payload)
+            self.send_json(200, settings)
+        except (OSError, json.JSONDecodeError) as error:
+            self.send_json(500, {"error": str(error)})
 
     def log_message(self, fmt, *args):
         return
