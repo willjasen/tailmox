@@ -4,10 +4,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MONITOR="$ROOT_DIR/tailmox-monitor.py"
 
-grep -Fq 'window.location.pathname.startsWith("/control/") ? "/control" : ""' "$MONITOR"
+grep -Fq 'window.location.pathname.startsWith("/control/") ? "/control" : ""' "$MONITOR" ||
+    grep -Fq 'window.location.pathname.startsWith("/control/") ? "/control"' "$MONITOR"
+grep -Fq 'window.location.pathname === "/monitor"' "$MONITOR"
+grep -Fq 'const target = event.target.value.replace' "$MONITOR"
 grep -Fq 'fetch(`${apiPrefix}${path}`' "$MONITOR"
 grep -Fq 'fetch(`${apiPrefix}/api/influxdb`' "$MONITOR"
-grep -Fq 'href="./">Back to monitor' "$MONITOR"
+grep -Fq '<a href="settings">Edit InfluxDB settings</a>' "$MONITOR"
 grep -Fq 'SETTINGS_HTML = EDIT_INFLUX_HTML' "$MONITOR"
 grep -Fq 'if path == "/settings"' "$MONITOR"
 grep -Fq 'Location", "/id"' "$MONITOR"

@@ -1560,9 +1560,10 @@ INDEX_HTML = """<!doctype html>
   <div class="chart-tooltip" id="chartTooltip"></div>
   <script>
     const csrfToken = "__CSRF_TOKEN__";
-    const apiPrefix = window.location.pathname.startsWith("/monitor/") ? "/monitor" : (window.location.pathname.startsWith("/control/") ? "/control" : "");
+    const apiPrefix = (window.location.pathname === "/monitor" || window.location.pathname.startsWith("/monitor/")) ? "/monitor" : (window.location.pathname === "/control" || window.location.pathname.startsWith("/control/") ? "/control" : "");
     document.getElementById("pagePicker").addEventListener("change", event => {
-      window.location.href = event.target.value;
+      const target = event.target.value.replace("./", "");
+      window.location.href = apiPrefix ? `${apiPrefix}/${target}` : event.target.value;
     });
     const text = (id, value) => document.getElementById(id).textContent = value || "unknown";
     const setPanelStatus = (id, status) => {
@@ -2181,13 +2182,14 @@ EDIT_INFLUX_HTML = """<!doctype html>
   </main>
   <script>
     const csrfToken = "__CSRF_TOKEN__";
-    const apiPrefix = window.location.pathname.startsWith("/monitor/") ? "/monitor" : (window.location.pathname.startsWith("/control/") ? "/control" : "");
+    const apiPrefix = (window.location.pathname === "/monitor" || window.location.pathname.startsWith("/monitor/")) ? "/monitor" : (window.location.pathname === "/control" || window.location.pathname.startsWith("/control/") ? "/control" : "");
     const pagePicker = document.getElementById("pagePicker");
     const overall = document.getElementById("overall");
     const currentPage = window.location.pathname.endsWith("/id") ? "id" : window.location.pathname.endsWith("/settings") ? "settings" : "./";
     pagePicker.value = currentPage;
     pagePicker.addEventListener("change", event => {
-      window.location.href = event.target.value;
+      const target = event.target.value.replace("./", "");
+      window.location.href = apiPrefix ? `${apiPrefix}/${target}` : event.target.value;
     });
     fetch(`${apiPrefix}/api/status`, { cache: "no-store" }).then(response => response.json()).then(data => {
       overall.className = `pill ${data.overall === "healthy" ? "ok" : "warn"}`;
