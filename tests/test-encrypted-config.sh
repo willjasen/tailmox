@@ -170,7 +170,7 @@ if grep -Fq 'PRIVATE KEY' "$CLUSTER_DIR/security.json"; then
     printf 'FAIL: a private host signing key entered the clustered filesystem\n'
     exit 1
 fi
-if [[ "$(stat -f '%Lp' "$TEST_TMP/pve1/signing-key.pem" 2>/dev/null || stat -c '%a' "$TEST_TMP/pve1/signing-key.pem")" != "600" ]]; then
+if [[ "$(stat -c '%a' "$TEST_TMP/pve1/signing-key.pem" 2>/dev/null || stat -f '%Lp' "$TEST_TMP/pve1/signing-key.pem")" != "600" ]]; then
     printf 'FAIL: the host signing key is not private\n'
     exit 1
 fi
