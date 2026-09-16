@@ -137,6 +137,48 @@ In order to make the Tailscale functions easier to handle, `tailmox.sh` accepts 
 
 During the running of the script, if there are existing hosts within the tailmox cluster, it is likely to ask for the password of one of the remote hosts in order to properly join the Proxmox cluster.
 
+To disable Tailmox for corosync and move cluster communication back to a LAN,
+run this on a quorate cluster member and provide the LAN CIDR that every node
+should use:
+
+```sh
+tailmox disable 192.168.1.0/24
+```
+
+Tailmox requires all configured nodes online, quorate, and connected, with
+matching configurations. It discovers one unique LAN IPv4 address per host,
+checks all-to-all source-bound LAN ping, and validates every planned configuration
+on every host over noninteractive SSH. This mandatory dry run precedes the warning
+and exact `DISABLE` confirmation; `TAILMOX_ASSUME_YES` cannot bypass either.
+Use `--dry-run` to stop after validation, or `--keep-tailscale` to retain Tailscale
+as a lower-priority fallback. Running without a CIDR prompts for the subnet and
+fallback choice. Re-running always performs a fresh dry run.
+SSH access using existing link addresses must already work with trusted host
+keys. LAN addresses must be static and allow Corosync UDP traffic between hosts;
+successful ping alone does not establish this. Run one migration at a time across
+the cluster and avoid concurrent cluster configuration edits.
+
+The migration adds LAN link 1 while retaining Tailscale link 0, verifies every
+node, then prefers LAN. For LAN-only operation it moves link 0 to LAN while link 1
+remains connected, verifies again, then removes temporary link 1. Each version is
+checked on every node for configuration propagation, quorum and actual KNET peer
+connections before advancing. Existing multi-link or non-passive configurations
+are rejected for manual review. No Tailscale service is stopped.
+
+The port 8669 website includes **Move Corosync to LAN** in its terminal actions.
+It opens the same interactive workflow, including input collection, mandatory dry
+run and confirmation. The terminal accepts input only for approved workflows and
+does not expose a shell. Existing deployments need their web service updated and
+restarted to enable terminal input.
+
+Recovery configurations are stored in `/var/lib/tailmox/migrations` before writes.
+On failed verification the migration stops at the current stage; it does not
+attempt an automatic rollback through a potentially partitioned cluster. Keep
+console access available: dry-run validation cannot guarantee live connectivity,
+and quorum loss can trigger HA recovery. Backup restoration requires a newer
+`config_version` and review of every node. This workflow still requires validation
+in a disposable Proxmox environment before production use.
+
 ### 📈 Monitoring 📈
 
 The Tailmox console on HTTPS port `8669` opens on an Intro page and provides a

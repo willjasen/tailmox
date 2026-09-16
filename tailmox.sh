@@ -49,6 +49,10 @@ fi
 ### ---FUNCTIONS---
 ### 
 
+function disable_tailmox() {
+    python3 "$(dirname "${BASH_SOURCE[0]}")/tailmox-migrate.py" "$@"
+}
+
 # Logging function that outputs to both console and log file
 function log_echo() {
     local message="$1"
@@ -917,6 +921,11 @@ while [[ "$#" -gt 0 ]]; do
             shift
             [[ "$#" -eq 1 ]] || { printf 'Usage: tailmox.sh remove <node-name>\n' >&2; exit 2; }
             remove_cluster_node "$1"
+            exit $?
+            ;;
+        --disable)
+            shift
+            disable_tailmox "$@"
             exit $?
             ;;
         --staging) STAGING="true"; log_echo "${YELLOW}Staging mode enabled.${RESET}"; ;;

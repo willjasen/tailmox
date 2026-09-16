@@ -66,6 +66,11 @@ else
     exit 1
 fi
 
+if [[ "$(TAILMOX_COMMAND="$MOCK_COMMAND" "$TEST_ROOT/tailmox-web-terminal" disable)" != 'tailmox:disable' ]]; then
+    printf 'FAIL: web migration action did not dispatch the interactive workflow\n'
+    exit 1
+fi
+
 if TAILMOX_COMMAND="$MOCK_COMMAND" \
     "$TEST_ROOT/tailmox-web-terminal" unsupported >/dev/null 2>&1; then
     printf 'FAIL: unsupported web actions are rejected\n'

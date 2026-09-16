@@ -741,6 +741,9 @@ function showTerminal(path) {
 runTestButton.addEventListener("click", () => {
     showTerminal(`terminal/?arg=test&started=${Date.now()}`);
 });
+document.querySelector("#run-disable").addEventListener("click", () => {
+    showTerminal(`terminal/?arg=disable&started=${Date.now()}`);
+});
 createBackupButton.addEventListener("click", () => {
     showTerminal(`terminal/?arg=backup-create&started=${Date.now()}`);
 });

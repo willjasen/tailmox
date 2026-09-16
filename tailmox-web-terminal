@@ -31,6 +31,9 @@ case "$TAILMOX_WEB_ACTION" in
     cluster)
         exec "$TAILMOX_COMMAND" cluster
         ;;
+    disable)
+        exec "$TAILMOX_COMMAND" disable
+        ;;
     *)
         printf 'Unsupported Tailmox web action: %s\n' "$TAILMOX_WEB_ACTION" >&2
         exit 2
