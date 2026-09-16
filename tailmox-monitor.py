@@ -2292,6 +2292,13 @@ ID_HTML = re.sub(
     count=1,
     flags=re.DOTALL,
 ).replace("    loadSecurity();\n    loadSettings();", "    loadSecurity();")
+ID_HTML = re.sub(
+    r'    document\.getElementById\("influxForm"\)\.addEventListener\(.*?(?=    loadSecurity\(\);)',
+    "",
+    ID_HTML,
+    count=1,
+    flags=re.DOTALL,
+)
 SETTINGS_HTML = EDIT_INFLUX_HTML
 
 
