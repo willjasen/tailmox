@@ -1510,16 +1510,16 @@ INDEX_HTML = """<!doctype html>
     .log-knet { color: #bae6fd; }
     .log-quorum { color: #ddd6fe; }
     .log-totem { color: #99f6e4; }
-    a { color: var(--accent); }
-    @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid, .workflow-grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } }
-  </style>
-</head>
-<body>
     .test-line { display: block; padding: 1px 0; }
     .test-pass { color: #bbf7d0; }
     .test-fail { color: #fecdd3; font-weight: 800; }
     .test-section { color: #bae6fd; font-weight: 800; }
     .test-summary { color: #fde68a; font-weight: 800; }
+    a { color: var(--accent); }
+    @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid, .workflow-grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } }
+  </style>
+</head>
+<body>
   <main>
     <header>
       <div>
@@ -2239,6 +2239,10 @@ EDIT_INFLUX_HTML = """<!doctype html>
       try {
         const data = await api("/api/security");
         const identity = data.identity;
+        const monitorOption = document.querySelector('#pagePicker option[value="./"]');
+        if (identity.configured && !monitorOption) {
+          document.getElementById("pagePicker").add(new Option("Monitor", "./"));
+        }
         document.getElementById("securityStatus").textContent = identity.configured
           ? `Tailmox age identity loaded${data.legacyConfiguration ? " · plaintext configuration migration pending" : ""}`
           : `Create the cluster identity on the first host, or add the existing cluster identity here.${data.legacyConfiguration ? " Existing plaintext settings will remain active until the encrypted migration is approved." : ""}`;
@@ -2263,10 +2267,6 @@ EDIT_INFLUX_HTML = """<!doctype html>
           card.className = "proposal";
           const title = document.createElement("strong");
           title.textContent = item.error ? item.proposalId : `Revision ${item.revision} · ${item.summary}`;
-        const monitorOption = document.querySelector('#pagePicker option[value="./"]');
-        if (identity.configured && !monitorOption) {
-          document.getElementById("pagePicker").add(new Option("Monitor", "./"));
-        }
           const detail = document.createElement("div");
           detail.className = "muted";
           detail.textContent = item.error || `Proposed by ${item.proposer}; ${Object.values(item.receipts).filter(value => value === "accepted").length} of ${Object.keys(item.receipts).length} hosts accepted.`;
@@ -2324,6 +2324,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
     document.getElementById("createIdentity").addEventListener("click", () => configureIdentity("create"));
     document.getElementById("addIdentity").addEventListener("click", () => configureIdentity("import"));
     async function loadSettings() {
+      if (!document.getElementById("influxForm")) return;
       const response = await fetch(`${apiPrefix}/api/influxdb`, { cache: "no-store" });
       const data = await response.json();
       document.getElementById("url").value = data.url || "";
@@ -2352,7 +2353,6 @@ EDIT_INFLUX_HTML = """<!doctype html>
         document.getElementById("token").placeholder = data.tokenConfigured ? "Current token is saved; leave blank to keep it" : "Paste an InfluxDB token";
         message.className = "message ok";
         message.textContent = data.proposal?.activated
-      if (!document.getElementById("influxForm")) return;
           ? "Saved and activated after host approval."
           : "Proposal saved. Every registered host must accept it before activation.";
         await loadSecurity();
@@ -2376,6 +2376,7 @@ ID_HTML = re.sub(
     count=1,
     flags=re.DOTALL,
 ).replace("    loadSecurity();\n    loadSettings();", "    loadSecurity();")
+ID_HTML = ID_HTML.replace('          <option value="./">Monitor</option>\n', "")
 ID_HTML = re.sub(
     r'    document\.getElementById\("influxForm"\)\.addEventListener\(.*?(?=    loadSecurity\(\);)',
     "",
@@ -2400,7 +2401,6 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(encoded)
         except (BrokenPipeError, ConnectionResetError):
             return
-ID_HTML = ID_HTML.replace('          <option value="./">Monitor</option>\n', "")
 
     def send_json(self, status, payload):
         self.send_body(status, "application/json", json.dumps(payload))
