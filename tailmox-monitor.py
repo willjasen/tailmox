@@ -233,7 +233,7 @@ def parse_corosync_members(output):
     return members
 
 
-def measure_link_quality(members, local_ips):
+def measure_link_quality(members, local_ips, measured_at):
     results = []
     for member in members:
         ip = member.get("ip")
@@ -275,6 +275,7 @@ def measure_link_quality(members, local_ips):
                 "avgMs": avg_ms,
                 "maxMs": max_ms,
                 "jitterMs": jitter_ms,
+                "lastUpdatedAt": measured_at,
                 "raw": output,
             }
         )
@@ -391,8 +392,20 @@ def collect_link_quality():
 
     corosync_members = collect_corosync_members()
     local_ips = set(run_command(["tailscale", "ip", "-4"])["stdout"].splitlines())
+    tailscale = run_command(["tailscale", "status", "--json"])
+    peer_names = {}
+    if tailscale["stdout"]:
+        try:
+            tailscale_data = json.loads(tailscale["stdout"])
+            for peer in tailscale_data.get("Peer", {}).values():
+                for ip in peer.get("TailscaleIPs", []):
+                    peer_names[ip] = peer.get("HostName") or peer.get("DNSName") or ip
+        except json.JSONDecodeError:
+            peer_names = {}
     LINK_QUALITY_CACHE["generatedAt"] = now
-    LINK_QUALITY_CACHE["links"] = measure_link_quality(corosync_members, local_ips)
+    LINK_QUALITY_CACHE["links"] = measure_link_quality(corosync_members, local_ips, now)
+    for link in LINK_QUALITY_CACHE["links"]:
+        link["hostname"] = peer_names.get(link.get("ip"), "")
     export_link_quality(LINK_QUALITY_CACHE["links"], now)
     return LINK_QUALITY_CACHE
 
@@ -566,6 +579,10 @@ INDEX_HTML = """<!doctype html>
     .tag.good { color: #bbf7d0; background: rgba(34,197,94,0.18); border: 1px solid rgba(34,197,94,0.34); }
     .tag.slow, .tag.jittery { color: #fde68a; background: rgba(245,158,11,0.18); border: 1px solid rgba(245,158,11,0.34); }
     .tag.loss, .tag.unknown { color: #fecdd3; background: rgba(244,63,94,0.18); border: 1px solid rgba(244,63,94,0.34); }
+    .metric-cell { border-radius: 6px; padding: 4px 8px; font-weight: 800; }
+    .metric-cell.good { color: #bbf7d0; background: rgba(34,197,94,0.12); }
+    .metric-cell.warn { color: #fde68a; background: rgba(245,158,11,0.14); }
+    .metric-cell.bad { color: #fecdd3; background: rgba(244,63,94,0.14); }
     .loading { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); }
     .spinner { width: 16px; height: 16px; border: 2px solid rgba(148,163,184,0.28); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -609,7 +626,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel wide"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>ID</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
       <div class="panel full"><h2>Global MTU Over Time</h2><div class="muted" id="mtuDetail">Loading MTU history...</div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over time"></svg></div>
-      <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
+      <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Hostname</th><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
       <div class="panel full"><h2>Recent Corosync Logs</h2><pre id="logs">Loading...</pre></div>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
     </section>
@@ -619,10 +636,13 @@ INDEX_HTML = """<!doctype html>
     const yesNo = value => value ? "active" : "inactive";
     const ms = value => Number.isFinite(value) ? `${value.toFixed(1)} ms` : "unknown";
     const percent = value => Number.isFinite(value) ? `${value.toFixed(1)}%` : "unknown";
+    const localTime = value => Number.isFinite(value) ? new Date(value * 1000).toLocaleTimeString() : "unknown";
+    const qualityClass = (value, warn, bad) => !Number.isFinite(value) ? "bad" : value >= bad ? "bad" : value >= warn ? "warn" : "good";
+    const metricCell = (value, text, warn, bad) => `<span class="metric-cell ${qualityClass(value, warn, bad)}">${text}</span>`;
     const number = value => Number.isFinite(value) ? value.toLocaleString() : "auto";
     const svg = (name, attrs = {}, content = "") => `<${name} ${Object.entries(attrs).map(([key, value]) => `${key}="${value}"`).join(" ")}>${content}</${name}>`;
     const renderLinkQuality = links => {
-      document.getElementById("linkQuality").innerHTML = (links || []).map(link => `<tr><td>${link.ip || ""}</td><td>${link.status || ""}</td><td>${percent(link.packetLossPercent)}</td><td>${ms(link.avgMs)}</td><td>${ms(link.maxMs)}</td><td>${ms(link.jitterMs)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td></tr>`).join("") || "<tr><td colspan='7'>No remote corosync links measured</td></tr>";
+      document.getElementById("linkQuality").innerHTML = (links || []).map(link => `<tr><td>${link.hostname || "unknown"}</td><td>${link.ip || ""}</td><td>${link.status || ""}</td><td>${metricCell(link.packetLossPercent, percent(link.packetLossPercent), 0.1, 1)}</td><td>${metricCell(link.avgMs, ms(link.avgMs), 50, 150)}</td><td>${metricCell(link.maxMs, ms(link.maxMs), 100, 250)}</td><td>${metricCell(link.jitterMs, ms(link.jitterMs), 10, 20)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td><td>${localTime(link.lastUpdatedAt)}</td></tr>`).join("") || "<tr><td colspan='9'>No remote corosync links measured</td></tr>";
     };
     const renderMtu = data => {
       const current = data.current || {};
@@ -689,7 +709,7 @@ INDEX_HTML = """<!doctype html>
       text("raw", data.corosync.rawStatus || "No pvecm status output available.");
     }
     async function refreshLinkQuality() {
-      document.getElementById("linkQuality").innerHTML = "<tr><td colspan='7'><span class='loading'><span class='spinner'></span>Measuring corosync link quality...</span></td></tr>";
+      document.getElementById("linkQuality").innerHTML = "<tr><td colspan='9'><span class='loading'><span class='spinner'></span>Measuring corosync link quality...</span></td></tr>";
       const response = await fetch("/api/link-quality", { cache: "no-store" });
       const data = await response.json();
       renderLinkQuality(data.links);
