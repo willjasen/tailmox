@@ -1145,6 +1145,8 @@ def monitor_once(
     test_environment["TAILMOX_MONITOR_OUTPUT"] = "true"
     test_result = run_command([test_command, "test"], test_environment)
     combined_output = "\n".join(part for part in (test_result.stdout, test_result.stderr) if part)
+    if os.environ.get("TAILMOX_MONITOR_PRINT_TEST_OUTPUT") == "true":
+        print(combined_output, flush=True)
     parsed_checks = parse_test_checks(connection, run_id, combined_output, node_ids)
     if parsed_checks == 0:
         add_check(

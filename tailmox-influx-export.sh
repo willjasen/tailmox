@@ -51,7 +51,10 @@ collect_once() {
     hostname=$(hostname -s)
     timestamp=$(date +%s%N)
 
-    if ! TAILMOX_MONITOR_OUTPUT=true "$TAILMOX_ROOT/tailmox" test >"$output_file" 2>&1; then
+    if ! TAILMOX_MONITOR_PRINT_TEST_OUTPUT=true \
+        TAILMOX_MONITOR_SSE_ENABLED=false \
+        TAILMOX_MONITOR_DB="${TAILMOX_MONITOR_DB:-/var/lib/tailmox/monitor.sqlite3}" \
+        "$TAILMOX_ROOT/tailmox-monitor" --mode auto --once >"$output_file" 2>&1; then
         :
     fi
 

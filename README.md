@@ -268,9 +268,9 @@ The older periodic test collector is still available as `tailmox analytics`. It 
 
 To export the latency and TCP results from `tailmox test` to InfluxDB, configure
 InfluxDB in the monitor settings, then run `tailmox influx install`. The exporter
-runs the test once per minute and writes `tailmox_icmp` and `tailmox_tcp`
-measurements. Use `tailmox influx restart` or `tailmox influx uninstall` to
-manage it.
+runs the real Tailmox monitoring check once per minute and writes
+`tailmox_icmp` and `tailmox_tcp` measurements. Use `tailmox influx restart` or
+`tailmox influx uninstall` to manage it.
 
 ---
 
