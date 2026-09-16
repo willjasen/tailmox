@@ -20,6 +20,23 @@ def run(args, **kwargs):
                           timeout=45, **kwargs).stdout
 
 
+class NodeCheckError(RuntimeError):
+    pass
+
+
+def diagnostic(text, candidate=''):
+    """Keep command diagnostics, but never echo configuration credentials."""
+    if isinstance(text, bytes):
+        text = text.decode('utf-8', errors='replace')
+    text = text or ''
+    for match in re.finditer(r'^\s*(?:key|password|token|secret|authkey)\s*:\s*(.+)$', candidate, re.M | re.I):
+        text = text.replace(match[1].strip(), '[redacted]')
+    text = re.sub(r'-----BEGIN .*?-----.*?-----END .*?-----', '[redacted]', text, flags=re.S)
+    text = re.sub(r'^.*(?:password|secret|auth.?key|token|tskey-|\bkey\s*[:=]).*$', '[credential detail redacted]', text, flags=re.M | re.I)
+    text = ''.join(c for c in text if c in '\n\t' or c.isprintable())
+    return text.strip()[-2000:]
+
+
 def parse(text):
     root, stack = [], []
     current = root
@@ -116,11 +133,29 @@ def plan(original, addresses, keep):
 AGENT = r'''
 import json, subprocess, sys, tempfile, os
 p = json.load(sys.stdin)
+def fail(check, reason, detail=''):
+    print(json.dumps({'tailmox_error': {'check': check, 'reason': reason, 'detail': detail}}), file=sys.stderr)
+    sys.exit(1)
 def run(args):
-    return subprocess.check_output(args, text=True, timeout=20)
+    check = ' '.join(args)
+    try:
+        result = subprocess.run(args, text=True, capture_output=True, timeout=20)
+    except subprocess.TimeoutExpired as error:
+        fail(check, 'timed out after 20 seconds')
+    except OSError as error:
+        fail(check, 'could not start command', str(error))
+    if result.returncode:
+        fail(check, 'exit status ' + str(result.returncode), '\n'.join([result.stderr, result.stdout]))
+    return result.stdout
+def read_config(path):
+    try:
+        with open(path) as source:
+            return source.read()
+    except OSError as error:
+        fail('read ' + path, 'configuration unavailable', str(error))
 if p['action'] == 'inspect':
-    result = {'config': open(p['config']).read(),
-              'localConfig': open(p['localConfig']).read(),
+    result = {'config': read_config(p['config']),
+              'localConfig': read_config(p['localConfig']),
               'status': run(['pvecm', 'status']),
               'links': run(['corosync-cfgtool', '-s']),
               'addresses': json.loads(run(['ip', '-j', '-4', 'addr', 'show', 'scope', 'global']))}
@@ -146,53 +181,96 @@ class Migration:
         args = ['python3', '-c', AGENT]
         if host not in (socket.gethostname(), socket.gethostname().split('.')[0]):
             args = ['ssh', '-oBatchMode=yes', '-oConnectTimeout=10', self.hosts[host], shlex.join(args)]
-        return run(args, input=json.dumps(payload))
+        label = {'inspect': 'cluster status, configuration and interfaces',
+                 'validate': 'candidate Corosync configuration validation',
+                 'ping': 'LAN connectivity from ' + payload.get('source', '?')}.get(action, action)
+        context = f'{host} ({self.hosts.get(host, "local")}): {label}'
+        try:
+            return run(args, input=json.dumps(payload))
+        except subprocess.TimeoutExpired as error:
+            raise NodeCheckError(f'{context} timed out after {error.timeout} seconds. '
+                                 'The node or its SSH/command response may be unavailable; this does not prove it is offline.') from None
+        except subprocess.CalledProcessError as error:
+            stderr = error.stderr or ''
+            detail = None
+            for line in stderr.splitlines():
+                try:
+                    record = json.loads(line).get('tailmox_error')
+                    if isinstance(record, dict):
+                        detail = f"{record['check']}: {record['reason']}\n{record.get('detail', '')}"
+                except (ValueError, AttributeError, KeyError):
+                    continue
+            detail = diagnostic(detail if detail is not None else stderr, payload.get('candidate', ''))
+            reason = 'SSH connection or remote execution failed' if error.returncode == 255 else 'command failed'
+            raise NodeCheckError(f'{context}: {reason} (exit {error.returncode}).' +
+                                 (f'\n{detail}' if detail else '\nNo diagnostic output was returned.')) from None
+        except OSError as error:
+            raise NodeCheckError(f'{context}: could not launch node check: {error.strerror}') from None
 
     def inspect(self, host):
-        state = json.loads(self.agent(host, 'inspect'))
+        output = self.agent(host, 'inspect')
+        try:
+            state = json.loads(output)
+            if not isinstance(state, dict) or any(not isinstance(state.get(k), str) for k in ('config', 'localConfig', 'status', 'links')) or not isinstance(state.get('addresses'), list):
+                raise ValueError('incomplete state')
+        except ValueError:
+            raise NodeCheckError(f'{host} ({self.hosts.get(host, "local")}): node inspection returned malformed or incomplete status.') from None
         state['host'] = host
         return state
 
     def healthy(self, state, expected, links):
+        return self.health_problem(state, expected, links) is None
+
+    def health_problem(self, state, expected, links):
         tree = parse(expected)
         ids = {int(get(n, 'nodeid')) for n in nodes(tree)}
         if parse(state['config']) != tree or parse(state['localConfig']) != tree:
-            return False
+            return 'shared or local Corosync configuration does not match the planned configuration'
         if not re.search(r'^Quorate:\s+Yes\s*$', state['status'], re.M):
-            return False
+            return 'node does not report quorum'
         version = get(get(tree, 'totem'), 'config_version')
         if not re.search(r'^Config Version:\s+' + re.escape(version) + r'\s*$', state['status'], re.M):
-            return False
+            return f'active configuration version has not reached {version}'
         sections = re.split(r'LINK ID\s+(\d+)', state['links'])
         observed = dict(zip(sections[1::2], sections[2::2]))
         local_nodes = [n for n in nodes(tree) if get(n, 'name') == state.get('host')]
         if len(local_nodes) != 1:
-            return False
+            return 'node identity does not match the configured membership'
         for link in links:
             section = observed.get(str(link), '')
             address = re.search(r'addr\s*=\s*(\S+)', section)
             if not address or address[1] != get(local_nodes[0], f'ring{link}_addr'):
-                return False
+                return f'link {link} is missing or its active address is not {get(local_nodes[0], f"ring{link}_addr")}'
             peers = dict(re.findall(r'nodeid\s+(\d+):\s+(\w+)', section))
             if {int(i) for i in peers} != ids or any(v not in ('localhost', 'connected') for v in peers.values()):
-                return False
-        return True
+                names = {int(get(n, 'nodeid')): get(n, 'name') for n in nodes(tree)}
+                failures = [f'{names[i]} (node {i}): {peers.get(str(i), "missing")}' for i in sorted(ids)
+                            if peers.get(str(i)) not in ('localhost', 'connected')]
+                extra = {int(i) for i in peers} - ids
+                if extra:
+                    failures.append('unexpected node IDs: ' + ', '.join(map(str, sorted(extra))))
+                return f'link {link} peer connectivity failed: ' + '; '.join(failures)
+        return None
 
     def wait(self, expected, links):
         deadline = time.monotonic() + 90
         consecutive = 0
         while True:
-            try:
-                if all(self.healthy(self.inspect(h), expected, links) for h in self.hosts):
-                    consecutive += 1
-                    if consecutive >= 3:
-                        return
-                else:
-                    consecutive = 0
-            except (ValueError, subprocess.SubprocessError):
-                consecutive = 0
+            failures = []
+            for host in self.hosts:
+                try:
+                    problem = self.health_problem(self.inspect(host), expected, links)
+                    if problem:
+                        failures.append(f'{host} ({self.hosts[host]}): {problem}')
+                except (ValueError, NodeCheckError) as error:
+                    failures.append(f'{host}: {error}')
+            consecutive = 0 if failures else consecutive + 1
+            if consecutive >= 3:
+                return
             if time.monotonic() >= deadline:
-                raise RuntimeError('Not all nodes verified the stage. Stopped; preserve current links and inspect every node before recovery.')
+                raise RuntimeError('Stage verification timed out after 90 seconds.\n' +
+                                   '\n'.join(failures or ['Cluster health did not remain stable for three checks.']) +
+                                   '\nStopped; preserve current links and inspect the affected nodes before recovery.')
             time.sleep(2)
 
     def execute(self, cidr, keep=False, dry_only=False):
@@ -213,8 +291,9 @@ class Migration:
         addresses = {}
         for host in self.hosts:
             state = self.inspect(host)
-            if not self.healthy(state, original, [0]):
-                raise ValueError('Cluster configuration, membership or link health differs on ' + host)
+            problem = self.health_problem(state, original, [0])
+            if problem:
+                raise ValueError(f'{host} ({self.hosts[host]}): {problem}')
             matches = {a['local'] for interface in state['addresses']
                        if interface.get('ifname') != 'tailscale0'
                        for a in interface.get('addr_info', [])

@@ -161,6 +161,46 @@ class MigrationTests(unittest.TestCase):
         self.assertNotIn('sensitive-material', str(args))
         self.assertIn('sensitive-material', kwargs['input'])
 
+    def test_node_errors_name_host_check_and_ssh_reason(self):
+        self.migration.hosts = {'pve2': '100.64.0.2'}
+        error = m.subprocess.CalledProcessError(255, ['ssh'], stderr='ssh: connect to host 100.64.0.2 port 22: No route to host')
+        with patch.object(m, 'run', side_effect=error), self.assertRaises(m.NodeCheckError) as caught:
+            self.migration.agent('pve2', 'inspect')
+        self.assertIn('pve2 (100.64.0.2)', str(caught.exception))
+        self.assertIn('No route to host', str(caught.exception))
+        self.assertIn('exit 255', str(caught.exception))
+
+    def test_remote_check_diagnostics_redact_credentials(self):
+        self.migration.hosts = {'pve2': '100.64.0.2'}
+        message = json.dumps({'tailmox_error': {'check': 'corosync -t', 'reason': 'exit status 1',
+                                              'detail': 'Invalid option\nkey: private-value\nprivate-value'}})
+        error = m.subprocess.CalledProcessError(1, ['ssh'], stderr=message)
+        with patch.object(m, 'run', side_effect=error), self.assertRaises(m.NodeCheckError) as caught:
+            self.migration.agent('pve2', 'validate', candidate='key: private-value\n')
+        self.assertIn('corosync -t: exit status 1', str(caught.exception))
+        self.assertIn('Invalid option', str(caught.exception))
+        self.assertNotIn('private-value', str(caught.exception))
+
+    def test_timeout_identifies_host_without_claiming_offline(self):
+        self.migration.hosts = {'pve2': '100.64.0.2'}
+        with patch.object(m, 'run', side_effect=m.subprocess.TimeoutExpired(['ssh'], 45)), self.assertRaises(m.NodeCheckError) as caught:
+            self.migration.agent('pve2', 'ping', source='10.0.0.2')
+        self.assertIn('pve2 (100.64.0.2)', str(caught.exception))
+        self.assertIn('45 seconds', str(caught.exception))
+        self.assertIn('10.0.0.2', str(caught.exception))
+
+    def test_link_failure_identifies_missing_peer(self):
+        state = self.state()
+        state['links'] = state['links'].replace('nodeid 2: connected', 'nodeid 2: disconnected')
+        self.assertIn('pve2 (node 2): disconnected', self.migration.health_problem(state, CONFIG, [0]))
+
+    def test_malformed_inspection_names_host_without_dumping_output(self):
+        self.migration.hosts = {'pve2': '100.64.0.2'}
+        with patch.object(self.migration, 'agent', return_value='private-value'), self.assertRaises(m.NodeCheckError) as caught:
+            self.migration.inspect('pve2')
+        self.assertIn('pve2', str(caught.exception))
+        self.assertNotIn('private-value', str(caught.exception))
+
     def test_malformed_and_existing_multilink_rejected(self):
         for original in (CONFIG.replace('config_version: 7', 'config_version: bad'), CONFIG.replace('linknumber: 0', 'linknumber: 1'), CONFIG.replace('transport: knet', 'transport: udp')):
             with self.assertRaises(ValueError):

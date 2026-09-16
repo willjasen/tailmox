@@ -173,6 +173,10 @@ the results and only exposes confirmation after the migration process completes
 validation. Type `DISABLE` to apply that same plan, or cancel it. Confirmation
 expires after ten minutes and is restricted to the Tailscale user who started
 the dry run. The process rechecks the cluster before applying the plan.
+Failures identify the affected host and address, the failed check, and its exit
+status or timeout. SSH and command diagnostics are included with credential
+details redacted; link checks name disconnected or missing peers. A connection
+failure is reported as such rather than assuming the host is offline.
 
 The port 8669 terminal opens the same interactive workflow, including input collection, mandatory dry
 run and confirmation. The terminal accepts input only for approved workflows and
