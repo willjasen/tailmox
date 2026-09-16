@@ -1623,10 +1623,10 @@ function setup_monitoring_interface() {
         return 1
     fi
 
-    tailscale serve --bg --https=8443 --set-path=/monitor localhost:8088 &>/dev/null
+    tailscale serve --bg --https=8088 --set-path=/monitor localhost:8088 &>/dev/null
     log_echo "${GREEN}Tailmox monitoring is available at /monitor on this node's Tailscale URL.${RESET}"
 
-    tailscale serve --service=svc:tailmox --https=8443 --set-path=/monitor localhost:8088 &>/dev/null
+    tailscale serve --service=svc:tailmox --https=8088 --set-path=/monitor localhost:8088 &>/dev/null
     log_echo "${GREEN}Tailmox monitoring is available at /monitor on the tailmox Tailscale service URL.${RESET}"
 }
 
