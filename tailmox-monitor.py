@@ -12,6 +12,7 @@ import os
 import socket
 import subprocess
 import time
+import re
 from urllib.parse import urlparse
 
 
@@ -75,20 +76,69 @@ def parse_quorum(output):
 
 def parse_corosync_members(output):
     members = []
-    current = None
+    by_nodeid = {}
     for line in output.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("Nodeid:"):
-            if current:
-                members.append(current)
-            current = {"nodeid": stripped.split(":", 1)[1].strip()}
-        elif current and stripped.startswith("Name:"):
-            current["name"] = stripped.split(":", 1)[1].strip()
-        elif current and stripped.startswith("Status:"):
-            current["status"] = stripped.split(":", 1)[1].strip()
-    if current:
-        members.append(current)
+        match = re.match(r"runtime\.members\.(\d+)\.([a-z_]+) .* = (.*)", line.strip())
+        if not match:
+            continue
+        nodeid, key, value = match.groups()
+        member = by_nodeid.setdefault(nodeid, {"nodeid": nodeid})
+        value = value.strip()
+        if key == "ip":
+            ip_match = re.search(r"ip\(([^)]+)\)", value)
+            member["ip"] = ip_match.group(1) if ip_match else value
+        elif key in ("status", "join_count", "config_version"):
+            member[key] = value
+    members = list(by_nodeid.values())
     return members
+
+
+def measure_link_quality(members, local_ips):
+    results = []
+    for member in members:
+        ip = member.get("ip")
+        if not ip or ip in local_ips:
+            continue
+
+        ping = run_command(["ping", "-c", "8", "-i", "0.2", "-W", "1", ip], timeout=5)
+        output = "\n".join(item for item in [ping["stdout"], ping["stderr"]] if item)
+        loss = None
+        min_ms = avg_ms = max_ms = jitter_ms = None
+
+        loss_match = re.search(r"([0-9.]+)% packet loss", output)
+        if loss_match:
+            loss = float(loss_match.group(1))
+
+        rtt_match = re.search(r"(?:rtt|round-trip) min/avg/max/(?:mdev|stddev) = ([0-9.]+)/([0-9.]+)/([0-9.]+)/([0-9.]+)", output)
+        if rtt_match:
+            min_ms, avg_ms, max_ms, jitter_ms = [float(value) for value in rtt_match.groups()]
+
+        if loss is None:
+            quality = "unknown"
+        elif loss > 0:
+            quality = "loss"
+        elif jitter_ms is not None and jitter_ms > 20:
+            quality = "jittery"
+        elif avg_ms is not None and avg_ms > 150:
+            quality = "slow"
+        else:
+            quality = "good"
+
+        results.append(
+            {
+                "nodeid": member.get("nodeid"),
+                "ip": ip,
+                "status": member.get("status"),
+                "quality": quality,
+                "packetLossPercent": loss,
+                "minMs": min_ms,
+                "avgMs": avg_ms,
+                "maxMs": max_ms,
+                "jitterMs": jitter_ms,
+                "raw": output,
+            }
+        )
+    return results
 
 
 def collect_status():
@@ -104,6 +154,7 @@ def collect_status():
     pvecm_fields = parse_pvecm_status(pvecm["stdout"]) if pvecm["stdout"] else {}
     quorum_nodes = parse_quorum(quorum["stdout"]) if quorum["stdout"] else []
     corosync_members = parse_corosync_members(members["stdout"]) if members["stdout"] else []
+    local_ips = set(run_command(["tailscale", "ip", "-4"])["stdout"].splitlines())
 
     tailscale_data = {}
     if tailscale["stdout"]:
@@ -147,6 +198,7 @@ def collect_status():
         "corosync": {
             "members": corosync_members,
             "quorumNodes": quorum_nodes,
+            "linkQuality": measure_link_quality(corosync_members, local_ips),
             "rawStatus": pvecm["stdout"],
             "rawQuorum": quorum["stdout"],
             "recentLogs": journal["stdout"].splitlines()[-25:] if journal["stdout"] else [],
@@ -195,6 +247,10 @@ INDEX_HTML = """<!doctype html>
     .warn { border-color: rgba(245,158,11,0.5); color: #fde68a; background: rgba(120,53,15,0.34); }
     .ok .dot { background: var(--good); box-shadow: 0 0 18px var(--good); }
     .warn .dot { background: var(--warn); box-shadow: 0 0 18px var(--warn); }
+    .tag { display: inline-block; border-radius: 999px; padding: 3px 8px; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+    .tag.good { color: #bbf7d0; background: rgba(34,197,94,0.18); border: 1px solid rgba(34,197,94,0.34); }
+    .tag.slow, .tag.jittery { color: #fde68a; background: rgba(245,158,11,0.18); border: 1px solid rgba(245,158,11,0.34); }
+    .tag.loss, .tag.unknown { color: #fecdd3; background: rgba(244,63,94,0.18); border: 1px solid rgba(244,63,94,0.34); }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
     th { color: #bae6fd; font-size: 13px; font-weight: 700; }
@@ -221,6 +277,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel"><h2>Tailscale</h2><div class="metric" id="tailscaleState">...</div><div class="muted" id="tailscaleName"></div></div>
       <div class="panel wide"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>ID</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
+      <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
       <div class="panel full"><h2>Recent Corosync Logs</h2><pre id="logs">Loading...</pre></div>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
     </section>
@@ -228,6 +285,8 @@ INDEX_HTML = """<!doctype html>
   <script>
     const text = (id, value) => document.getElementById(id).textContent = value || "unknown";
     const yesNo = value => value ? "active" : "inactive";
+    const ms = value => Number.isFinite(value) ? `${value.toFixed(1)} ms` : "unknown";
+    const percent = value => Number.isFinite(value) ? `${value.toFixed(1)}%` : "unknown";
     async function refresh() {
       const response = await fetch("/api/status", { cache: "no-store" });
       const data = await response.json();
@@ -243,8 +302,9 @@ INDEX_HTML = """<!doctype html>
       text("transport", `transport: ${data.cluster.transport || "unknown"}`);
       text("tailscaleState", data.tailscale.backendState || "unknown");
       text("tailscaleName", data.tailscale.self.DNSName || data.tailscale.self.HostName || "");
-      document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.name || ""}</td><td>${member.nodeid || ""}</td><td>${member.status || ""}</td></tr>`).join("") || "<tr><td colspan='3'>No member data available</td></tr>";
+      document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.ip || member.name || ""}</td><td>${member.nodeid || ""}</td><td>${member.status || ""}</td></tr>`).join("") || "<tr><td colspan='3'>No member data available</td></tr>";
       document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${node.name || ""}</td><td>${node.nodeid || ""}</td><td>${node.votes || ""}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
+      document.getElementById("linkQuality").innerHTML = (data.corosync.linkQuality || []).map(link => `<tr><td>${link.ip || ""}</td><td>${link.status || ""}</td><td>${percent(link.packetLossPercent)}</td><td>${ms(link.avgMs)}</td><td>${ms(link.maxMs)}</td><td>${ms(link.jitterMs)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td></tr>`).join("") || "<tr><td colspan='7'>No remote corosync links measured</td></tr>";
       text("logs", (data.corosync.recentLogs || []).join("\\n") || "No recent corosync logs available.");
       text("raw", data.corosync.rawStatus || "No pvecm status output available.");
     }
