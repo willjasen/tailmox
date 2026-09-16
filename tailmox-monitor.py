@@ -24,6 +24,15 @@ import urllib.request
 import secrets
 from urllib.parse import urlparse
 
+# Keep the sibling configuration module importable when this file is loaded
+# through runpy (as the local tests do), where Python does not automatically
+# add the script's directory to sys.path.
+import sys
+
+MONITOR_DIR = pathlib.Path(__file__).resolve().parent
+if str(MONITOR_DIR) not in sys.path:
+    sys.path.insert(0, str(MONITOR_DIR))
+
 import tailmox_config
 
 
