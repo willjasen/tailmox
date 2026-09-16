@@ -1256,6 +1256,95 @@ from(bucket: "{escape_string(config["bucket"])}")
     return [sample for sample in history if sample["memberCount"] is not None]
 
 
+def collect_cmap_knet_history():
+    return {
+        "generatedAt": int(time.time()),
+        "series": influx_cmap_knet_history(),
+    }
+
+
+def influx_cmap_knet_history():
+    config = influx_config()
+    rows = influx_query(f'''
+from(bucket: "{escape_string(config["bucket"])}")
+  |> range(start: -6h)
+  |> filter(fn: (r) => r._measurement == "tailmox_corosync_cmap_stat")
+  |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
+  |> filter(fn: (r) => r.family == "knet")
+  |> filter(fn: (r) => exists r.nodeid and exists r.link and exists r.metric)
+  |> filter(fn: (r) => r.metric == "latency_ave" or r.metric == "latency_max" or r.metric == "tx_data_packets" or r.metric == "rx_data_packets" or r.metric =~ /.*error.*/)
+  |> sort(columns: ["_time"])
+  |> limit(n: 6000)
+''', timeout=12)
+    by_link = {}
+    for row in rows:
+        timestamp = influx_time(row.get("_time"))
+        value = influx_float(row, "_value")
+        nodeid = row.get("nodeid")
+        link = row.get("link")
+        metric = row.get("metric")
+        if timestamp is None or value is None or not nodeid or not link or not metric:
+            continue
+        key = (nodeid, link)
+        series = by_link.setdefault(
+            key,
+            {
+                "name": f"node {nodeid} link {link}",
+                "nodeid": nodeid,
+                "link": link,
+                "samples": {},
+            },
+        )
+        sample = series["samples"].setdefault(timestamp, {"timestamp": timestamp})
+        if metric == "latency_ave":
+            sample["latencyAvg"] = value
+        elif metric == "latency_max":
+            sample["latencyMax"] = value
+        elif metric == "tx_data_packets":
+            sample["txPackets"] = value
+        elif metric == "rx_data_packets":
+            sample["rxPackets"] = value
+        elif "error" in metric:
+            sample["errors"] = sample.get("errors", 0) + value
+
+    series_values = []
+    for item in by_link.values():
+        samples = sorted(item["samples"].values(), key=lambda sample: sample["timestamp"])[-720:]
+        previous_latency = None
+        previous_tx = None
+        previous_rx = None
+        previous_errors = None
+        for sample in samples:
+            latency = sample.get("latencyAvg")
+            if latency is not None and previous_latency is not None:
+                sample["jitter"] = abs(latency - previous_latency)
+            elif latency is not None:
+                sample["jitter"] = 0
+            if latency is not None:
+                previous_latency = latency
+
+            tx_packets = sample.get("txPackets")
+            if tx_packets is not None and previous_tx is not None:
+                sample["txPacketDelta"] = max(0, tx_packets - previous_tx)
+            if tx_packets is not None:
+                previous_tx = tx_packets
+
+            rx_packets = sample.get("rxPackets")
+            if rx_packets is not None and previous_rx is not None:
+                sample["rxPacketDelta"] = max(0, rx_packets - previous_rx)
+            if rx_packets is not None:
+                previous_rx = rx_packets
+
+            errors = sample.get("errors")
+            if errors is not None and previous_errors is not None:
+                sample["errorDelta"] = max(0, errors - previous_errors)
+            if errors is not None:
+                previous_errors = errors
+        item["samples"] = samples
+        series_values.append(item)
+    return sorted(series_values, key=lambda item: (int_or_none(item["nodeid"]) or 0, int_or_none(item["link"]) or 0))
+
+
 INDEX_HTML = """<!doctype html>
 <html lang="en">
 <head>
@@ -1383,6 +1472,8 @@ INDEX_HTML = """<!doctype html>
       <div class="panel full"><h2>Global MTU Over Time</h2><div class="muted" id="mtuDetail">Loading MTU history...</div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over time"></svg></div>
       <div class="panel full"><h2>Cluster Members Over Time</h2><div class="muted" id="memberCountDetail">Loading member history...</div><svg class="chart" id="memberCountChart" viewBox="0 0 900 220" role="img" aria-label="Cluster members over time"></svg><div class="legend"><span class="legend-item"><span class="swatch" style="background:#22c55e"></span>All online</span><span class="legend-item"><span class="swatch" style="background:#f59e0b"></span>Quorate with offline hosts</span><span class="legend-item"><span class="swatch" style="background:#ef4444"></span>No quorum</span></div></div>
       <div class="panel full"><h2>Link Quality Over Time</h2><div class="muted" id="linkQualityGraphDetail">Loading link-quality history...</div><svg class="chart" id="linkQualityChart" viewBox="0 0 900 220" role="img" aria-label="Link quality over time"></svg><div class="legend" id="linkQualityLegend"></div></div>
+      <div class="panel full"><h2>Corosync Knet Latency and Jitter</h2><div class="muted" id="cmapLatencyDetail">Loading cmap Knet history...</div><svg class="chart" id="cmapLatencyChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet latency and jitter over time"></svg><div class="legend" id="cmapLatencyLegend"></div></div>
+      <div class="panel full"><h2>Corosync Knet Packets and Errors</h2><div class="muted" id="cmapPacketDetail">Loading cmap Knet packet history...</div><svg class="chart" id="cmapPacketChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet packet and error counters over time"></svg><div class="legend" id="cmapPacketLegend"></div></div>
       <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Hostname</th><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
       <div class="panel full"><h2>Recent Corosync Logs</h2><pre id="logs">Loading...</pre></div>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
@@ -1673,6 +1764,108 @@ INDEX_HTML = """<!doctype html>
       ].join("");
       attachChartTooltips(chart);
     };
+    const renderCmapSeriesChart = (chart, legend, series, valueKey, options) => {
+      const activeSeries = series.map((item, index) => ({
+        ...item,
+        color: seriesColors[index % seriesColors.length],
+        samples: (item.samples || []).filter(sample => Number.isFinite(sample[valueKey])),
+      })).filter(item => item.samples.length);
+      legend.innerHTML = activeSeries.map(item => `<span class="legend-item"><span class="swatch" style="background:${item.color}"></span>${escapeHtml(item.name)}</span>`).join("");
+      if (!activeSeries.length) {
+        chart.innerHTML = svg("text", { x: 32, y: 112 }, options.emptyText);
+        hideChartTooltip();
+        return { seriesCount: 0, sampleCount: 0 };
+      }
+      const allSamples = activeSeries.flatMap(item => item.samples);
+      const width = 900, height = 220, left = 58, right = 20, top = 20, bottom = 38;
+      const minTime = Math.min(...allSamples.map(sample => sample.timestamp));
+      const maxTime = Math.max(...allSamples.map(sample => sample.timestamp));
+      const values = allSamples.map(sample => sample[valueKey]);
+      const minValue = Math.min(...values);
+      const maxValue = Math.max(...values);
+      const flat = minValue === maxValue;
+      const padding = flat ? Math.max(1, maxValue * 0.25) : Math.max(1, (maxValue - minValue) * 0.12);
+      const chartMin = Math.max(0, minValue - padding);
+      const chartMax = maxValue + padding;
+      const span = Math.max(1, chartMax - chartMin);
+      const x = sample => left + ((sample.timestamp - minTime) / Math.max(1, maxTime - minTime)) * (width - left - right);
+      const y = sample => top + (1 - ((sample[valueKey] - chartMin) / span)) * (height - top - bottom);
+      const midValue = chartMin + span / 2;
+      const paths = activeSeries.map(item => {
+        const points = item.samples.map(sample => `${x(sample).toFixed(1)},${y(sample).toFixed(1)}`).join(" ");
+        const dots = item.samples.map(sample => svg("circle", {
+          class: "chart-point",
+          cx: x(sample).toFixed(1),
+          cy: y(sample).toFixed(1),
+          r: 4,
+          fill: item.color,
+          "data-tooltip": tooltipText([
+            item.name,
+            dateTimeLabel(sample.timestamp),
+            `${options.label}: ${options.format(sample[valueKey])}`,
+            Number.isFinite(sample.latencyAvg) ? `Latency avg: ${number(sample.latencyAvg)}` : null,
+            Number.isFinite(sample.latencyMax) ? `Latency max: ${number(sample.latencyMax)}` : null,
+            Number.isFinite(sample.jitter) ? `Jitter: ${number(sample.jitter)}` : null,
+            Number.isFinite(sample.txPacketDelta) ? `TX packets: ${number(sample.txPacketDelta)}` : null,
+            Number.isFinite(sample.rxPacketDelta) ? `RX packets: ${number(sample.rxPacketDelta)}` : null,
+            Number.isFinite(sample.errorDelta) ? `Errors: ${number(sample.errorDelta)}` : null,
+          ]),
+        })).join("");
+        return `<polyline fill="none" stroke="${item.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${points}"></polyline>${dots}`;
+      }).join("");
+      chart.innerHTML = [
+        svg("line", { class: "grid-line", x1: left, y1: top, x2: left, y2: height - bottom }),
+        svg("line", { class: "grid-line", x1: left, y1: height - bottom, x2: width - right, y2: height - bottom }),
+        svg("line", { class: "grid-line", x1: left, y1: top, x2: width - right, y2: top }),
+        svg("text", { x: 10, y: top + 4 }, options.format(chartMax)),
+        svg("text", { x: 10, y: top + (height - top - bottom) / 2 + 4 }, options.format(midValue)),
+        svg("text", { x: 10, y: height - bottom + 4 }, options.format(chartMin)),
+        svg("text", { x: left, y: height - 12 }, timeLabel(minTime)),
+        svg("text", { x: width / 2 - 34, y: height - 12 }, timeLabel(minTime + (maxTime - minTime) / 2)),
+        svg("text", { x: width - right - 72, y: height - 12 }, timeLabel(maxTime)),
+        paths,
+      ].join("");
+      attachChartTooltips(chart);
+      return { seriesCount: activeSeries.length, sampleCount: allSamples.length };
+    };
+    const renderCmapKnetHistory = data => {
+      const series = data.series || [];
+      const latency = renderCmapSeriesChart(
+        document.getElementById("cmapLatencyChart"),
+        document.getElementById("cmapLatencyLegend"),
+        series,
+        "latencyAvg",
+        { label: "Average latency", format: number, emptyText: "No cmap Knet latency history collected yet." }
+      );
+      const jitterSamples = series.flatMap(item => (item.samples || []).filter(sample => Number.isFinite(sample.jitter)));
+      const maxJitter = jitterSamples.length ? Math.max(...jitterSamples.map(sample => sample.jitter)) : null;
+      detailChips("cmapLatencyDetail", [
+        { value: number(latency.seriesCount), label: "links" },
+        { value: number(latency.sampleCount), label: "latency samples" },
+        { value: Number.isFinite(maxJitter) ? number(maxJitter) : "unknown", label: "max jitter", status: Number.isFinite(maxJitter) && maxJitter > 0 ? "warn" : "good" },
+      ]);
+
+      const packetSeries = series.map(item => ({
+        ...item,
+        samples: (item.samples || []).map(sample => ({
+          ...sample,
+          packets: (sample.txPacketDelta || 0) + (sample.rxPacketDelta || 0) + (sample.errorDelta || 0),
+        })),
+      }));
+      const packets = renderCmapSeriesChart(
+        document.getElementById("cmapPacketChart"),
+        document.getElementById("cmapPacketLegend"),
+        packetSeries,
+        "packets",
+        { label: "Packet/error delta", format: number, emptyText: "No cmap Knet packet history collected yet." }
+      );
+      const errorSamples = series.flatMap(item => (item.samples || []).filter(sample => Number.isFinite(sample.errorDelta) && sample.errorDelta > 0));
+      detailChips("cmapPacketDetail", [
+        { value: number(packets.seriesCount), label: "links" },
+        { value: number(packets.sampleCount), label: "packet samples" },
+        { value: number(errorSamples.reduce((sum, sample) => sum + sample.errorDelta, 0)), label: "new errors", status: errorSamples.length ? "bad" : "good" },
+      ]);
+    };
     const actionLabel = value => ({
       "test": "tailmox test", "backup-create": "tailmox backups create",
       "stage": "tailmox stage", "analytics-install": "tailmox analytics install",
@@ -1770,11 +1963,17 @@ INDEX_HTML = """<!doctype html>
       const data = await response.json();
       renderMemberCount(data);
     }
+    async function refreshCmapKnetHistory() {
+      const response = await fetch("/api/cmap-knet-history", { cache: "no-store" });
+      const data = await response.json();
+      renderCmapKnetHistory(data);
+    }
     async function refresh() {
       await refreshStatus();
       await Promise.allSettled([
         refreshMtuHistory(),
         refreshMemberCountHistory(),
+        refreshCmapKnetHistory(),
         refreshLinkQuality(),
       ]);
     }
@@ -1784,6 +1983,7 @@ INDEX_HTML = """<!doctype html>
     setInterval(refreshAction, 2000);
     setInterval(refreshMtuHistory, 15000);
     setInterval(refreshMemberCountHistory, 15000);
+    setInterval(refreshCmapKnetHistory, 15000);
     setInterval(refreshLinkQuality, 30000);
     setInterval(refreshLinkQualityHistory, 30000);
   </script>
@@ -2048,6 +2248,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, collect_mtu_history())
         elif path == "/api/member-count-history":
             self.send_json(200, collect_member_count_history())
+        elif path == "/api/cmap-knet-history":
+            self.send_json(200, collect_cmap_knet_history())
         elif path == "/api/influxdb":
             if not self.require_tailscale_user():
                 return
