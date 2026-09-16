@@ -146,6 +146,17 @@ Tailmox installs a lightweight monitoring interface as `tailmox-monitor.service`
 
 The monitor includes corosync-specific details: whether the `corosync` service is active and enabled, whether the cluster is quorate, expected and current votes, corosync transport, member/ring information from `corosync-cmapctl`, quorum node details from `corosync-quorumtool`, and recent `corosync` journal entries.
 
+To export monitor data to InfluxDB 2.x, create `/etc/tailmox-monitor.env` on the node and restart `tailmox-monitor.service`:
+
+```
+TAILMOX_INFLUXDB_URL=https://influxdb.example.com
+TAILMOX_INFLUXDB_TOKEN=your-token
+TAILMOX_INFLUXDB_ORG=your-org
+TAILMOX_INFLUXDB_BUCKET=your-bucket
+```
+
+When configured, Tailmox writes `tailmox_cluster_status` and `tailmox_corosync_link_quality` measurements using InfluxDB line protocol. If the env file is absent, the monitor runs without exporting data.
+
 ---
 
 ### 🧪 Testing 🧪

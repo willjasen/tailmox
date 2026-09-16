@@ -13,6 +13,9 @@ import socket
 import subprocess
 import time
 import re
+import urllib.error
+import urllib.parse
+import urllib.request
 from urllib.parse import urlparse
 
 
@@ -20,6 +23,7 @@ HOST = os.environ.get("TAILMOX_MONITOR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TAILMOX_MONITOR_PORT", "8088"))
 LINK_QUALITY_TTL_SECONDS = 30
 LINK_QUALITY_CACHE = {"generatedAt": 0, "links": []}
+INFLUX_STATE = {"lastWriteAt": None, "lastError": None}
 
 
 def run_command(command, timeout=5):
@@ -41,6 +45,75 @@ def run_command(command, timeout=5):
         return {"ok": False, "returncode": 127, "stdout": "", "stderr": f"{command[0]} not found"}
     except subprocess.TimeoutExpired:
         return {"ok": False, "returncode": 124, "stdout": "", "stderr": "command timed out"}
+
+
+def influx_config():
+    return {
+        "url": os.environ.get("TAILMOX_INFLUXDB_URL", "").rstrip("/"),
+        "token": os.environ.get("TAILMOX_INFLUXDB_TOKEN", ""),
+        "org": os.environ.get("TAILMOX_INFLUXDB_ORG", ""),
+        "bucket": os.environ.get("TAILMOX_INFLUXDB_BUCKET", ""),
+    }
+
+
+def influx_enabled():
+    config = influx_config()
+    return all(config.values())
+
+
+def escape_tag(value):
+    return str(value).replace("\\", "\\\\").replace(" ", "\\ ").replace(",", "\\,").replace("=", "\\=")
+
+
+def escape_string(value):
+    return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+
+def field_value(value):
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return f"{value}i"
+    if isinstance(value, float):
+        return str(value)
+    return f'"{escape_string(value)}"'
+
+
+def line_protocol(measurement, tags, fields, timestamp):
+    tag_text = "".join(f",{escape_tag(key)}={escape_tag(value)}" for key, value in tags.items() if value not in (None, ""))
+    field_parts = [f"{escape_tag(key)}={encoded}" for key, value in fields.items() if (encoded := field_value(value)) is not None]
+    if not field_parts:
+        return None
+    return f"{escape_tag(measurement)}{tag_text} {','.join(field_parts)} {timestamp}000000000"
+
+
+def write_influx(lines):
+    if not influx_enabled() or not lines:
+        return
+
+    config = influx_config()
+    query = urllib.parse.urlencode({"org": config["org"], "bucket": config["bucket"], "precision": "ns"})
+    request = urllib.request.Request(
+        f"{config['url']}/api/v2/write?{query}",
+        data=("\n".join(lines) + "\n").encode("utf-8"),
+        headers={
+            "Authorization": f"Token {config['token']}",
+            "Content-Type": "text/plain; charset=utf-8",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            if response.status >= 300:
+                INFLUX_STATE["lastError"] = f"HTTP {response.status}"
+                return
+        INFLUX_STATE["lastWriteAt"] = int(time.time())
+        INFLUX_STATE["lastError"] = None
+    except (urllib.error.URLError, TimeoutError) as error:
+        INFLUX_STATE["lastError"] = str(error)
 
 
 def parse_pvecm_status(output):
@@ -157,7 +230,61 @@ def collect_link_quality():
     local_ips = set(run_command(["tailscale", "ip", "-4"])["stdout"].splitlines())
     LINK_QUALITY_CACHE["generatedAt"] = now
     LINK_QUALITY_CACHE["links"] = measure_link_quality(corosync_members, local_ips)
+    export_link_quality(LINK_QUALITY_CACHE["links"], now)
     return LINK_QUALITY_CACHE
+
+
+def export_link_quality(links, timestamp):
+    lines = []
+    hostname = socket.gethostname()
+    for link in links:
+        lines.append(
+            line_protocol(
+                "tailmox_corosync_link_quality",
+                {"host": hostname, "peer_ip": link.get("ip"), "nodeid": link.get("nodeid")},
+                {
+                    "packet_loss_percent": link.get("packetLossPercent"),
+                    "min_ms": link.get("minMs"),
+                    "avg_ms": link.get("avgMs"),
+                    "max_ms": link.get("maxMs"),
+                    "jitter_ms": link.get("jitterMs"),
+                    "quality": link.get("quality"),
+                    "joined": link.get("status") == "joined",
+                },
+                timestamp,
+            )
+        )
+    write_influx([line for line in lines if line])
+
+
+def export_status(status):
+    timestamp = status["generatedAt"]
+    cluster = status["cluster"]
+    services = status["services"]
+
+    def integer(value):
+        try:
+            return int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+
+    line = line_protocol(
+        "tailmox_cluster_status",
+        {"host": status["hostname"], "cluster": cluster.get("name")},
+        {
+            "healthy": status["overall"] == "healthy",
+            "corosync_active": services["corosync"]["active"],
+            "pve_cluster_active": services["pveCluster"]["active"],
+            "quorate": cluster.get("quorate") == "Yes",
+            "expected_votes": integer(cluster.get("expectedVotes")),
+            "total_votes": integer(cluster.get("totalVotes")),
+            "highest_expected": integer(cluster.get("highestExpected")),
+            "member_count": len(status["corosync"]["members"]),
+            "quorum_node_count": len(status["corosync"]["quorumNodes"]),
+        },
+        timestamp,
+    )
+    write_influx([line] if line else [])
 
 
 def collect_status():
@@ -187,7 +314,7 @@ def collect_status():
     pve_cluster_active = pve_cluster["stdout"] == "active"
     healthy = corosync_active and pve_cluster_active and quorate == "Yes"
 
-    return {
+    status = {
         "generatedAt": int(time.time()),
         "hostname": socket.gethostname(),
         "overall": "healthy" if healthy else "attention",
@@ -228,7 +355,14 @@ def collect_status():
             "self": tailscale_data.get("Self", {}),
             "backendState": tailscale_data.get("BackendState"),
         },
+        "influxdb": {
+            "enabled": influx_enabled(),
+            "lastWriteAt": INFLUX_STATE["lastWriteAt"],
+            "lastError": INFLUX_STATE["lastError"],
+        },
     }
+    export_status(status)
+    return status
 
 
 INDEX_HTML = """<!doctype html>
@@ -245,7 +379,7 @@ INDEX_HTML = """<!doctype html>
     h1 { font-size: 30px; margin: 0 0 6px; color: #f8fafc; }
     h2 { font-size: 15px; margin: 0 0 14px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
     .muted { color: var(--muted); }
-    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; }
     .wide { grid-column: span 2; }
     .full { grid-column: 1 / -1; }
     .panel { position: relative; overflow: hidden; border: 1px solid rgba(148,163,184,0.28); border-radius: 8px; padding: 16px; background: linear-gradient(180deg, rgba(17,24,39,0.94), rgba(15,23,42,0.94)); box-shadow: 0 14px 34px rgba(0,0,0,0.24); }
@@ -255,7 +389,8 @@ INDEX_HTML = """<!doctype html>
     .panel:nth-child(3)::before { background: var(--violet); }
     .panel:nth-child(4)::before { background: var(--accent); }
     .panel:nth-child(5)::before { background: var(--good); }
-    .panel:nth-child(6)::before { background: var(--rose); }
+    .panel:nth-child(6)::before { background: var(--teal); }
+    .panel:nth-child(7)::before { background: var(--rose); }
     .metric { font-size: 28px; font-weight: 800; color: #f8fafc; }
     .pill { display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(148,163,184,0.32); border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 700; background: rgba(15,23,42,0.72); }
     .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 18px var(--bad); }
@@ -294,6 +429,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel"><h2>Quorum</h2><div class="metric" id="quorumState">...</div><div class="muted" id="votes"></div></div>
       <div class="panel"><h2>Cluster</h2><div class="metric" id="clusterName">...</div><div class="muted" id="transport"></div></div>
       <div class="panel"><h2>Tailscale</h2><div class="metric" id="tailscaleState">...</div><div class="muted" id="tailscaleName"></div></div>
+      <div class="panel"><h2>InfluxDB</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div></div>
       <div class="panel wide"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>ID</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
       <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
@@ -324,6 +460,8 @@ INDEX_HTML = """<!doctype html>
       text("transport", `transport: ${data.cluster.transport || "unknown"}`);
       text("tailscaleState", data.tailscale.backendState || "unknown");
       text("tailscaleName", data.tailscale.self.DNSName || data.tailscale.self.HostName || "");
+      text("influxState", data.influxdb.enabled ? "enabled" : "off");
+      text("influxDetail", data.influxdb.lastError ? `error: ${data.influxdb.lastError}` : (data.influxdb.lastWriteAt ? `last write: ${new Date(data.influxdb.lastWriteAt * 1000).toLocaleTimeString()}` : "not configured"));
       document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.ip || member.name || ""}</td><td>${member.nodeid || ""}</td><td>${member.status || ""}</td></tr>`).join("") || "<tr><td colspan='3'>No member data available</td></tr>";
       document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${node.name || ""}</td><td>${node.nodeid || ""}</td><td>${node.votes || ""}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
       text("logs", (data.corosync.recentLogs || []).join("\\n") || "No recent corosync logs available.");
