@@ -756,6 +756,13 @@ INDEX_HTML = """<!doctype html>
     .legend-item { display: inline-flex; align-items: center; gap: 7px; }
     .swatch { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
     pre { white-space: pre-wrap; overflow: auto; margin: 0; color: #cbd5e1; font-size: 13px; line-height: 1.45; background: rgba(2,6,23,0.42); border-radius: 6px; padding: 12px; }
+    .log-line { display: block; padding: 1px 0; }
+    .log-error { color: #fecdd3; }
+    .log-warn { color: #fde68a; }
+    .log-good { color: #bbf7d0; }
+    .log-knet { color: #bae6fd; }
+    .log-quorum { color: #ddd6fe; }
+    .log-totem { color: #99f6e4; }
     a { color: var(--accent); }
     @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
   </style>
@@ -797,6 +804,20 @@ INDEX_HTML = """<!doctype html>
     const timeLabel = value => new Date(value * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
     const seriesColors = ["#38bdf8", "#2dd4bf", "#a78bfa", "#fb7185", "#f59e0b", "#22c55e", "#e879f9", "#60a5fa"];
     const svg = (name, attrs = {}, content = "") => `<${name} ${Object.entries(attrs).map(([key, value]) => `${key}="${value}"`).join(" ")}>${content}</${name}>`;
+    const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    const logClass = line => {
+      const lower = line.toLowerCase();
+      if (lower.includes("failed") || lower.includes("error") || lower.includes("has no active links")) return "log-error";
+      if (lower.includes("timed out") || lower.includes("timeout") || lower.includes("down") || lower.includes("retransmit")) return "log-warn";
+      if (lower.includes("joined") || lower.includes("is up") || lower.includes("ready to provide service")) return "log-good";
+      if (line.includes("[KNET")) return "log-knet";
+      if (line.includes("[QUORUM")) return "log-quorum";
+      if (line.includes("[TOTEM")) return "log-totem";
+      return "";
+    };
+    const renderLogs = lines => {
+      document.getElementById("logs").innerHTML = (lines || []).map(line => `<span class="log-line ${logClass(line)}">${escapeHtml(line)}</span>`).join("") || "No recent corosync logs available.";
+    };
     const renderLineChart = (chart, history, valueKey, emptyText, formatLabel = number) => {
       if (!history.length) {
         chart.innerHTML = svg("text", { x: 32, y: 112 }, emptyText);
@@ -924,7 +945,7 @@ INDEX_HTML = """<!doctype html>
       text("influxDetail", data.influxdb.lastError ? `error: ${data.influxdb.lastError}` : (data.influxdb.lastWriteAt ? `last write: ${new Date(data.influxdb.lastWriteAt * 1000).toLocaleTimeString()}` : "not configured"));
       document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.name || ""}${member.local ? " (local)" : ""}</td><td>${member.ip || ""}</td><td>${member.nodeid || ""}</td><td>${number(member.votes)}</td><td><span class="tag ${member.active ? "joined" : "offline"}">${member.active ? "active" : "offline"}</span></td></tr>`).join("") || "<tr><td colspan='5'>No member data available</td></tr>";
       document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${node.name || ""}</td><td>${node.nodeid || ""}</td><td>${node.votes || ""}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
-      text("logs", (data.corosync.recentLogs || []).join("\\n") || "No recent corosync logs available.");
+      renderLogs(data.corosync.recentLogs);
       text("raw", data.corosync.rawStatus || "No pvecm status output available.");
     }
     async function refreshLinkQuality() {
