@@ -443,6 +443,8 @@ def collect_link_quality():
         return LINK_QUALITY_CACHE
 
     corosync_members = collect_corosync_members()
+    configured_nodes = collect_configured_nodes()
+    member_health = corosync_member_health(configured_nodes, corosync_members, [])
     local_ips = set(run_command(["tailscale", "ip", "-4"])["stdout"].splitlines())
     tailscale = run_command(["tailscale", "status", "--json"])
     peer_names = {}
@@ -456,8 +458,10 @@ def collect_link_quality():
             peer_names = {}
     LINK_QUALITY_CACHE["generatedAt"] = now
     LINK_QUALITY_CACHE["links"] = measure_link_quality(corosync_members, local_ips, now)
+    measured_nodeids = {link.get("nodeid") for link in LINK_QUALITY_CACHE["links"]}
     for link in LINK_QUALITY_CACHE["links"]:
-        link["hostname"] = peer_names.get(link.get("ip"), "")
+        health = next((member for member in member_health if member.get("nodeid") == link.get("nodeid")), {})
+        link["hostname"] = health.get("name") or peer_names.get(link.get("ip"), "")
         key = link.get("hostname") or link.get("ip")
         if key:
             samples = LINK_QUALITY_HISTORY.setdefault(key, [])
@@ -473,6 +477,25 @@ def collect_link_quality():
                 }
             )
             del samples[:-LINK_QUALITY_HISTORY_LIMIT]
+    for member in member_health:
+        if member.get("active") or member.get("nodeid") in measured_nodeids or member.get("ip") in local_ips:
+            continue
+        LINK_QUALITY_CACHE["links"].append(
+            {
+                "nodeid": member.get("nodeid"),
+                "hostname": member.get("name") or peer_names.get(member.get("ip"), ""),
+                "ip": member.get("ip"),
+                "status": "offline",
+                "quality": "offline",
+                "packetLossPercent": None,
+                "minMs": None,
+                "avgMs": None,
+                "maxMs": None,
+                "jitterMs": None,
+                "lastUpdatedAt": now,
+                "raw": "",
+            }
+        )
     export_link_quality(LINK_QUALITY_CACHE["links"], now)
     return LINK_QUALITY_CACHE
 
@@ -853,7 +876,7 @@ INDEX_HTML = """<!doctype html>
       ].join("");
     };
     const renderLinkQuality = links => {
-      document.getElementById("linkQuality").innerHTML = (links || []).map(link => `<tr><td>${link.hostname || "unknown"}</td><td>${link.ip || ""}</td><td>${link.status || ""}</td><td>${metricCell(link.packetLossPercent, percent(link.packetLossPercent), 0.1, 1)}</td><td>${metricCell(link.avgMs, ms(link.avgMs), 50, 150)}</td><td>${metricCell(link.maxMs, ms(link.maxMs), 100, 250)}</td><td>${metricCell(link.jitterMs, ms(link.jitterMs), 10, 20)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td><td>${localTime(link.lastUpdatedAt)}</td></tr>`).join("") || "<tr><td colspan='9'>No remote corosync links measured</td></tr>";
+      document.getElementById("linkQuality").innerHTML = (links || []).map(link => `<tr><td>${link.hostname || "unknown"}</td><td>${link.ip || ""}</td><td><span class="tag ${link.status === "offline" ? "offline" : "joined"}">${link.status || "unknown"}</span></td><td>${metricCell(link.packetLossPercent, percent(link.packetLossPercent), 0.1, 1)}</td><td>${metricCell(link.avgMs, ms(link.avgMs), 50, 150)}</td><td>${metricCell(link.maxMs, ms(link.maxMs), 100, 250)}</td><td>${metricCell(link.jitterMs, ms(link.jitterMs), 10, 20)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td><td>${localTime(link.lastUpdatedAt)}</td></tr>`).join("") || "<tr><td colspan='9'>No remote corosync links measured</td></tr>";
     };
     const renderMtu = data => {
       const current = data.current || {};
