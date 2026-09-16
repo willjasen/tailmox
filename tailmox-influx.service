@@ -1,0 +1,16 @@
+[Unit]
+Description=Tailmox test metrics InfluxDB exporter
+After=network-online.target tailscaled.service
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/tailmox-monitor.env
+ExecStart=/bin/bash @TAILMOX_DIR@/tailmox-influx-export.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
