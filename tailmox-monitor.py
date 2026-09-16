@@ -7,6 +7,9 @@ corosync health for the current node.
 """
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import csv
+import datetime as dt
+import io
 import json
 import os
 import socket
@@ -183,6 +186,65 @@ def write_influx(lines):
         INFLUX_STATE["lastError"] = None
     except (urllib.error.URLError, TimeoutError) as error:
         INFLUX_STATE["lastError"] = str(error)
+
+
+def influx_query(flux, timeout=8):
+    if not influx_enabled():
+        return []
+
+    config = influx_config()
+    request = urllib.request.Request(
+        f"{config['url']}/api/v2/query?{urllib.parse.urlencode({'org': config['org']})}",
+        data=json.dumps({"query": flux}).encode("utf-8"),
+        headers={
+            "Authorization": f"Token {config['token']}",
+            "Content-Type": "application/json",
+            "Accept": "text/csv",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read().decode("utf-8")
+    except (urllib.error.URLError, TimeoutError) as error:
+        INFLUX_STATE["lastError"] = str(error)
+        return []
+
+    lines = [line for line in body.splitlines() if line and not line.startswith("#")]
+    if not lines:
+        return []
+    return list(csv.DictReader(io.StringIO("\n".join(lines))))
+
+
+def influx_time(value):
+    if not value:
+        return None
+    try:
+        return int(dt.datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return None
+
+
+def influx_float(row, key):
+    value = row.get(key)
+    if value in (None, ""):
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
+def influx_int(row, key):
+    value = influx_float(row, key)
+    return int(value) if value is not None else None
+
+
+def influx_bool(row, key):
+    value = row.get(key)
+    if value in (None, ""):
+        return None
+    return str(value).lower() == "true"
 
 
 def parse_pvecm_status(output):
@@ -410,6 +472,59 @@ def collect_mtu_status():
     }
 
 
+def influx_mtu_history():
+    config = influx_config()
+    rows = influx_query(f'''
+from(bucket: "{escape_string(config["bucket"])}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "tailmox_corosync_config")
+  |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
+  |> filter(fn: (r) => r._field == "configured_mtu" or r._field == "discovered_global_mtu" or r._field == "display_mtu" or r._field == "automatic" or r._field == "pmtud_interval_seconds" or r._field == "knet_ping_interval_ms" or r._field == "knet_ping_timeout_ms" or r._field == "token_ms" or r._field == "token_retransmit_ms" or r._field == "token_retransmits_before_loss" or r._field == "consensus_ms" or r._field == "max_network_delay_ms" or r._field == "max_messages" or r._field == "window_size" or r._field == "knet_compression_threshold" or r._field == "knet_compression_level")
+  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> sort(columns: ["_time"])
+  |> limit(n: 720)
+''')
+    history = []
+    for row in rows:
+        timestamp = influx_time(row.get("_time"))
+        if timestamp is None:
+            continue
+        history.append(
+            {
+                "timestamp": timestamp,
+                "configuredMtu": influx_int(row, "configured_mtu"),
+                "discoveredGlobalMtu": influx_int(row, "discovered_global_mtu"),
+                "displayMtu": influx_int(row, "display_mtu"),
+                "automatic": influx_bool(row, "automatic"),
+                "pmtudIntervalSeconds": influx_int(row, "pmtud_interval_seconds"),
+                "knetPingIntervalMs": influx_int(row, "knet_ping_interval_ms"),
+                "knetPingTimeoutMs": influx_int(row, "knet_ping_timeout_ms"),
+                "tokenMs": influx_int(row, "token_ms"),
+                "tokenRetransmitMs": influx_int(row, "token_retransmit_ms"),
+                "tokenRetransmitsBeforeLoss": influx_int(row, "token_retransmits_before_loss"),
+                "consensusMs": influx_int(row, "consensus_ms"),
+                "maxNetworkDelayMs": influx_int(row, "max_network_delay_ms"),
+                "maxMessages": influx_int(row, "max_messages"),
+                "windowSize": influx_int(row, "window_size"),
+                "knetCompressionThreshold": influx_int(row, "knet_compression_threshold"),
+                "knetCompressionLevel": influx_int(row, "knet_compression_level"),
+            }
+        )
+    return history
+
+
+def collect_mtu_history():
+    status = collect_mtu_status()
+    history = influx_mtu_history()
+    if not history:
+        history = MTU_HISTORY
+    return {
+        "generatedAt": status["generatedAt"],
+        "current": status["current"],
+        "history": history,
+    }
+
+
 def export_mtu_status(sample):
     line = line_protocol(
         "tailmox_corosync_config",
@@ -501,6 +616,12 @@ def collect_link_quality():
 
 
 def collect_link_quality_history():
+    influx_history = influx_link_quality_history()
+    if influx_history:
+        return {
+            "generatedAt": int(time.time()),
+            "series": influx_history,
+        }
     if not LINK_QUALITY_HISTORY:
         collect_link_quality()
     return {
@@ -513,6 +634,41 @@ def collect_link_quality_history():
             for name, samples in sorted(LINK_QUALITY_HISTORY.items())
         ],
     }
+
+
+def influx_link_quality_history():
+    config = influx_config()
+    rows = influx_query(f'''
+from(bucket: "{escape_string(config["bucket"])}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "tailmox_corosync_link_quality")
+  |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
+  |> filter(fn: (r) => r._field == "packet_loss_percent" or r._field == "avg_ms" or r._field == "max_ms" or r._field == "jitter_ms")
+  |> pivot(rowKey: ["_time", "peer_host", "peer_ip"], columnKey: ["_field"], valueColumn: "_value")
+  |> sort(columns: ["_time"])
+  |> limit(n: 2880)
+''')
+    by_peer = {}
+    for row in rows:
+        timestamp = influx_time(row.get("_time"))
+        if timestamp is None:
+            continue
+        name = row.get("peer_host") or row.get("peer_ip")
+        if not name:
+            continue
+        samples = by_peer.setdefault(name, [])
+        samples.append(
+            {
+                "timestamp": timestamp,
+                "hostname": row.get("peer_host"),
+                "ip": row.get("peer_ip"),
+                "avgMs": influx_float(row, "avg_ms"),
+                "maxMs": influx_float(row, "max_ms"),
+                "jitterMs": influx_float(row, "jitter_ms"),
+                "packetLossPercent": influx_float(row, "packet_loss_percent"),
+            }
+        )
+    return [{"name": name, "samples": samples[-720:]} for name, samples in sorted(by_peer.items())]
 
 
 def export_link_quality(links, timestamp):
@@ -702,6 +858,13 @@ def collect_status():
 
 
 def collect_member_count_history():
+    influx_history = influx_member_count_history()
+    if influx_history:
+        return {
+            "generatedAt": int(time.time()),
+            "current": influx_history[-1],
+            "history": influx_history,
+        }
     if not MEMBER_COUNT_HISTORY:
         status = collect_status()
         return {
@@ -714,6 +877,36 @@ def collect_member_count_history():
         "current": MEMBER_COUNT_HISTORY[-1],
         "history": MEMBER_COUNT_HISTORY,
     }
+
+
+def influx_member_count_history():
+    config = influx_config()
+    rows = influx_query(f'''
+from(bucket: "{escape_string(config["bucket"])}")
+  |> range(start: -24h)
+  |> filter(fn: (r) => r._measurement == "tailmox_cluster_status")
+  |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
+  |> filter(fn: (r) => r._field == "member_count" or r._field == "quorum_node_count" or r._field == "configured_node_count" or r._field == "offline_node_count" or r._field == "quorate")
+  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> sort(columns: ["_time"])
+  |> limit(n: 720)
+''')
+    history = []
+    for row in rows:
+        timestamp = influx_time(row.get("_time"))
+        if timestamp is None:
+            continue
+        history.append(
+            {
+                "timestamp": timestamp,
+                "memberCount": influx_int(row, "member_count"),
+                "quorumNodeCount": influx_int(row, "quorum_node_count"),
+                "configuredNodeCount": influx_int(row, "configured_node_count"),
+                "offlineNodeCount": influx_int(row, "offline_node_count"),
+                "quorate": influx_bool(row, "quorate"),
+            }
+        )
+    return [sample for sample in history if sample["memberCount"] is not None]
 
 
 INDEX_HTML = """<!doctype html>
@@ -1207,7 +1400,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/link-quality-history":
             self.send_json(200, collect_link_quality_history())
         elif path == "/api/mtu-history":
-            self.send_json(200, collect_mtu_status())
+            self.send_json(200, collect_mtu_history())
         elif path == "/api/member-count-history":
             self.send_json(200, collect_member_count_history())
         elif path == "/api/influxdb":
