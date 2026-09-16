@@ -84,8 +84,8 @@ function check_if_supported_proxmox_is_installed() {
 # Check if this script is being run from the correct directory
 function check_script_directory() {
     local script_dir=$(dirname "$(realpath "$0")")
-    if [[ "$script_dir" != *"/opt/tailmox"* ]]; then
-        log_echo "${RED}This script must be run from the '/opt/tailmox' directory.${RESET}"
+    if [[ "$script_dir" != *"/opt/tailmox"* && "$script_dir" != *"/opt/proxmox-scripts"* ]]; then
+        log_echo "${RED}This script must be run from '/opt/tailmox' or '/opt/proxmox-scripts'.${RESET}"
         exit 1
     fi
     log_echo "${GREEN}Running from the correct directory: $script_dir${RESET}"
@@ -95,7 +95,7 @@ function check_script_directory() {
 function install_dependencies() {
     log_echo "${YELLOW}Checking for required dependencies...${RESET}"
 
-    local dependencies=(curl expect git jq)
+    local dependencies=(curl expect git jq python3)
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
             log_echo "${YELLOW}$dep not found. Installing...${RESET}"
@@ -522,6 +522,35 @@ function get_pve_certificate_fingerprint() {
     fi
 }
 
+# Install and publish the Tailmox monitoring interface
+function setup_monitoring_interface() {
+    local script_dir=$(dirname "$(realpath "$0")")
+
+    if [[ ! -f "$script_dir/tailmox-monitor.py" || ! -f "$script_dir/tailmox-monitor.service" ]]; then
+        log_echo "${YELLOW}Tailmox monitoring files were not found. Skipping monitoring interface setup.${RESET}"
+        return 0
+    fi
+
+    log_echo "${YELLOW}Installing the Tailmox monitoring interface...${RESET}"
+    chmod +x "$script_dir/tailmox-monitor.py"
+    sed "s|@TAILMOX_DIR@|$script_dir|g" "$script_dir/tailmox-monitor.service" > /etc/systemd/system/tailmox-monitor.service
+    systemctl daemon-reload
+    systemctl enable --now tailmox-monitor.service
+
+    if systemctl is-active --quiet tailmox-monitor.service; then
+        log_echo "${GREEN}Tailmox monitoring interface is running locally on port 8088.${RESET}"
+    else
+        log_echo "${RED}Tailmox monitoring interface did not start. Check: systemctl status tailmox-monitor.service${RESET}"
+        return 1
+    fi
+
+    tailscale serve --bg --https=443 --set-path=/monitor localhost:8088 &>/dev/null
+    log_echo "${GREEN}Tailmox monitoring is available at /monitor on this node's Tailscale URL.${RESET}"
+
+    tailscale serve --service=svc:tailmox --https=443 --set-path=/monitor localhost:8088 &>/dev/null
+    log_echo "${GREEN}Tailmox monitoring is available at /monitor on the tailmox Tailscale service URL.${RESET}"
+}
+
 # Create a new Proxmox cluster named "tailmox"
 function create_cluster() {
     local TAILSCALE_IP=$(tailscale ip -4)
@@ -647,6 +676,8 @@ log_echo "${GREEN}Tailscale serve is now running.${RESET}"
 
 tailscale serve --service=svc:tailmox https+insecure://localhost:8006 &>/dev/null
 log_echo "${GREEN}Tailscale service started for tailmox.${RESET}"
+
+setup_monitoring_interface
 
 # Exit early if staging mode is enabled
 if [[ "$STAGING" == "true" ]]; then

@@ -1,0 +1,15 @@
+[Unit]
+Description=Tailmox monitoring interface
+After=network-online.target tailscaled.service pve-cluster.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=TAILMOX_MONITOR_HOST=127.0.0.1
+Environment=TAILMOX_MONITOR_PORT=8088
+ExecStart=/usr/bin/python3 @TAILMOX_DIR@/tailmox-monitor.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

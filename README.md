@@ -137,6 +137,15 @@ In order to make the Tailscale functions easier to handle, `tailmox.sh` accepts 
 
 During the running of the script, if there are existing hosts within the tailmox cluster, it is likely to ask for the password of one of the remote hosts in order to properly join the Proxmox cluster.
 
+### 📈 Monitoring 📈
+
+Tailmox installs a lightweight monitoring interface as `tailmox-monitor.service`. It listens locally on port `8088` and is mounted through Tailscale Serve at `/monitor`, so each node can show its own health from:
+
+- `https://HOSTNAME.MAGICDNS_NAME.ts.net/monitor`
+- `https://tailmox.MAGICDNS_NAME.ts.net/monitor`
+
+The monitor includes corosync-specific details: whether the `corosync` service is active and enabled, whether the cluster is quorate, expected and current votes, corosync transport, member/ring information from `corosync-cmapctl`, quorum node details from `corosync-quorumtool`, and recent `corosync` journal entries.
+
 ---
 
 ### 🧪 Testing 🧪
@@ -154,8 +163,14 @@ To deploy fresh Proxmox hosts within an existing Proxmox environment and to perf
 `tailmox.sh` -  this is the main script of the project
 - checks that the host is Proxmox v8 or v9, installs dependencies and Tailscale, then starts Tailscale
 - once Tailscale is running, the host will generate a certificate from Tailscale (to be used with the web interface/API)
+- installs the Tailmox monitoring interface and publishes it at `/monitor` through Tailscale Serve
 - it will then retrieve other Tailscale machines with tag of "tailmox", then check if it can reach them via ping (ICMP), via TCP 443, and via TCP 8006; if these checks do not pass, the script will exit
 - after the checks pass, the host will check if it is in a cluster; if it is not, it will check the other Tailscale machines with the tag of "tailmox" to see if they are part of a cluster; when it finds a matching host in a cluster, it will then attempt to join to the cluster using it; if another host isn't found, then a new cluster will be prompted to be created
+
+`tailmox-monitor.py` - this is the local web monitoring interface
+- reports Proxmox cluster and Tailscale status
+- reports corosync service, quorum, member, vote, and recent log details
+- refreshes the dashboard automatically
 
 There are further scripts related to testing in the "test-env" folder.
 
