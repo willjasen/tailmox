@@ -325,7 +325,7 @@ def collect_mtu_status():
     sample = {
         "timestamp": now,
         "configuredMtu": mtu,
-        "displayMtu": None if mtu == 0 else mtu,
+        "displayMtu": mtu,
         "automatic": mtu == 0,
         "pmtudIntervalSeconds": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.knet_pmtud_interval")),
         "knetPingIntervalMs": int_or_none(parse_cmap_value(cmap["stdout"], "runtime.config.totem.interface.0.knet_ping_interval")),
@@ -626,7 +626,7 @@ INDEX_HTML = """<!doctype html>
 
       const chart = document.getElementById("mtuChart");
       if (!history.length) {
-        chart.innerHTML = svg("text", { x: 32, y: 112 }, "Global MTU is automatic, so there is no fixed byte value to plot yet.");
+        chart.innerHTML = svg("text", { x: 32, y: 112 }, "No global MTU samples collected yet.");
         return;
       }
 
@@ -645,9 +645,9 @@ INDEX_HTML = """<!doctype html>
         svg("line", { class: "grid-line", x1: left, y1: top, x2: left, y2: height - bottom }),
         svg("line", { class: "grid-line", x1: left, y1: height - bottom, x2: width - right, y2: height - bottom }),
         svg("line", { class: "grid-line", x1: left, y1: top, x2: width - right, y2: top }),
-        svg("text", { x: 10, y: top + 4 }, number(maxValue)),
-        svg("text", { x: 10, y: y({ displayMtu: midValue }) + 4 }, number(Math.round(midValue))),
-        svg("text", { x: 10, y: height - bottom + 4 }, number(minValue)),
+        svg("text", { x: 10, y: top + 4 }, maxValue === 0 ? "auto" : number(maxValue)),
+        svg("text", { x: 10, y: y({ displayMtu: midValue }) + 4 }, Math.round(midValue) === 0 ? "auto" : number(Math.round(midValue))),
+        svg("text", { x: 10, y: height - bottom + 4 }, minValue === 0 ? "auto" : number(minValue)),
         `<polyline class="series" points="${points}"></polyline>`,
         history.map(sample => svg("circle", { class: "point", cx: x(sample).toFixed(1), cy: y(sample).toFixed(1), r: 3 })).join(""),
       ].join("");
