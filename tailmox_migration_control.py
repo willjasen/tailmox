@@ -1,5 +1,6 @@
 """Keep the validated migration process alive while its owner reviews the plan."""
 import ipaddress
+import json
 import pathlib
 import secrets
 import subprocess
@@ -9,6 +10,35 @@ import threading
 
 PROMPT = 'Type DISABLE to apply this dry-run plan: '
 BUSY = ('running', 'awaiting_confirmation', 'applying')
+
+
+def discover_subnets():
+    """Read locally assigned LAN networks without probing or changing interfaces."""
+    try:
+        result = subprocess.run(['ip', '-j', '-4', 'addr', 'show', 'scope', 'global'],
+                                check=True, capture_output=True, text=True, timeout=10)
+        interfaces = json.loads(result.stdout)
+        if not isinstance(interfaces, list):
+            raise ValueError('Expected interface list')
+        networks = {}
+        for interface in interfaces:
+            name = interface['ifname']
+            if name == 'lo' or name.startswith('tailscale'):
+                continue
+            for address in interface.get('addr_info', []):
+                if address.get('family') != 'inet':
+                    continue
+                assigned = ipaddress.IPv4Interface(f"{address['local']}/{address['prefixlen']}")
+                if assigned.ip.is_loopback or assigned.ip.is_link_local or assigned.ip.is_unspecified:
+                    continue
+                cidr = str(assigned.network)
+                entry = networks.setdefault(cidr, {'cidr': cidr, 'interfaces': []})
+                attachment = {'name': name, 'address': str(assigned.ip)}
+                if attachment not in entry['interfaces']:
+                    entry['interfaces'].append(attachment)
+        return sorted(networks.values(), key=lambda item: (int(ipaddress.IPv4Network(item['cidr']).network_address), ipaddress.IPv4Network(item['cidr']).prefixlen))
+    except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError, AttributeError) as error:
+        raise RuntimeError('Unable to read host IPv4 subnets. You can enter a subnet manually.') from error
 
 
 class MigrationControl:
