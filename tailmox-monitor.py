@@ -2064,8 +2064,10 @@ INDEX_HTML = """<!doctype html>
       overall.lastElementChild.textContent = data.overall === "healthy" ? "Healthy" : "Needs attention";
       text("tailmoxState", data.tailmox.active ? "active" : (data.tailmox.status || "unknown"));
       const redeployButton = document.getElementById("redeployButton");
-      redeployButton.classList.toggle("update-available", Boolean(data.tailmoxUpdate?.available));
-      redeployButton.textContent = data.tailmoxUpdate?.available ? "Redeploy Tailmox · Update available" : "Redeploy Tailmox";
+      const updateAvailable = Boolean(data.tailmoxUpdate?.available);
+      const redeployed = data.action === "redeploy" && data.status === "succeeded";
+      redeployButton.classList.toggle("update-available", updateAvailable && !redeployed);
+      redeployButton.textContent = updateAvailable && !redeployed ? "Redeploy Tailmox · Update available" : redeployed ? "Tailmox is up to date" : "Redeploy Tailmox";
       redeployButton.title = data.tailmoxUpdate?.available ? "A newer Tailmox version is available." : "Tailmox is up to date.";
       text("tailmoxDetail", `${number(data.tailmox.activeMemberCount)} active in state; ${number(data.tailmox.configuredNodeCount)} configured. ${data.tailmox.detail || ""}`);
       text("corosyncState", yesNo(data.services.corosync.active));
