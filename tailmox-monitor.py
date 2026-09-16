@@ -677,18 +677,25 @@ from(bucket: "{escape_string(config["bucket"])}")
         timestamp = influx_time(row.get("_time"))
         if timestamp is None:
             continue
-        name = row.get("peer_host") or row.get("peer_ip")
-        if not name:
+        peer_ip = row.get("peer_ip")
+        peer_host = row.get("peer_host")
+        peer_key = peer_ip or peer_host
+        if not peer_key:
             continue
-        samples = by_peer.setdefault(name, {})
+        peer = by_peer.setdefault(peer_key, {"hostname": None, "samples": {}})
+        if peer_host:
+            peer["hostname"] = peer_host
+        samples = peer["samples"]
         sample = samples.setdefault(
             timestamp,
             {
                 "timestamp": timestamp,
-                "hostname": row.get("peer_host"),
-                "ip": row.get("peer_ip"),
+                "hostname": peer_host,
+                "ip": peer_ip,
             },
         )
+        if peer_host:
+            sample["hostname"] = peer_host
         field = row.get("_field")
         if field == "avg_ms":
             sample["avgMs"] = influx_float(row, "_value")
@@ -699,8 +706,11 @@ from(bucket: "{escape_string(config["bucket"])}")
         elif field == "packet_loss_percent":
             sample["packetLossPercent"] = influx_float(row, "_value")
     return [
-        {"name": name, "samples": sorted(samples.values(), key=lambda sample: sample["timestamp"])[-720:]}
-        for name, samples in sorted(by_peer.items())
+        {
+            "name": peer["hostname"] or peer_key,
+            "samples": sorted(peer["samples"].values(), key=lambda sample: sample["timestamp"])[-720:],
+        }
+        for peer_key, peer in sorted(by_peer.items(), key=lambda item: item[1]["hostname"] or item[0])
     ]
 
 
