@@ -54,6 +54,18 @@ assert captured["document"]["influxdb"]["token"] == "migration-test-token"
 assert "plaintext Tailmox configuration" in captured["summary"]
 assert legacy_path.is_file(), "plaintext was removed before approval"
 
+# A pre-existing empty encrypted document must not suppress plaintext migration.
+config_module.CONFIG_FILE.write_bytes(b"placeholder")
+config_module.current_config = lambda: {
+    "schemaVersion": 1,
+    "revision": 0,
+    "influxdb": {"url": "", "token": "", "org": "", "bucket": ""},
+}
+result = module["initialize_encrypted_configuration"]({"created": True})
+assert result["migrationProposal"]["activated"] is False
+assert captured["document"]["influxdb"]["token"] == "migration-test-token"
+config_module.CONFIG_FILE.unlink()
+
 config_module.propose_config = lambda document, summary: {
     "proposalId": "1-test", "activated": True
 }

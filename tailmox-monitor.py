@@ -231,8 +231,13 @@ def save_influx_config(data):
 def initialize_encrypted_configuration(identity_result):
     tailmox_config.enroll_local_host()
     legacy = read_legacy_config()
-    if tailmox_config.CONFIG_FILE.is_file() or not legacy:
+    if not legacy:
         return identity_result
+    if tailmox_config.CONFIG_FILE.is_file():
+        encrypted = tailmox_config.current_config().get("influxdb", {})
+        if any(str(encrypted.get(key, "")).strip() for key in ("url", "token", "org", "bucket")):
+            remove_legacy_config()
+            return identity_result
     pending = [
         proposal
         for proposal in tailmox_config.list_proposals()
