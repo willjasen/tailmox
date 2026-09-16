@@ -142,9 +142,7 @@ async function runWorkflow(action) {
 }
 
 redeployButton?.addEventListener("click", () => {
-    if (window.confirm("Pull the latest Tailmox code and restart the monitor service?")) {
-        runWorkflow("redeploy");
-    }
+    runWorkflow("redeploy");
 });
 
 document.querySelectorAll(".workflow-action").forEach((button) => {
