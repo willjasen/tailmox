@@ -1488,8 +1488,8 @@ INDEX_HTML = """<!doctype html>
       <div class="panel full"><h2>Global MTU Over Time</h2><div class="muted" id="mtuDetail">Loading MTU history...</div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over time"></svg></div>
       <div class="panel full"><h2>Cluster Members Over Time</h2><div class="muted" id="memberCountDetail">Loading member history...</div><svg class="chart" id="memberCountChart" viewBox="0 0 900 220" role="img" aria-label="Cluster members over time"></svg><div class="legend"><span class="legend-item"><span class="swatch" style="background:#22c55e"></span>All online</span><span class="legend-item"><span class="swatch" style="background:#f59e0b"></span>Quorate with offline hosts</span><span class="legend-item"><span class="swatch" style="background:#ef4444"></span>No quorum</span></div></div>
       <div class="panel full"><h2>Link Quality Over Time</h2><div class="muted" id="linkQualityGraphDetail">Loading link-quality history...</div><svg class="chart" id="linkQualityChart" viewBox="0 0 900 220" role="img" aria-label="Link quality over time"></svg><div class="legend" id="linkQualityLegend"></div></div>
-      <div class="panel full"><h2>Corosync Knet Latency and Jitter</h2><div class="muted" id="cmapLatencyDetail">Loading cmap Knet history...</div><svg class="chart" id="cmapLatencyChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet latency and jitter over time"></svg><div class="legend" id="cmapLatencyLegend"></div></div>
-      <div class="panel full"><h2>Corosync Knet Packets and Errors</h2><div class="muted" id="cmapPacketDetail">Loading cmap Knet packet history...</div><svg class="chart" id="cmapPacketChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet packet and error counters over time"></svg><div class="legend" id="cmapPacketLegend"></div></div>
+      <div class="panel full"><h2>Corosync Knet Latency and Jitter (microseconds)</h2><div class="muted" id="cmapLatencyDetail">Loading cmap Knet history...</div><svg class="chart" id="cmapLatencyChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet average latency in microseconds over time"></svg><div class="legend" id="cmapLatencyLegend"></div></div>
+      <div class="panel full"><h2>Corosync Knet Packets and Errors (count per interval)</h2><div class="muted" id="cmapPacketDetail">Loading cmap Knet packet history...</div><svg class="chart" id="cmapPacketChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet packet and error count per collection interval over time"></svg><div class="legend" id="cmapPacketLegend"></div></div>
       <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Hostname</th><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
       <div class="panel full"><h2>Recent Corosync Logs</h2><pre id="logs">Loading...</pre></div>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
@@ -1837,6 +1837,7 @@ INDEX_HTML = """<!doctype html>
         svg("text", { x: 10, y: top + 4 }, options.format(chartMax)),
         svg("text", { x: 10, y: top + (height - top - bottom) / 2 + 4 }, options.format(midValue)),
         svg("text", { x: 10, y: height - bottom + 4 }, options.format(chartMin)),
+        svg("text", { x: 12, y: height / 2, transform: `rotate(-90 12 ${height / 2})`, "text-anchor": "middle" }, options.axisLabel),
         svg("text", { x: left, y: height - 12 }, timeLabel(minTime)),
         svg("text", { x: width / 2 - 34, y: height - 12 }, timeLabel(minTime + (maxTime - minTime) / 2)),
         svg("text", { x: width - right - 72, y: height - 12 }, timeLabel(maxTime)),
@@ -1852,7 +1853,7 @@ INDEX_HTML = """<!doctype html>
         document.getElementById("cmapLatencyLegend"),
         series,
         "latencyAvg",
-        { label: "Average latency", format: number, emptyText: "No cmap Knet latency history collected yet." }
+        { label: "Average latency (µs)", axisLabel: "µs", format: value => `${number(value)} µs`, emptyText: "No cmap Knet latency history collected yet." }
       );
       const jitterSamples = series.flatMap(item => (item.samples || []).filter(sample => Number.isFinite(sample.jitter)));
       const maxJitter = jitterSamples.length ? Math.max(...jitterSamples.map(sample => sample.jitter)) : null;
@@ -1874,7 +1875,7 @@ INDEX_HTML = """<!doctype html>
         document.getElementById("cmapPacketLegend"),
         packetSeries,
         "packets",
-        { label: "Packet/error delta", format: number, emptyText: "No cmap Knet packet history collected yet." }
+        { label: "Packets/errors per interval", axisLabel: "count", format: number, emptyText: "No cmap Knet packet history collected yet." }
       );
       const errorSamples = series.flatMap(item => (item.samples || []).filter(sample => Number.isFinite(sample.errorDelta) && sample.errorDelta > 0));
       detailChips("cmapPacketDetail", [

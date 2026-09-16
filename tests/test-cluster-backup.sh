@@ -77,7 +77,9 @@ if backup_proxmox_cluster_configuration >/dev/null 2>&1; then
     archive_count=$(find "$TAILMOX_CLUSTER_BACKUP_DIR" -type f -name '*.tar.gz' | wc -l | tr -d ' ')
     archive_path=$(find "$TAILMOX_CLUSTER_BACKUP_DIR" -type f -name '*.tar.gz' | head -1)
     archive_listing=$(tar -tzf "$archive_path")
-    archive_mode=$(stat -f '%Lp' "$archive_path" 2>/dev/null || stat -c '%a' "$archive_path")
+    # GNU stat accepts -f but interprets it as filesystem statistics, so use
+    # its file-mode form first and retain BSD/macOS compatibility as fallback.
+    archive_mode=$(stat -c '%a' "$archive_path" 2>/dev/null || stat -f '%Lp' "$archive_path")
 
     if [[ "$archive_count" -eq 1 ]] &&
         [[ "$archive_listing" == *"${TAILMOX_PVE_CONFIG_DIR#/}/storage.cfg"* ]] &&
