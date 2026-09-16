@@ -18,6 +18,7 @@ INFLUX_BUCKET="${TAILMOX_INFLUXDB_BUCKET:-}"
 
 if [[ -z "$INFLUX_URL" || -z "$INFLUX_TOKEN" || -z "$INFLUX_ORG" || -z "$INFLUX_BUCKET" ]]; then
     IFS=$'\t' read -r INFLUX_URL INFLUX_TOKEN INFLUX_ORG INFLUX_BUCKET < <(
+        PYTHONPATH="$TAILMOX_ROOT" \
         TAILMOX_CONFIG_FILE="${TAILMOX_CONFIG_FILE:-/etc/pve/tailmox/config.age}" \
         TAILMOX_AGE_IDENTITY_FILE="${TAILMOX_AGE_IDENTITY_FILE:-/etc/tailmox/identity.txt}" \
         /usr/bin/python3 -c '
