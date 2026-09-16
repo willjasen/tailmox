@@ -35,7 +35,7 @@ if str(MONITOR_DIR) not in sys.path:
     sys.path.insert(0, str(MONITOR_DIR))
 
 import tailmox_config
-from tailmox_migration_control import MigrationControl
+from tailmox_migration_control import MigrationControl, discover_subnets
 
 MIGRATION_CONTROL = MigrationControl()
 
@@ -79,6 +79,8 @@ ACTION_STATE = {
     "exitCode": None,
     "output": "No Tailmox workflow has run from this page yet.",
 }
+TAILMOX_UPDATE_STATE = {"checkedAt": 0, "available": False, "error": None}
+TAILMOX_UPDATE_LOCK = threading.Lock()
 ACTION_COMMANDS = {
     "test": ["test"],
     "backup-create": ["backups", "create"],
@@ -107,6 +109,26 @@ def run_redeploy():
 def action_snapshot():
     with ACTION_LOCK:
         return dict(ACTION_STATE)
+
+
+def tailmox_update_status():
+    now = time.time()
+    with TAILMOX_UPDATE_LOCK:
+        if now - TAILMOX_UPDATE_STATE["checkedAt"] < 60:
+            return dict(TAILMOX_UPDATE_STATE)
+    try:
+        subprocess.run([TAILMOX_GIT_COMMAND, "fetch", "--quiet"], cwd=TAILMOX_DEPLOY_DIR,
+                       check=True, capture_output=True, text=True, timeout=30)
+        local = subprocess.run([TAILMOX_GIT_COMMAND, "rev-parse", "HEAD"], cwd=TAILMOX_DEPLOY_DIR,
+                                check=True, capture_output=True, text=True, timeout=5).stdout.strip()
+        upstream = subprocess.run([TAILMOX_GIT_COMMAND, "rev-parse", "@{u}"], cwd=TAILMOX_DEPLOY_DIR,
+                                  check=True, capture_output=True, text=True, timeout=5).stdout.strip()
+        result = {"checkedAt": int(now), "available": local != upstream, "error": None}
+    except (OSError, subprocess.SubprocessError) as error:
+        result = {"checkedAt": int(now), "available": False, "error": str(error)}
+    with TAILMOX_UPDATE_LOCK:
+        TAILMOX_UPDATE_STATE.update(result)
+        return dict(TAILMOX_UPDATE_STATE)
 
 
 def _run_action(action, auth_key):
@@ -1221,6 +1243,7 @@ def collect_status():
             "highestExpected": pvecm_fields.get("highest_expected"),
         },
         "tailmox": tailmox_state,
+        "tailmoxUpdate": tailmox_update_status(),
         "corosync": {
             "members": member_health,
             "activeMembers": corosync_members,
@@ -1518,6 +1541,7 @@ INDEX_HTML = """<!doctype html>
     .test-fail { color: #fecdd3; font-weight: 800; }
     .test-section { color: #bae6fd; font-weight: 800; }
     .test-summary { color: #fde68a; font-weight: 800; }
+    .redeploy-button.update-available { border-color: var(--accent); color: #bae6fd; box-shadow: 0 0 16px rgba(56,189,248,0.28); }
     a { color: var(--accent); }
     @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid, .workflow-grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } }
   </style>
@@ -2031,6 +2055,10 @@ INDEX_HTML = """<!doctype html>
       overall.className = `pill ${data.overall === "healthy" ? "ok" : "warn"}`;
       overall.lastElementChild.textContent = data.overall === "healthy" ? "Healthy" : "Needs attention";
       text("tailmoxState", data.tailmox.active ? "active" : (data.tailmox.status || "unknown"));
+      const redeployButton = document.getElementById("redeployButton");
+      redeployButton.classList.toggle("update-available", Boolean(data.tailmoxUpdate?.available));
+      redeployButton.textContent = data.tailmoxUpdate?.available ? "Redeploy Tailmox · Update available" : "Redeploy Tailmox";
+      redeployButton.title = data.tailmoxUpdate?.available ? "A newer Tailmox version is available." : "Tailmox is up to date.";
       text("tailmoxDetail", `${number(data.tailmox.activeMemberCount)} active in state; ${number(data.tailmox.configuredNodeCount)} configured. ${data.tailmox.detail || ""}`);
       text("corosyncState", yesNo(data.services.corosync.active));
       text("corosyncEnabled", `enabled: ${data.services.corosync.enabled || "unknown"}`);
@@ -2466,6 +2494,13 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_body(200, "text/html; charset=utf-8",
                            (MONITOR_DIR / "web" / "disable.html").read_text().replace("__CSRF_TOKEN__", CSRF_TOKEN))
+        elif path == "/api/migration/subnets":
+            if not self.require_tailscale_user():
+                return
+            try:
+                self.send_json(200, {"subnets": discover_subnets()})
+            except RuntimeError as error:
+                self.send_json(503, {"error": str(error)})
         elif path == "/api/migration":
             owner = self.require_tailscale_user()
             if not owner:
