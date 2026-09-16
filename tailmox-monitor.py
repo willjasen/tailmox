@@ -2034,6 +2034,11 @@ EDIT_INFLUX_HTML = """<!doctype html>
     .error { color: #fecdd3; }
     textarea { width: 100%; min-height: 92px; box-sizing: border-box; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 11px 12px; color: var(--text); background: rgba(2,6,23,0.42); font: 13px ui-monospace, monospace; }
     .security-grid { display: grid; gap: 12px; margin-bottom: 20px; }
+    .identity-details { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; padding: 12px; border: 1px solid rgba(34,197,94,0.35); border-radius: 8px; background: rgba(20,83,45,0.16); }
+    .identity-detail { display: grid; gap: 4px; min-width: 0; }
+    .identity-detail span:first-child { color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; }
+    .identity-detail span:last-child { overflow-wrap: anywhere; }
+    .identity-detail .recipient { font: 12px ui-monospace, monospace; }
     .proposal { border: 1px solid rgba(148,163,184,0.28); border-radius: 8px; padding: 12px; }
     .proposal-actions { display: flex; gap: 8px; margin-top: 10px; }
   </style>
@@ -2050,6 +2055,14 @@ EDIT_INFLUX_HTML = """<!doctype html>
     <section class="panel security-grid">
       <h2>Encryption &amp; host signing</h2>
       <div class="muted" id="securityStatus">Checking this host...</div>
+      <div class="identity-details" id="identityDetails" hidden>
+        <div class="identity-detail"><span>Identity</span><span id="identityType"></span></div>
+        <div class="identity-detail"><span>Loaded on</span><span id="identityHost"></span></div>
+        <div class="identity-detail"><span>Cluster match</span><span id="identityMatch"></span></div>
+        <div class="identity-detail"><span>Host signer</span><span id="identitySigner"></span></div>
+        <div class="identity-detail"><span>Fingerprint</span><span class="recipient" id="identityFingerprint"></span></div>
+        <div class="identity-detail"><span>Public recipient</span><span class="recipient" id="identityRecipient"></span></div>
+      </div>
       <textarea id="ageIdentity" autocomplete="off" spellcheck="false" placeholder="AGE-SECRET-KEY-PQ-1..."></textarea>
       <div class="actions">
         <button type="button" id="createIdentity">Create Tailmox age identity</button>
@@ -2091,10 +2104,21 @@ EDIT_INFLUX_HTML = """<!doctype html>
     async function loadSecurity() {
       try {
         const data = await api("/api/security");
-        document.getElementById("securityStatus").textContent = data.identity.configured
-          ? `${data.identity.postQuantum ? "Post-quantum age identity" : "Classic imported age identity"} ready · dedicated Ed25519 signer ready on ${data.identity.host}${data.legacyConfiguration ? " · plaintext configuration migration pending" : ""}`
+        const identity = data.identity;
+        document.getElementById("securityStatus").textContent = identity.configured
+          ? `Tailmox age identity loaded${data.legacyConfiguration ? " · plaintext configuration migration pending" : ""}`
           : `Create the cluster identity on the first host, or add the existing cluster identity here.${data.legacyConfiguration ? " Existing plaintext settings will remain active until the encrypted migration is approved." : ""}`;
-        document.getElementById("createIdentity").disabled = Boolean(data.identity.recipient);
+        const details = document.getElementById("identityDetails");
+        details.hidden = !identity.configured;
+        if (identity.configured) {
+          document.getElementById("identityType").textContent = identity.postQuantum ? "Post-quantum ML-KEM-768 + X25519" : "Classic age identity";
+          document.getElementById("identityHost").textContent = identity.host;
+          document.getElementById("identityMatch").textContent = identity.matchesCluster ? "Verified" : "Not registered or does not match";
+          document.getElementById("identitySigner").textContent = identity.signingKeyConfigured ? "Dedicated Ed25519 key loaded" : "Not created yet";
+          document.getElementById("identityFingerprint").textContent = identity.recipientFingerprint || "Unavailable";
+          document.getElementById("identityRecipient").textContent = identity.recipient || "Not registered yet";
+        }
+        document.getElementById("createIdentity").disabled = Boolean(identity.recipient);
         const proposals = document.getElementById("proposals");
         proposals.replaceChildren(...data.proposals.filter(item => !item.activated).map(item => {
           const card = document.createElement("div");

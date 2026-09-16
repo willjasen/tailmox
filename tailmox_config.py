@@ -261,6 +261,7 @@ def identity_status() -> dict[str, Any]:
         "matchesCluster": bool(local_recipient and local_recipient == security.get("ageRecipient")),
         "postQuantum": bool(local_recipient and local_recipient.startswith("age1pq1")),
         "recipient": security.get("ageRecipient"),
+        "recipientFingerprint": sha256(local_recipient.encode())[:16] if local_recipient else None,
         "host": HOSTNAME,
         "signingKeyConfigured": SIGNING_KEY_FILE.is_file(),
         "trustedHosts": sorted(security["hosts"]),
