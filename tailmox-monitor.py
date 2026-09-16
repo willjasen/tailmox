@@ -1388,7 +1388,7 @@ INDEX_HTML = """<!doctype html>
     :root { color-scheme: dark; --bg: #0b1020; --panel: #111827; --line: #334155; --text: #e5e7eb; --muted: #9ca3af; --good: #22c55e; --warn: #f59e0b; --bad: #ef4444; --accent: #38bdf8; --violet: #a78bfa; --rose: #fb7185; --teal: #2dd4bf; }
     body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: radial-gradient(circle at top left, rgba(56,189,248,0.18), transparent 34%), linear-gradient(135deg, #0b1020 0%, #111827 48%, #14213d 100%); color: var(--text); min-height: 100vh; }
     main { max-width: 1180px; margin: 0 auto; padding: 28px; }
-    header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 24px; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 24px; }
     h1 { font-size: 30px; margin: 0 0 6px; color: #f8fafc; }
     h2 { font-size: 15px; margin: 0 0 14px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
     .muted { color: var(--muted); }
@@ -1435,9 +1435,9 @@ INDEX_HTML = """<!doctype html>
     input { width: 100%; box-sizing: border-box; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 11px 12px; color: var(--text); background: rgba(2,6,23,0.42); font: inherit; }
     input:focus { outline: 2px solid rgba(56,189,248,0.34); border-color: var(--accent); }
     button, .button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(56,189,248,0.42); border-radius: 8px; padding: 10px 14px; color: #e0f2fe; background: rgba(14,116,144,0.32); font: inherit; font-weight: 800; text-decoration: none; cursor: pointer; }
-    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .actions { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
     .page-picker { display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
-    .page-picker select { min-width: 132px; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 9px 30px 9px 10px; color: var(--text); background: rgba(2,6,23,0.42); font: inherit; cursor: pointer; }
+    .page-picker select { min-width: 132px; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 9px 30px 9px 10px; color: var(--text); background: rgba(2,6,23,0.42); font: inherit; font-size: 13px; cursor: pointer; }
     .page-picker select:focus { outline: 2px solid rgba(56,189,248,0.34); border-color: var(--accent); }
     .workflow-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
     .workflow { border: 1px solid rgba(148,163,184,0.22); border-radius: 8px; padding: 14px; background: rgba(2,6,23,0.28); }
@@ -2052,7 +2052,7 @@ EDIT_INFLUX_HTML = """<!doctype html>
     :root { color-scheme: dark; --bg: #0b1020; --panel: #111827; --line: #334155; --text: #e5e7eb; --muted: #9ca3af; --accent: #38bdf8; --good: #22c55e; --bad: #ef4444; }
     body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: radial-gradient(circle at top left, rgba(56,189,248,0.18), transparent 34%), linear-gradient(135deg, #0b1020 0%, #111827 48%, #14213d 100%); color: var(--text); min-height: 100vh; }
     main { max-width: 860px; margin: 0 auto; padding: 28px; }
-    header { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 24px; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 20px; margin-bottom: 24px; }
     h1 { font-size: 30px; margin: 0 0 6px; color: #f8fafc; }
     h2 { font-size: 15px; margin: 0 0 14px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
     .muted { color: var(--muted); }
@@ -2063,7 +2063,15 @@ EDIT_INFLUX_HTML = """<!doctype html>
     input { width: 100%; box-sizing: border-box; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 11px 12px; color: var(--text); background: rgba(2,6,23,0.42); font: inherit; }
     input:focus { outline: 2px solid rgba(56,189,248,0.34); border-color: var(--accent); }
     button, .button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(56,189,248,0.42); border-radius: 8px; padding: 10px 14px; color: #e0f2fe; background: rgba(14,116,144,0.32); font: inherit; font-weight: 800; text-decoration: none; cursor: pointer; }
-    .actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .actions { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
+    .page-picker { display: grid; gap: 4px; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .page-picker select { min-width: 132px; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 9px 30px 9px 10px; color: var(--text); background: rgba(2,6,23,0.42); font: inherit; cursor: pointer; }
+    .pill { display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(148,163,184,0.32); border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 700; background: rgba(15,23,42,0.72); }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 18px var(--bad); }
+    .ok { border-color: rgba(34,197,94,0.45); color: #bbf7d0; background: rgba(20,83,45,0.34); }
+    .warn { border-color: rgba(245,158,11,0.5); color: #fde68a; background: rgba(120,53,15,0.34); }
+    .ok .dot { background: var(--good); box-shadow: 0 0 18px var(--good); }
+    .warn .dot { background: var(--warn); box-shadow: 0 0 18px var(--warn); }
     .message { min-height: 20px; color: var(--muted); }
     .ok { color: #bbf7d0; }
     .error { color: #fecdd3; }
@@ -2087,13 +2095,16 @@ EDIT_INFLUX_HTML = """<!doctype html>
         <h1>Tailmox Identity &amp; InfluxDB Settings</h1>
         <div class="muted">Load the cluster age identity, approve host configuration, and configure monitor exports.</div>
       </div>
-      <label class="page-picker">Page
-        <select id="pagePicker" aria-label="Tailmox page">
+      <div class="actions">
+        <label class="page-picker">Page
+          <select id="pagePicker" aria-label="Tailmox page">
           <option value="id">ID</option>
           <option value="settings">Settings</option>
           <option value="./">Monitor</option>
-        </select>
-      </label>
+          </select>
+        </label>
+        <div class="pill" id="overall"><span class="dot"></span><span>Loading</span></div>
+      </div>
     </header>
     <section class="panel security-grid">
       <h2>Encryption &amp; host signing</h2>
@@ -2138,10 +2149,18 @@ EDIT_INFLUX_HTML = """<!doctype html>
     const csrfToken = "__CSRF_TOKEN__";
     const apiPrefix = window.location.pathname.startsWith("/monitor/") ? "/monitor" : (window.location.pathname.startsWith("/control/") ? "/control" : "");
     const pagePicker = document.getElementById("pagePicker");
+    const overall = document.getElementById("overall");
     const currentPage = window.location.pathname.endsWith("/id") ? "id" : window.location.pathname.endsWith("/settings") ? "settings" : "./";
     pagePicker.value = currentPage;
     pagePicker.addEventListener("change", event => {
       window.location.href = event.target.value;
+    });
+    fetch(`${apiPrefix}/api/status`, { cache: "no-store" }).then(response => response.json()).then(data => {
+      overall.className = `pill ${data.overall === "healthy" ? "ok" : "warn"}`;
+      overall.lastElementChild.textContent = data.overall === "healthy" ? "Healthy" : "Needs attention";
+    }).catch(() => {
+      overall.className = "pill warn";
+      overall.lastElementChild.textContent = "Needs attention";
     });
     const message = document.getElementById("message");
     const securityMessage = document.getElementById("securityMessage");
