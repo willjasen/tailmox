@@ -161,19 +161,7 @@ function renderLinkTopology(series, currentLinks, monitorHostname) {
   });
 
   const description = svgNode("desc", {id: "link-topology-description"}, "Current host-to-host latency measurements.");
-  const glowFilter = svgNode("filter", {id: "topology-good-glow", x: "-40%", y: "-40%", width: "180%", height: "180%"});
-  glowFilter.append(
-    svgNode("feGaussianBlur", {in: "SourceGraphic", stdDeviation: "5", result: "glow"}),
-    svgNode("feMerge", {}, ""),
-  );
-  glowFilter.lastChild.append(
-    svgNode("feMergeNode", {in: "glow"}),
-    svgNode("feMergeNode", {in: "glow"}),
-    svgNode("feMergeNode", {in: "SourceGraphic"}),
-  );
-  const definitions = svgNode("defs");
-  definitions.append(glowFilter);
-  chart.replaceChildren(svgNode("title", {id: "link-topology-title"}, "Corosync link topology"), description, definitions);
+  chart.replaceChildren(svgNode("title", {id: "link-topology-title"}, "Corosync link topology"), description);
   const nodeNames = [...nodes].sort((a, b) => a.localeCompare(b));
   if (nodeNames.length < 2) {
     chart.append(svgNode("text", {x: 450, y: 250, class: "empty", "text-anchor": "middle"}, "Waiting for host-to-host measurements…"));
@@ -208,6 +196,9 @@ function renderLinkTopology(series, currentLinks, monitorHostname) {
     const y1 = start.y + (dy / distance) * nodeRadius;
     const x2 = end.x - (dx / distance) * nodeRadius;
     const y2 = end.y - (dy / distance) * nodeRadius;
+    if (health === "good") {
+      chart.append(svgNode("line", {x1, y1, x2, y2, class: "topology-edge-glow"}));
+    }
     const line = svgNode("line", {x1, y1, x2, y2, class: `topology-edge ${health}`});
     const details = measurements.map(item => {
       const latency = Number.isFinite(item.avgMs) ? `${item.avgMs.toFixed(1)} ms` : "unavailable";

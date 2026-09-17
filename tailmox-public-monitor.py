@@ -200,7 +200,17 @@ def valid_series_name(value, prefix):
     if re.fullmatch(rf"{re.escape(prefix)} [1-9][0-9]?", value):
         return True
     parts = value.split(" → ")
-    return 1 <= len(parts) <= 2 and all(valid_public_hostname(part) for part in parts)
+    if 1 <= len(parts) <= 2 and all(valid_public_hostname(part) for part in parts):
+        return True
+    if prefix == "Link" and len(parts) == 2:
+        peer, separator, link_number = parts[1].rpartition(" link ")
+        return (
+            bool(separator)
+            and valid_public_hostname(parts[0])
+            and valid_public_hostname(peer)
+            and bool(re.fullmatch(r"[0-9]{1,3}", link_number))
+        )
+    return False
 
 
 def validate_graphs(graphs):

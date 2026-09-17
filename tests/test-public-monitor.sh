@@ -119,8 +119,8 @@ with tempfile.TemporaryDirectory() as directory:
     assert b'id="test-latency-chart"' in response["body"]
     assert b'<h1>tailmox</h1>' in response["body"]
     assert b'<h1>Tailmox Monitor</h1>' not in response["body"]
-    assert b'public-monitor.css?v=12' in response["body"]
-    assert b'public-monitor.js?v=15' in response["body"]
+    assert b'public-monitor.css?v=16' in response["body"]
+    assert b'public-monitor.js?v=16' in response["body"]
     assert b'id="link-quality-rows"' in response["body"]
     assert b'id="link-topology"' in response["body"]
     assert response["body"].index(b'id="link-topology"') < response["body"].index(b'id="mtu-chart"')
@@ -136,6 +136,9 @@ with tempfile.TemporaryDirectory() as directory:
     assert public["validate_snapshot"]({**snapshot, "unexpected": "secret"}) is False
     assert public["validate_snapshot"]({**snapshot, "generatedAt": int(time.time()) + 31}) is False
     assert public["validate_snapshot"]({**snapshot, "monitorHostname": "100.64.0.1"}) is False
+    assert public["valid_series_name"]("node-a → node-b link 0", "Link") is True
+    assert public["valid_series_name"]("node-a → 100.64.0.1 link 0", "Link") is False
+    assert public["valid_series_name"]("node-a → node-b link unsafe", "Link") is False
     snapshot_path.write_text(json.dumps({**snapshot, "unexpected": "secret"}), encoding="utf-8")
     assert request("GET", "/snapshot.json")["status"] == 503
     snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
