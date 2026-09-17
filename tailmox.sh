@@ -1239,6 +1239,7 @@ function prompt_tailscale_auth_key() {
     printf 'Tailscale auth key (input hidden): ' > "$prompt_output"
     if ! IFS= read -r -s auth_key < "$prompt_input"; then
         printf '\n' > "$prompt_output"
+        log_echo "${RED}No Tailscale auth key was received before input ended or timed out. Setup cancelled.${RESET}"
         return 1
     fi
     printf '\n' > "$prompt_output"

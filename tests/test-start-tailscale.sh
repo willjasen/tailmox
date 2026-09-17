@@ -153,6 +153,21 @@ fi
 
 MOCK_STATUS="$LOGGED_OUT_STATUS"
 TAILSCALE_UP_CALLS=""
+rm -f "$TAILMOX_AUTH_ENV_FILE"
+: > "$TAILMOX_AUTH_PROMPT_INPUT"
+: > "$TAILMOX_AUTH_PROMPT_OUTPUT"
+if AUTH_PROMPT_FAILURE_OUTPUT=$(start_tailscale "" 2>&1); then
+    fail "auth key input ending without a key cancels setup"
+elif [[ -n "$TAILSCALE_UP_CALLS" ]]; then
+    fail "auth key input ending without a key avoids Tailscale login"
+elif [[ "$AUTH_PROMPT_FAILURE_OUTPUT" != *"No Tailscale auth key was received before input ended or timed out. Setup cancelled."* ]]; then
+    fail "auth key input ending without a key explains why setup exited"
+else
+    pass "auth key input ending without a key clearly cancels setup"
+fi
+
+MOCK_STATUS="$LOGGED_OUT_STATUS"
+TAILSCALE_UP_CALLS=""
 rm -f "$TAILMOX_AUTH_ENV_FILE" "$TAILMOX_AUTH_PROMPT_INPUT"
 if ! start_tailscale "" >/dev/null 2>&1 && [[ -z "$TAILSCALE_UP_CALLS" ]]; then
     pass "logged-out device never falls back to an interactive Tailscale login link"
