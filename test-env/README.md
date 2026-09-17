@@ -19,6 +19,14 @@ The `create-vm-template.sh` script downloads the preconfigured image from an IPF
 
 Run this command as root on a Proxmox node. If `--storage` is omitted, the script chooses the first enabled, active storage that supports VM images. It validates the selected storage and bridge before creating anything.
 
+From a local Tailmox checkout, set up the image on `pve-a2` with:
+
+```bash
+./tailmox vm-image
+```
+
+This connects with the local SSH key as `root`, copies only the image helpers to a temporary directory, runs the same checked template builder, and removes the temporary files afterward. Builder options pass through unchanged, for example `./tailmox vm-image --storage local-zfs --bridge vmbr0 --clone-count 3`. Use `--host HOST` or set `TAILMOX_PVE_HOST` to target a different Proxmox host.
+
 To create the linked clones remotely through the Proxmox API, first create the template on a Proxmox node, then run:
 
 ```bash
@@ -55,6 +63,8 @@ Be sure to include the "--auth-key" parameter as well.
 ### 🤓 The Scripts 🤓
 
 `test-env/create-vm-template.sh` - creates a VM template from the downloaded image and can create local linked clones
+
+`test-env/setup-vm-image.sh` - stages and runs the template builder on `pve-a2` (or another selected Proxmox host) from a local checkout
 
 `test-env/download-template.sh` - used to download the disk image of a previously configured Proxmox host that is ready for testing with Tailmox
 
