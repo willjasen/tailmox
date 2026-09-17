@@ -1854,7 +1854,7 @@ function verify_monitor_url() {
 
     case "$response_code" in
         2??|3??|401|403)
-            log_echo "${GREEN}Verified Tailmox monitoring at $url${RESET}"
+            log_echo "${GREEN}Verified Tailmox monitoring at ${BLUE}$url${RESET}"
             return 0
             ;;
         *)
