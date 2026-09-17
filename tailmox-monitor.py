@@ -8,6 +8,7 @@ corosync health for the current node.
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import csv
+import concurrent.futures
 import datetime as dt
 import io
 import json
@@ -60,6 +61,10 @@ MTU_HISTORY_LIMIT = 120
 MTU_HISTORY = []
 MEMBER_COUNT_HISTORY_LIMIT = 120
 MEMBER_COUNT_HISTORY = []
+WEBSERVER_PORT = 8088
+WEBSERVER_CHECK_TIMEOUT_SECONDS = float(
+    os.environ.get("TAILMOX_WEBSERVER_CHECK_TIMEOUT_SECONDS", "1")
+)
 CMAP_STATS_INTERVAL_SECONDS = int(os.environ.get("TAILMOX_CMAP_STATS_INTERVAL_SECONDS", "5"))
 CMAP_STATS_THREAD_STARTED = False
 MAX_HTTP_THREADS = max(1, int(os.environ.get("TAILMOX_MONITOR_MAX_HTTP_THREADS", "32")))
@@ -755,6 +760,44 @@ def collect_configured_nodes():
     return parse_configured_nodes(nodes["stdout"]) if nodes["stdout"] else []
 
 
+def collect_webserver_health(configured_nodes):
+    def check(node):
+        host = node.get("ring0_addr")
+        result = {
+            "nodeid": node.get("nodeid"),
+            "name": node.get("name") or host or "unknown host",
+            "host": host or "",
+            "port": WEBSERVER_PORT,
+            "running": False,
+        }
+        if not host:
+            result["detail"] = "Tailmox address is missing"
+            return result
+        try:
+            connection = socket.create_connection(
+                (host, WEBSERVER_PORT), timeout=WEBSERVER_CHECK_TIMEOUT_SECONDS
+            )
+            connection.close()
+            result["running"] = True
+            result["detail"] = "accepting connections"
+        except OSError as error:
+            result["detail"] = str(error) or "connection failed"
+        return result
+
+    if not configured_nodes:
+        return {"port": WEBSERVER_PORT, "hosts": [], "offlineHosts": []}
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(len(configured_nodes), 16)
+    ) as executor:
+        hosts = list(executor.map(check, configured_nodes))
+    return {
+        "port": WEBSERVER_PORT,
+        "hosts": hosts,
+        "offlineHosts": [host for host in hosts if not host["running"]],
+    }
+
+
 def corosync_member_health(configured_nodes, corosync_members, quorum_nodes):
     members_by_nodeid = {member.get("nodeid"): member for member in corosync_members}
     quorum_by_nodeid = {node.get("nodeid"): node for node in quorum_nodes}
@@ -1237,6 +1280,7 @@ def collect_status():
     configured_nodes = collect_configured_nodes()
     member_health = corosync_member_health(configured_nodes, corosync_members, quorum_nodes)
     tailmox_state = collect_tailmox_state(configured_nodes)
+    webservers = collect_webserver_health(configured_nodes)
 
     tailscale_data = {}
     if tailscale["stdout"]:
@@ -1251,7 +1295,13 @@ def collect_status():
     corosync_active = service["stdout"] == "active"
     pve_cluster_active = pve_cluster["stdout"] == "active"
     offline_members = [member for member in member_health if not member.get("active")]
-    healthy = corosync_active and pve_cluster_active and quorate == "Yes" and not offline_members
+    healthy = (
+        corosync_active
+        and pve_cluster_active
+        and quorate == "Yes"
+        and not offline_members
+        and not webservers["offlineHosts"]
+    )
     member_count_sample = {
         "timestamp": int(time.time()),
         "memberCount": sum(1 for member in member_health if member.get("active")),
@@ -1290,6 +1340,7 @@ def collect_status():
             "highestExpected": pvecm_fields.get("highest_expected"),
         },
         "tailmox": tailmox_state,
+        "webservers": webservers,
         "tailmoxUpdate": tailmox_update_status(),
         "corosync": {
             "members": member_health,
@@ -1489,7 +1540,7 @@ HEALTH_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><met
 :root{color-scheme:dark;--line:#334155;--text:#e5e7eb;--muted:#9ca3af}body{margin:0;min-height:100vh;color:var(--text);font:16px system-ui,sans-serif;background:linear-gradient(135deg,#0b1020,#14213d)}main{max-width:760px;margin:auto;padding:clamp(24px,7vw,64px) 20px}header{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:28px}h1{margin:0 0 6px;font-size:32px}p{color:var(--muted);margin:0}.pill{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-weight:700;white-space:nowrap}.good{color:#bbf7d0;border-color:#347b51;background:#14532d55}.warn{color:#fde68a;border-color:#8a641f;background:#78350f55}.bad{color:#fecdd3;border-color:#8f3042;background:#7f1d1d55}.issues{display:grid;gap:10px}.issue,.clear{padding:17px 18px;border:1px solid var(--line);border-radius:10px;background:#111827dd}.issue{border-left:4px solid #f59e0b}.issue.bad{border-left-color:#ef4444}.issue strong{display:block;margin-bottom:4px}.clear{text-align:center;color:#bbf7d0;border-color:#347b51;background:#14532d33}a{color:#7dd3fc;display:inline-block;margin-top:24px}label{color:var(--muted);font-size:13px}select{margin-left:4px;padding:7px;border:1px solid #38bdf86b;border-radius:7px;color:#f8fafc;background:#0f172a;cursor:pointer;box-shadow:0 4px 14px #0206173d}select:hover{border-color:#38bdf8b8;background:#172033}select:focus{outline:2px solid #38bdf857;outline-offset:2px;border-color:#38bdf8}select option{color:#f8fafc;background:#0f172a;font-weight:600}select option:checked{color:#ecfeff;background:#155e75}@media(max-width:540px){header{display:block}.pill{display:inline-block;margin-top:15px}}
 </style></head><body><main><header><div><h1>Tailmox Monitor</h1><p>Cluster health at a glance</p></div><div><label>Page <select id="page"><option value="health">Health</option><option value="monitor">Monitor</option><option value="settings">Settings</option><option value="id">ID</option><option value="disable">Disable Tailmox</option></select></label><div class="pill" id="overall">Checking…</div></div></header><section><h2>Cluster health</h2><p id="updated">Checking current status…</p></section><section class="issues" id="issues"><div class="issue">Loading health checks…</div></section><a href="/">Open detailed monitor</a></main><script>
 const apiPrefix=(window.location.pathname==="/monitor/health"||window.location.pathname.startsWith("/monitor/"))?"/monitor":"";document.querySelector("a").href=`${apiPrefix}/`;document.getElementById("page").addEventListener("change",event=>{const target=event.target.value;window.location.href=target==="health"?`${apiPrefix}/health`:target==="monitor"?`${apiPrefix}/`:`${apiPrefix}/${target}`});const issues=document.getElementById("issues"),overall=document.getElementById("overall"),add=(title,detail,bad=false)=>{const item=document.createElement("div");item.className=`issue ${bad?"bad":""}`;item.innerHTML=`<strong>${title}</strong><span>${detail}</span>`;issues.append(item)};
-async function load(){try{const [sr,lr]=await Promise.all([fetch(`${apiPrefix}/api/status`,{cache:"no-store"}),fetch(`${apiPrefix}/api/link-quality`,{cache:"no-store"})]),data=await sr.json(),links=await lr.json();if(!sr.ok)throw Error(data.error||"Unable to read cluster status.");issues.replaceChildren();if(!data.services?.corosync?.active)add("Corosync is offline","The cluster communication service is not active.",true);if(!data.services?.pveCluster?.active)add("Proxmox cluster service is offline","The pve-cluster service is not active.",true);const offline=data.corosync?.offlineMembers||[];if(offline.length)add(`${offline.length} host${offline.length===1?" is":"s are"} offline`,offline.map(m=>m.name||m.ip||`node ${m.nodeid}`).join(", "),data.cluster?.quorate!=="Yes");if(data.cluster?.quorate!=="Yes")add("Cluster has no quorum","Cluster operations may be unsafe until quorum is restored.",true);for(const link of(links.links||[])){const peer=link.hostname||link.ip||"peer";if(link.quality==="loss")add(`Packet loss to ${peer}`,`${link.packetLossPercent??"unknown"}% packet loss.`);else if(link.quality==="jittery")add(`High jitter to ${peer}`,`${(link.jitterMs??0).toFixed(1)} ms jitter.`);else if(link.quality==="slow")add(`High latency to ${peer}`,`${(link.avgMs??0).toFixed(1)} ms average latency.`);else if(link.quality==="unknown")add(`Link quality unavailable for ${peer}`,"The peer could not be measured.",true)}if(!issues.children.length){const item=document.createElement("div");item.className="clear";item.textContent="No problems detected";issues.append(item)}const attention=issues.querySelector(".issue");overall.textContent=attention?"Needs attention":"Healthy";overall.className=`pill ${attention?(attention.classList.contains("bad")?"bad":"warn"):"good"}`;document.getElementById("updated").textContent=`${data.hostname||"Host"} · updated ${new Date(data.generatedAt*1000).toLocaleString()}`}catch(error){issues.replaceChildren();add("Health check unavailable",error.message,true);overall.textContent="Unavailable";overall.className="pill bad"}}load();setInterval(load,30000);
+async function load(){try{const [sr,lr]=await Promise.all([fetch(`${apiPrefix}/api/status`,{cache:"no-store"}),fetch(`${apiPrefix}/api/link-quality`,{cache:"no-store"})]),data=await sr.json(),links=await lr.json();if(!sr.ok)throw Error(data.error||"Unable to read cluster status.");issues.replaceChildren();if(!data.services?.corosync?.active)add("Corosync is offline","The cluster communication service is not active.",true);if(!data.services?.pveCluster?.active)add("Proxmox cluster service is offline","The pve-cluster service is not active.",true);const offline=data.corosync?.offlineMembers||[];if(offline.length)add(`${offline.length} host${offline.length===1?" is":"s are"} offline`,offline.map(m=>m.name||m.ip||`node ${m.nodeid}`).join(", "),data.cluster?.quorate!=="Yes");const missingWebservers=data.webservers?.offlineHosts||[];if(missingWebservers.length)add(`${missingWebservers.length} host${missingWebservers.length===1?" is":"s are"} not running the port ${data.webservers?.port||8088} webserver`,missingWebservers.map(host=>host.name||host.host||`node ${host.nodeid}`).join(", "),true);if(data.cluster?.quorate!=="Yes")add("Cluster has no quorum","Cluster operations may be unsafe until quorum is restored.",true);for(const link of(links.links||[])){const peer=link.hostname||link.ip||"peer";if(link.quality==="loss")add(`Packet loss to ${peer}`,`${link.packetLossPercent??"unknown"}% packet loss.`);else if(link.quality==="jittery")add(`High jitter to ${peer}`,`${(link.jitterMs??0).toFixed(1)} ms jitter.`);else if(link.quality==="slow")add(`High latency to ${peer}`,`${(link.avgMs??0).toFixed(1)} ms average latency.`);else if(link.quality==="unknown")add(`Link quality unavailable for ${peer}`,"The peer could not be measured.",true)}if(!issues.children.length){const item=document.createElement("div");item.className="clear";item.textContent="No problems detected";issues.append(item)}const attention=issues.querySelector(".issue");overall.textContent=attention?"Needs attention":"Healthy";overall.className=`pill ${attention?(attention.classList.contains("bad")?"bad":"warn"):"good"}`;document.getElementById("updated").textContent=`${data.hostname||"Host"} · updated ${new Date(data.generatedAt*1000).toLocaleString()}`}catch(error){issues.replaceChildren();add("Health check unavailable",error.message,true);overall.textContent="Unavailable";overall.className="pill bad"}}load();setInterval(load,30000);
 </script></body></html>
 """
 
