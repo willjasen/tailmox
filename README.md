@@ -121,11 +121,50 @@ then submit.
 
 ### ⚒️ Installation ⚒️
 
-1. Change to the /opt directory: `cd /opt`
-2. Pull this repo: `git clone https://github.com/willjasen/tailmox`
-2. Change into the install directory: `cd tailmox`
-3. Make sure that the script is executable: `chmod +x tailmox.sh`
-4. Run the script: `./tailmox.sh`
+On each Proxmox VE 8 or 9 host, run as `root`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/willjasen/tailmox/dev/install.sh | bash
+```
+
+The installer verifies the Proxmox version, downloads the current `dev` branch
+into `/opt/tailmox`, and adds the `tailmox` command at `/usr/local/bin/tailmox`.
+It then runs the staging workflow, which installs or connects Tailscale and
+starts and publishes the Tailmox monitor service. At the end it prints the
+monitor links on HTTPS port `8088`.
+
+If the host is not signed in to Tailscale, the staging workflow prints a login
+link. An auth key can instead be supplied to the one-liner:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/willjasen/tailmox/dev/install.sh | bash -s -- --auth-key YOUR_KEY
+```
+
+The installer also requires each host to have an age identity. It prompts to
+create the post-quantum cluster identity on the first host, or to privately
+import that same identity on another host. Back up the identity shown by the
+first host; private identities and auth keys are not logged by the installer.
+If the Proxmox cluster security registry already contains a public age
+recipient, the installer displays that recipient and its fingerprint and only
+offers to import the matching private identity, preventing a conflicting
+identity from being created.
+
+Run the same one-liner again to update an existing Tailmox installation. The
+updater replaces only a recognized Tailmox install and refuses to proceed over
+local Git changes or an unrelated command or directory. Each run refreshes the
+Tailscale Serve and monitor staging configuration, but does not create or join
+a Proxmox cluster.
+
+After every host is staged and has the same cluster identity, start clustering
+explicitly:
+
+```sh
+tailmox cluster
+```
+
+To inspect the installer before running it, download
+[`install.sh`](https://raw.githubusercontent.com/willjasen/tailmox/dev/install.sh)
+and review it locally first.
 
 ---
 
