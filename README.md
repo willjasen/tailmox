@@ -117,7 +117,7 @@ Under the "Advertised" section, click "Define Service". Then fill in the followi
 
 then submit.
 
-For a separate development cluster, set a distinct service label on every host before running the installer or Tailmox command. For example, `TAILMOX_TAILSCALE_SERVICE_NAME=dev-tailmox` publishes the shared monitor at `https://dev-tailmox.MAGICDNS_NAME.ts.net/` and advertises `svc:dev-tailmox`, avoiding the production `svc:tailmox` service.
+For a separate development cluster, set a distinct service label on every host before running the installer or Tailmox command. For example, `TAILMOX_TAILSCALE_SERVICE_NAME=dev-tailmox` publishes the shared monitor at `https://dev-tailmox.MAGICDNS_NAME.ts.net/` and advertises `svc:dev-tailmox`, avoiding the production `svc:tailmox` service. Setup prints the complete node and shared-service URLs and verifies that both respond before it finishes.
 
 ---
 

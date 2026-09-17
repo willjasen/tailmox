@@ -1822,8 +1822,31 @@ function get_pve_certificate_fingerprint() {
 }
 
 # Install and publish the Tailmox monitoring interface
+function verify_monitor_url() {
+    local url="$1"
+    local timeout_seconds="${TAILMOX_MONITOR_CHECK_TIMEOUT_SECONDS:-10}"
+
+    if [[ ! "$timeout_seconds" =~ ^[1-9][0-9]*$ ]]; then
+        log_echo "${RED}TAILMOX_MONITOR_CHECK_TIMEOUT_SECONDS must be a positive integer.${RESET}"
+        return 1
+    fi
+
+    if ! curl --fail --silent --show-error \
+        --connect-timeout "$timeout_seconds" --max-time "$timeout_seconds" \
+        --retry 5 --retry-delay 1 --retry-all-errors \
+        --output /dev/null "$url"; then
+        log_echo "${RED}Tailmox monitoring is not available at $url${RESET}"
+        return 1
+    fi
+
+    log_echo "${GREEN}Verified Tailmox monitoring at $url${RESET}"
+}
+
 function setup_monitoring_interface() {
     local script_dir=$(dirname "$(realpath "$0")")
+    local magicdns_domain
+    local node_monitor_url
+    local service_monitor_url
 
     if [[ ! -f "$script_dir/tailmox-monitor.py" || ! -f "$script_dir/tailmox-monitor.service" ]]; then
         log_echo "${YELLOW}Tailmox monitoring files were not found. Skipping monitoring interface setup.${RESET}"
@@ -1843,11 +1866,22 @@ function setup_monitoring_interface() {
         return 1
     fi
 
+    magicdns_domain="${TAILSCALE_DNS_NAME#*.}"
+    if [[ -z "${TAILSCALE_DNS_NAME:-}" || "$magicdns_domain" == "$TAILSCALE_DNS_NAME" ]]; then
+        log_echo "${RED}Unable to determine the Tailscale MagicDNS domain for the monitoring URLs.${RESET}"
+        return 1
+    fi
+    node_monitor_url="https://${TAILSCALE_DNS_NAME}:8088/monitor"
+    service_monitor_url="https://${TAILMOX_TAILSCALE_SERVICE_NAME}.${magicdns_domain}/"
+
     configure_tailscale_serve --bg --https=8088 --set-path=/monitor localhost:8088 || return 1
-    log_echo "${GREEN}Tailmox monitoring is available at /monitor on this node's Tailscale URL.${RESET}"
+    log_echo "${GREEN}Tailmox monitoring is available at ${BLUE}${node_monitor_url}${GREEN}.${RESET}"
 
     configure_tailscale_serve "--service=svc:${TAILMOX_TAILSCALE_SERVICE_NAME}" --bg --https=443 localhost:8088 || return 1
-    log_echo "${GREEN}Tailmox monitoring is available at the ${TAILMOX_TAILSCALE_SERVICE_NAME} Tailscale service URL.${RESET}"
+    log_echo "${GREEN}Tailmox monitoring is available at ${BLUE}${service_monitor_url}${GREEN}.${RESET}"
+
+    verify_monitor_url "$node_monitor_url" || return 1
+    verify_monitor_url "$service_monitor_url" || return 1
 }
 
 # Create a new Proxmox cluster named "tailmox"
