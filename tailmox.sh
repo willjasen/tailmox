@@ -1562,21 +1562,31 @@ function check_remote_node_cluster_status_via_api() {
     local node_hostname=$1
     local username=${2:-"root@pam"}  # Default to root@pam if not provided
     local password=$3
+    local auth_response
+    local ticket
+    local csrf_token
+    local cluster_response
+    local cluster_data
+    local cluster_name
     
     log_echo "${YELLOW}Checking if remote node $node_hostname is part of a Proxmox cluster via API...${RESET}"
     
     # First, authenticate and get a ticket
-    local auth_response=$(curl -k -s -d "username=$username&password=$password" \
-        "https://$node_hostname:8006/api2/json/access/ticket" 2>/dev/null)
-    
-    if [ $? -ne 0 ] || [ -z "$auth_response" ]; then
+    if ! auth_response=$(curl -k -s \
+        --data-urlencode "username=$username" \
+        --data-urlencode "password=$password" \
+        "https://$node_hostname:8006/api2/json/access/ticket" 2>/dev/null); then
+        log_echo "${RED}Failed to connect to Proxmox API on $node_hostname${RESET}"
+        return 1
+    fi
+    if [[ -z "$auth_response" ]]; then
         log_echo "${RED}Failed to connect to Proxmox API on $node_hostname${RESET}"
         return 1
     fi
     
     # Extract ticket and CSRFPreventionToken
-    local ticket=$(echo "$auth_response" | jq -r '.data.ticket // empty')
-    local csrf_token=$(echo "$auth_response" | jq -r '.data.CSRFPreventionToken // empty')
+    ticket=$(echo "$auth_response" | jq -r '.data.ticket // empty')
+    csrf_token=$(echo "$auth_response" | jq -r '.data.CSRFPreventionToken // empty')
     
     if [ -z "$ticket" ] || [ "$ticket" == "null" ]; then
         log_echo "${RED}Authentication failed for $node_hostname. Check credentials.${RESET}"
@@ -1584,25 +1594,27 @@ function check_remote_node_cluster_status_via_api() {
     fi
     
     # Get cluster status using the API
-    local cluster_response=$(curl -k -s \
+    if ! cluster_response=$(curl -k -s \
         -H "Cookie: PVEAuthCookie=$ticket" \
         -H "CSRFPreventionToken: $csrf_token" \
-        "https://$node_hostname:8006/api2/json/cluster/status" 2>/dev/null)
-    
-    if [ $? -ne 0 ] || [ -z "$cluster_response" ]; then
+        "https://$node_hostname:8006/api2/json/cluster/status" 2>/dev/null); then
+        log_echo "${RED}Failed to get cluster status from $node_hostname API${RESET}"
+        return 1
+    fi
+    if [[ -z "$cluster_response" ]]; then
         log_echo "${RED}Failed to get cluster status from $node_hostname API${RESET}"
         return 1
     fi
     
     # Check if the response indicates a cluster exists
-    local cluster_data=$(echo "$cluster_response" | jq -r '.data // empty')
+    cluster_data=$(echo "$cluster_response" | jq -r '.data // empty')
     
     if [ -z "$cluster_data" ] || [ "$cluster_data" == "null" ] || [ "$cluster_data" == "[]" ]; then
         log_echo "${BLUE}Remote node $node_hostname is not part of any cluster.${RESET}"
         return 1
     else
         # Extract cluster name from the first cluster entry
-        local cluster_name=$(echo "$cluster_response" | jq -r '.data[] | select(.type == "cluster") | .name // empty' | head -1)
+        cluster_name=$(echo "$cluster_response" | jq -r '.data[] | select(.type == "cluster") | .name // empty' | head -1)
         if [ -n "$cluster_name" ] && [ "$cluster_name" != "null" ]; then
             log_echo "${GREEN}Remote node $node_hostname is part of cluster named: $cluster_name${RESET}"
             return 0
@@ -1611,6 +1623,43 @@ function check_remote_node_cluster_status_via_api() {
             return 1
         fi
     fi
+}
+
+# Run pvecm without interpolating the password into Tcl source or exposing it in
+# the Expect process arguments or environment. Expect reads the literal value
+# from standard input before interacting with the spawned command's pseudo-TTY.
+function join_remote_proxmox_cluster() {
+    local node_hostname=$1
+    local local_tailscale_ip=$2
+    local fingerprint=$3
+    local password=$4
+
+    printf '%s' "$password" | expect -c '
+        set timeout 60
+        set tailmox_password [read stdin]
+        spawn pvecm add [lindex $argv 0] --link0 address=[lindex $argv 1] --fingerprint [lindex $argv 2]
+        expect {
+            "*?assword:*" {
+                send -- "$tailmox_password\r"
+                exp_continue
+            }
+            "*?assword for*" {
+                send -- "$tailmox_password\r"
+                exp_continue
+            }
+            "*authentication failure*" {
+                puts "Authentication failed. Please check your password."
+                exit 1
+            }
+            timeout {
+                puts "Command timed out."
+                exit 1
+            }
+            eof
+        }
+        catch wait result
+        exit [lindex $result 3]
+    ' "$node_hostname" "$local_tailscale_ip" "$fingerprint"
 }
 
 # Get the certificate fingerprint for a Proxmox node
@@ -1713,32 +1762,11 @@ function add_local_node_to_cluster() {
 
                 log_echo "${GREEN}Found an existing cluster on $TARGET_HOSTNAME. Joining the cluster...${RESET}"
 
-                 # Use expect to handle the password prompt with proper authentication
-                expect -c "
-                set timeout 60
-                spawn pvecm add \"$TARGET_HOSTNAME.$MAGICDNS_DOMAIN_NAME\" --link0 address=$LOCAL_TAILSCALE_IP --fingerprint $target_fingerprint
-                expect {
-                    \"*?assword:*\" {
-                        send \"$ROOT_PASSWORD\r\"
-                        exp_continue
-                    }
-                    \"*?assword for*\" {
-                        send \"$ROOT_PASSWORD\r\"
-                        exp_continue
-                    }
-                    \"*authentication failure*\" {
-                        puts \"Authentication failed. Please check your password.\"
-                        exit 1
-                    }
-                    timeout {
-                        puts \"Command timed out.\"
-                        exit 1
-                    }
-                    eof
-                }
-                catch wait result
-                exit [lindex \$result 3]
-                "
+                join_remote_proxmox_cluster \
+                    "$TARGET_HOSTNAME.$MAGICDNS_DOMAIN_NAME" \
+                    "$LOCAL_TAILSCALE_IP" \
+                    "$target_fingerprint" \
+                    "$ROOT_PASSWORD"
                 
                 # Check if successful
                 if [ $? -eq 0 ]; then
