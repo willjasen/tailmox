@@ -1900,13 +1900,10 @@ function setup_monitoring_interface() {
     service_monitor_url="https://${TAILMOX_TAILSCALE_SERVICE_NAME}.${magicdns_domain}/"
 
     configure_tailscale_serve --bg --https=8088 --set-path=/monitor localhost:8088 || return 1
-    log_echo "${GREEN}Tailmox monitoring is available at ${BLUE}${node_monitor_url}${GREEN}.${RESET}"
-
     configure_tailscale_serve "--service=svc:${TAILMOX_TAILSCALE_SERVICE_NAME}" --bg --https=443 localhost:8088 || return 1
-    log_echo "${GREEN}Tailmox monitoring is available at ${BLUE}${service_monitor_url}${GREEN}.${RESET}"
 
     verify_monitor_url "$node_monitor_url" || return 1
-    log_echo "${GREEN}Tailmox service monitor is available at ${BLUE}${service_monitor_url}${GREEN}.${RESET}"
+    log_echo "${GREEN}verified tailmox web is available${RESET}"
 }
 
 # Create a new Proxmox cluster named "tailmox"

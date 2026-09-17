@@ -101,4 +101,9 @@ grep -Fq 'verify_monitor_url "$node_monitor_url" || return 1' "$INSTALLER" || {
     exit 1
 }
 
+grep -Fq 'verified tailmox web is available' "$INSTALLER" || {
+    printf 'FAIL: final monitor status message did not use the requested short wording\n'
+    exit 1
+}
+
 printf 'PASS: monitor routes print and verify their full Tailscale URLs\n'
