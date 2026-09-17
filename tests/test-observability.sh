@@ -41,6 +41,23 @@ assert "PASS pve-a1: monitor and exporter active, enabled, and reachable" in out
 assert "PASS Influx link mesh: all 6 directed pairs present" in output.getvalue()
 assert "RESULT: observability audit passed" in output.getvalue()
 
+host_calls = []
+def passing_host_command(host, arguments):
+    host_calls.append((host, arguments))
+    if arguments[:2] == ["systemctl", "is-active"]:
+        return {"ok": True, "stdout": "active", "detail": ""}
+    if arguments[:2] == ["systemctl", "is-enabled"]:
+        return {"ok": True, "stdout": "enabled", "detail": ""}
+    return {"ok": True, "stdout": "", "detail": ""}
+
+globals_["host_command"] = passing_host_command
+checks = module["check_host"]("pve-a2")
+assert all(checks.values()), checks
+assert any(
+    arguments[-1] == "http://127.0.0.1:8088/health"
+    for _, arguments in host_calls
+), host_calls
+
 def failing_host_check(host):
     checks = dict(all_checks)
     if host == "pve-a1":

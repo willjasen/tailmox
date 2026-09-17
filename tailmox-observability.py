@@ -83,11 +83,14 @@ def check_host(host):
         enabled = host_command(host, ["systemctl", "is-enabled", service])
         checks[f"{label}_active"] = active["ok"] and active["stdout"] == "active"
         checks[f"{label}_enabled"] = enabled["ok"] and enabled["stdout"] == "enabled"
-    try:
-        with socket.create_connection((host, 8088), timeout=4):
-            checks["monitor_port"] = True
-    except OSError:
-        checks["monitor_port"] = False
+    health = host_command(
+        host,
+        [
+            "curl", "--fail", "--silent", "--show-error", "--max-time", "4",
+            "http://127.0.0.1:8088/health",
+        ],
+    )
+    checks["monitor_port"] = health["ok"]
     return checks
 
 
