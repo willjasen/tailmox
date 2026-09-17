@@ -273,6 +273,14 @@ reporting Tailmox host. Legends identify the source host, and path-specific
 graphs label both ends (for example, `pve3 → pve4`) so the load-balanced service
 shows the same cluster-wide history regardless of which host serves the page.
 
+Run `tailmox test observability` from a cluster host for a read-only end-to-end
+audit. It verifies that every configured node has active and enabled monitor
+and Influx exporter services, that port `8088` is reachable, that required
+ICMP, TCP, Corosync cmap, and link-quality measurements are fresh in InfluxDB,
+and that every directed host-to-host link is represented. Any missing, stale,
+unexpected, disabled, or unreachable component makes the command return
+nonzero.
+
 The monitor page is display-only: it refreshes status, tables, graphs, and logs
 automatically and contains no navigation links or operational controls.
 

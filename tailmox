@@ -260,7 +260,7 @@ show_usage() {
  "  tailmox ${blue}backups${reset} [list]     List Tailmox configuration backups" \
  "      ${blue}create${reset}                   Create a configuration backup now" \
  "  tailmox ${blue}check${reset}              Run the read-only network health check" \
- "  tailmox ${blue}test${reset}               Run the regression test suite" \
+ "  tailmox ${blue}test${reset} [observability] Run tests or audit live observability" \
  "  tailmox ${blue}monitor${reset} [subcommand] Manage the live Corosync web monitor" \
  "      ${blue}install${reset}                  Install and start the web monitor service" \
  "      ${blue}restart${reset}                  Restart the web monitor service" \
@@ -468,11 +468,31 @@ case "${1:-}" in
         shift
         exec "$TAILMOX_ROOT/test-env/setup-vm-image.sh" "$@"
         ;;
-    test|self-test)
-        command_name="${1:-test}"
+    test)
+        shift
+        case "${1:-}" in
+            "")
+                run_self_tests
+                ;;
+            observability)
+                shift
+                if [[ "$#" -ne 0 ]]; then
+                    printf 'tailmox test observability does not accept arguments.\n' >&2
+                    exit 2
+                fi
+                exec /usr/bin/python3 "$TAILMOX_ROOT/tailmox-observability.py"
+                ;;
+            *)
+                printf 'Unknown test: %s\n' "$1" >&2
+                printf 'Usage: tailmox test [observability]\n' >&2
+                exit 2
+                ;;
+        esac
+        ;;
+    self-test)
         shift
         if [[ "$#" -ne 0 ]]; then
-            printf 'tailmox %s does not accept arguments.\n' "$command_name" >&2
+            printf 'tailmox self-test does not accept arguments.\n' >&2
             exit 2
         fi
         run_self_tests
