@@ -27,6 +27,8 @@ From a local Tailmox checkout, set up the image on `pve-a2` with:
 
 This connects with the local SSH key as `root`, copies only the image helpers to a temporary directory, runs the same checked template builder, and removes the temporary files afterward. Builder options pass through unchanged, for example `./tailmox vm-image --storage local-zfs --bridge vmbr0 --clone-count 3`. Use `--host HOST` or set `TAILMOX_PVE_HOST` to target a different Proxmox host.
 
+Use `--vmid 50000 --clone-vmid-start 50001` when a deployment requires an exact sequential template and clone ID range. The helper validates every requested ID before creating the template.
+
 To create the linked clones remotely through the Proxmox API, first create the template on a Proxmox node, then run:
 
 ```bash

@@ -23,6 +23,7 @@ Options:
   --onboot 0|1       Start clones when the host boots (default: 0)
   --clone-count N    Create N linked clones after the template (default: 0)
   --clone-prefix P   Clone name prefix (default: tailmox)
+  --clone-vmid-start ID  First clone VM ID (default: next available ID)
   --help              Show this help
 
 Examples:
@@ -83,6 +84,7 @@ CPU_TYPE="host"
 ONBOOT="0"
 CLONE_COUNT="0"
 CLONE_PREFIX="tailmox"
+CLONE_VMID_START=""
 SNAPSHOT_NAME="ready-for-testing"
 
 while [[ $# -gt 0 ]]; do
@@ -142,6 +144,11 @@ while [[ $# -gt 0 ]]; do
       CLONE_PREFIX="$2"
       shift 2
       ;;
+    --clone-vmid-start)
+      [[ $# -ge 2 ]] || die "--clone-vmid-start requires a value"
+      CLONE_VMID_START="$2"
+      shift 2
+      ;;
     --help|-h)
       usage
       exit 0
@@ -180,6 +187,9 @@ require_positive_integer "--cores" "$CORES"
 require_nonnegative_integer "--clone-count" "$CLONE_COUNT"
 if [[ -n "$VMID" ]]; then
   require_positive_integer "--vmid" "$VMID"
+fi
+if [[ -n "$CLONE_VMID_START" ]]; then
+  require_positive_integer "--clone-vmid-start" "$CLONE_VMID_START"
 fi
 
 if [[ -z "$TEMPLATE" ]]; then
@@ -234,6 +244,14 @@ for ((index = 1; index <= CLONE_COUNT; index++)); do
     die "Planned clone name '$CLONE_NAME' conflicts with the template name"
   if vm_name_exists "$CLONE_NAME"; then
     die "A VM named '$CLONE_NAME' already exists"
+  fi
+  if [[ -n "$CLONE_VMID_START" ]]; then
+    CLONE_VMID=$((CLONE_VMID_START + index - 1))
+    [[ "$CLONE_VMID" != "$VMID" ]] ||
+      die "Planned clone VM ID $CLONE_VMID conflicts with the template VM ID"
+    if qm status "$CLONE_VMID" >/dev/null 2>&1; then
+      die "Planned clone VM ID $CLONE_VMID already exists"
+    fi
   fi
 done
 
@@ -292,7 +310,11 @@ fi
 echo "Creating $CLONE_COUNT linked clone(s)..."
 for ((index = 1; index <= CLONE_COUNT; index++)); do
   CLONE_NAME="${CLONE_PREFIX}${index}"
-  CLONE_VMID=$(pvesh get /cluster/nextid)
+  if [[ -n "$CLONE_VMID_START" ]]; then
+    CLONE_VMID=$((CLONE_VMID_START + index - 1))
+  else
+    CLONE_VMID=$(pvesh get /cluster/nextid)
+  fi
   require_positive_integer "Next clone VM ID" "$CLONE_VMID"
 
   qm clone "$VMID" "$CLONE_VMID" \
