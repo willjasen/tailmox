@@ -1,0 +1,45 @@
+[Unit]
+Description=Tailmox unprivileged public status page
+After=network-online.target tailmox-monitor.service
+Wants=network-online.target
+Requires=tailmox-monitor.service
+
+[Service]
+Type=simple
+User=tailmox-public
+Group=tailmox-public
+Environment=TAILMOX_PUBLIC_HOST=127.0.0.1
+Environment=TAILMOX_PUBLIC_PORT=8089
+Environment=TAILMOX_PUBLIC_ALLOWED_HOSTS=tailmox.com,localhost,127.0.0.1
+Environment=TAILMOX_PUBLIC_SNAPSHOT_FILE=/run/tailmox-public-monitor/status.json
+EnvironmentFile=-/etc/tailmox/public-monitor.env
+ExecStart=/usr/bin/python3 @TAILMOX_DIR@/tailmox-public-monitor.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectProc=invisible
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+UMask=0077
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target

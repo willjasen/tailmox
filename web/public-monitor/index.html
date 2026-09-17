@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>tailmox</title>
+  <link rel="stylesheet" href="/public-monitor.css?v=9">
+  <script src="/public-monitor.js?v=8" defer></script>
+  <!-- __GOOGLE_ANALYTICS__ -->
+</head>
+<body>
+  <main>
+    <header>
+      <div><p class="eyebrow">PUBLIC DEMO</p><div class="title-row"><h1>tailmox</h1><a class="github-link" href="https://github.com/willjasen/tailmox" target="_blank" rel="noopener noreferrer" aria-label="View tailmox on GitHub" title="View tailmox on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .7a11.5 11.5 0 0 0-3.64 22.41c.58.11.79-.25.79-.56v-2.23c-3.22.7-3.9-1.37-3.9-1.37-.52-1.34-1.29-1.69-1.29-1.69-1.05-.72.08-.71.08-.71 1.17.08 1.78 1.2 1.78 1.2 1.04 1.78 2.72 1.27 3.38.97.1-.75.4-1.27.74-1.56-2.57-.29-5.27-1.28-5.27-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.47.11-3.05 0 0 .97-.31 3.16 1.18a10.9 10.9 0 0 1 5.76 0c2.2-1.49 3.16-1.18 3.16-1.18.63 1.58.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.71 5.38-5.29 5.67.42.36.79 1.07.79 2.16v3.23c0 .31.21.68.8.56A11.5 11.5 0 0 0 12 .7Z"/></svg></a></div><p>Live cluster health</p></div>
+      <div id="overall" class="pill pending"><span class="dot"></span><span>Loading</span></div>
+    </header>
+    <p id="updated" class="updated" role="status">Loading the latest sanitized snapshot…</p>
+    <section class="grid" aria-label="Cluster status">
+      <article><h2>Corosync</h2><strong id="corosync">…</strong><span>Cluster messaging</span></article>
+      <article><h2>Quorum</h2><strong id="quorum">…</strong><span>Safe consensus state</span></article>
+      <article><h2>Members</h2><strong id="members">…</strong><span id="members-detail">Active cluster nodes</span></article>
+      <article><h2>Peer links</h2><strong id="links">…</strong><span id="links-detail">Sanitized network health</span></article>
+      <article><h2>Web monitors</h2><strong id="web">…</strong><span>Internal health checks</span></article>
+      <article><h2>Tailscale</h2><strong id="tailscale">…</strong><span>Private network plane</span></article>
+    </section>
+    <section class="charts" aria-label="Cluster graph history">
+      <figure>
+        <h2>Global MTU by Host (last hour)</h2>
+        <svg id="mtu-chart" viewBox="0 0 900 220" role="img" aria-label="Global MTU by host over the last hour"></svg>
+        <figcaption id="mtu-caption">Collecting history…</figcaption>
+        <div class="legend" id="mtu-legend"></div>
+      </figure>
+      <figure>
+        <h2>Cluster Members by Host (last hour)</h2>
+        <svg id="members-chart" viewBox="0 0 900 220" role="img" aria-label="Cluster members by host over the last hour"></svg>
+        <figcaption id="members-caption">Collecting history…</figcaption>
+        <div class="legend" id="members-legend"></div>
+      </figure>
+      <figure>
+        <h2>Link Quality (last hour)</h2>
+        <svg id="link-quality-chart" viewBox="0 0 900 220" role="img" aria-label="Peer link latency over the last hour"></svg>
+        <figcaption id="link-quality-caption">Collecting history…</figcaption>
+        <div class="legend" id="link-quality-legend"></div>
+      </figure>
+      <figure>
+        <h2>Corosync Knet Latency and Jitter (last hour, microseconds)</h2>
+        <svg id="cmap-latency-chart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet latency over the last hour"></svg>
+        <figcaption id="cmap-latency-caption">Collecting history…</figcaption>
+        <div class="legend" id="cmap-latency-legend"></div>
+      </figure>
+      <figure>
+        <h2>Corosync Knet Packets and Errors (last hour, count/min)</h2>
+        <svg id="cmap-packets-chart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet packet activity over the last hour"></svg>
+        <figcaption id="cmap-packets-caption">Collecting history…</figcaption>
+        <div class="legend" id="cmap-packets-legend"></div>
+      </figure>
+      <figure>
+        <h2>Tailmox Test Latency (last hour)</h2>
+        <svg id="test-latency-chart" viewBox="0 0 900 220" role="img" aria-label="Tailmox test latency over the last hour"></svg>
+        <figcaption id="test-latency-caption">Collecting history…</figcaption>
+        <div class="legend" id="test-latency-legend"></div>
+      </figure>
+    </section>
+    <section class="link-quality-panel" aria-labelledby="link-quality-heading">
+      <h2 id="link-quality-heading">Corosync Link Quality</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Hostname</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead>
+          <tbody id="link-quality-rows"><tr><td colspan="8">Loading link measurements…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+    <aside><strong>Public data boundary</strong><p>This public view includes graph history and hostnames. Cluster names, logs, configuration, credentials, raw command output, and administrative controls never enter the public service.</p></aside>
+  </main>
+</body>
+</html>

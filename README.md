@@ -265,15 +265,45 @@ reporting Tailmox host. Legends identify the source host, and path-specific
 graphs label both ends (for example, `pve3 → pve4`) so the load-balanced service
 shows the same cluster-wide history regardless of which host serves the page.
 
-The same page is also the Tailmox control console. A signed-in Tailscale user
-can run `tailmox stage`, install, restart, or uninstall `tailmox analytics`, run
-the local test suite, and create a root-only configuration backup. Only one
-workflow runs at a time and its output opens in a pop-up dialog. Close it with
-Close or Escape, and reopen it with View workflow output. Closing the dialog
-does not stop the workflow. A Tailscale auth
-key entered for staging is passed through a private process environment, is
-cleared from the browser field immediately, and is never placed in command
-arguments or saved in the clustered configuration.
+The monitor page is display-only: it refreshes status, tables, graphs, and logs
+automatically and contains no navigation links or operational controls.
+
+Do not publish port `8088` through an Internet-facing reverse proxy. Tailscale
+Serve supplies identity headers to that privileged service, and those headers
+are only trustworthy inside the Serve boundary. Tailmox also rejects requests
+carrying Cloudflare proxy headers before checking Tailscale identity.
+
+For a public working example, use `tailmox-public-monitor.service` on localhost
+port `8089`. The root monitor writes a fixed, sanitized snapshot under
+`/run/tailmox-public-monitor/`; the public service runs as the unprivileged
+`tailmox-public` user and can only read that snapshot and static assets. It has
+no administrative routes, accepts only `GET` and `HEAD`, validates the HTTP
+host, and sends restrictive browser security headers. The public page mirrors
+the private monitor's six one-hour graphs, but the export schema only permits
+their timestamps, numeric measurements, health booleans, and display labels.
+Those labels intentionally expose the hostnames and Tailscale addresses shown
+by the private graphs. Cluster names, logs, configuration, credentials, and raw
+command output never enter the public snapshot. Point Cloudflare Tunnel at
+`http://localhost:8089`, never `8088`.
+
+The public service's systemd unit applies a capability-free sandbox and permits
+only loopback network traffic. Create its system account with a non-login shell,
+install the unit after replacing `@TAILMOX_DIR@` with the installation path,
+and install `tailmox-public-monitor-export.conf` as the private monitor's
+`public-snapshot.conf` systemd drop-in. Enable both pieces only on the host
+intentionally serving the public demo. At
+Cloudflare, also enforce HTTPS, block methods other than `GET` and `HEAD`, rate
+limit the hostname, and enable managed WAF and bot protections. These edge
+controls are defense in depth; the origin remains safe if they are misconfigured
+because port `8089` contains no privileged handler.
+
+To enable Google Analytics 4 for the public page, create the root-owned file
+`/etc/tailmox/public-monitor.env` with mode `0600` and set the site's measurement
+ID, for example `TAILMOX_GA_MEASUREMENT_ID=G-ABC123`. Restart
+`tailmox-public-monitor.service` after changing it. Analytics is disabled when
+the setting is absent. The service validates the ID and only relaxes its Content
+Security Policy for Google Analytics while analytics is enabled; the private
+Tailmox console is unaffected.
 
 InfluxDB credentials are configured only from the monitor UI at
 `/monitor/editInfluxDB`. On the first host, create the dedicated Tailmox age
