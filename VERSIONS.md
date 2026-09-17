@@ -1,5 +1,9 @@
 # VERSIONS.md
 
+### v2.1.0 (beta)
+
+I thin I'm going to to release as v2.1.0 when ready, instead of v3.0.0
+
 ### v2.0.0
 
 This version introduces a breaking change as it will now require an access control list in Tailscale. This is because tailmox now implements the [Tailscale Services](https://tailscale.com/kb/1552/tailscale-services) feature and `autoApprovers.services` must be set correctly in the ACL.
