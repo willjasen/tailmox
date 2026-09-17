@@ -1966,7 +1966,7 @@ INDEX_HTML = """<!doctype html>
     .test-fail { color: #fecdd3; font-weight: 800; }
     .test-section { color: #bae6fd; font-weight: 800; }
     .test-summary { color: #fde68a; font-weight: 800; }
-    @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } }
+    @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } .link-quality-table { table-layout: fixed; font-size: 11px; } .link-quality-table th, .link-quality-table td { padding: 6px 3px; overflow-wrap: anywhere; } .link-quality-table .tag { padding: 2px 4px; font-size: 10px; } .link-quality-table .metric-cell { padding: 3px 4px; } .link-quality-table th:nth-child(2), .link-quality-table td:nth-child(2), .link-quality-table th:nth-child(3), .link-quality-table td:nth-child(3), .link-quality-table th:nth-child(9), .link-quality-table td:nth-child(9) { display: none; } }
   </style>
 </head>
 <body>
@@ -1995,7 +1995,7 @@ INDEX_HTML = """<!doctype html>
       <div class="panel full"><h2>Corosync Knet Latency and Jitter (last hour, microseconds)</h2><div class="muted" id="cmapLatencyDetail"></div><svg class="chart" id="cmapLatencyChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet average latency over the last hour in microseconds"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="cmapLatencyLegend"></div></div>
       <div class="panel full"><h2>Corosync Knet Packets and Errors (last hour, count per minute)</h2><div class="muted" id="cmapPacketDetail"></div><svg class="chart" id="cmapPacketChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet packet and error count per minute over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="cmapPacketLegend"></div></div>
       <div class="panel full"><h2>Tailmox Test Latency (last hour)</h2><div class="muted" id="testHistoryDetail"></div><svg class="chart" id="testHistoryChart" viewBox="0 0 900 220" role="img" aria-label="Tailmox test latency over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="testHistoryLegend"></div></div>
-      <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Hostname</th><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
+      <div class="panel full"><h2>Corosync Link Quality</h2><table class="link-quality-table"><thead><tr><th>Hostname</th><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
       <div class="panel full"><h2>Recent Corosync Logs</h2><pre id="logs">Loading...</pre></div>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
     </section>
