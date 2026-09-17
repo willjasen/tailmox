@@ -149,6 +149,13 @@ and avoid broad formatting rewrites.
 
 ## Git authorization
 
+After completing a code change, commit the files in scope, push the commit to
+the configured remote, and deploy it to `pve-a2` by updating
+`/opt/tailmox` to the pushed `dev` revision. This is the default unless the
+user explicitly requests a local-only change or says not to deploy. Before a
+host update, verify that its checkout is clean; do not overwrite host-local
+changes without the user's explicit approval.
+
 When the user asks to save or commit work to Git, that request pre-authorizes
 staging the files in scope, creating the local commit, and pushing it to the
 configured remote (generally GitHub) without a separate confirmation. Review

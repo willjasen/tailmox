@@ -1966,7 +1966,7 @@ INDEX_HTML = """<!doctype html>
     .test-fail { color: #fecdd3; font-weight: 800; }
     .test-section { color: #bae6fd; font-weight: 800; }
     .test-summary { color: #fde68a; font-weight: 800; }
-    @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } .link-quality-table { table-layout: fixed; font-size: 11px; } .link-quality-table th, .link-quality-table td { padding: 6px 3px; overflow-wrap: anywhere; } .link-quality-table .tag { padding: 2px 4px; font-size: 10px; } .link-quality-table .metric-cell { padding: 3px 4px; } .link-quality-table th:nth-child(2), .link-quality-table td:nth-child(2), .link-quality-table th:nth-child(3), .link-quality-table td:nth-child(3), .link-quality-table th:nth-child(9), .link-quality-table td:nth-child(9) { display: none; } }
+    @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } #linkQualityChart { height: 160px; } .link-quality-table { table-layout: fixed; font-size: 11px; } .link-quality-table th, .link-quality-table td { padding: 6px 3px; overflow-wrap: anywhere; } .link-quality-table .tag { padding: 2px 4px; font-size: 10px; } .link-quality-table .metric-cell { padding: 3px 4px; } .link-quality-table th:nth-child(2), .link-quality-table td:nth-child(2), .link-quality-table th:nth-child(3), .link-quality-table td:nth-child(3), .link-quality-table th:nth-child(9), .link-quality-table td:nth-child(9) { display: none; } }
   </style>
 </head>
 <body>
