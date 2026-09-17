@@ -41,14 +41,24 @@ bootstrap_command() {
 run_self_tests() {
     local test_file
     local passed=0
+    local required_public_boundary_test="$TAILMOX_ROOT/tests/test-public-monitor.sh"
+    local public_boundary_included=false
     local -a test_files=()
 
     while IFS= read -r test_file; do
         test_files+=("$test_file")
+        if [[ "$test_file" == "$required_public_boundary_test" ]]; then
+            public_boundary_included=true
+        fi
     done < <(find "$TAILMOX_ROOT/tests" -maxdepth 1 -type f -name 'test-*.sh' | sort)
 
     if [[ "${#test_files[@]}" -eq 0 ]]; then
         printf 'No tests found.\n' >&2
+        return 1
+    fi
+    if [[ "$public_boundary_included" != true ]]; then
+        printf 'Required public/private monitor boundary test is missing: %s\n' \
+            "$required_public_boundary_test" >&2
         return 1
     fi
 

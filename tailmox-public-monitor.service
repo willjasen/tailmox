@@ -12,6 +12,7 @@ Environment=TAILMOX_PUBLIC_HOST=127.0.0.1
 Environment=TAILMOX_PUBLIC_PORT=8089
 Environment=TAILMOX_PUBLIC_ALLOWED_HOSTS=tailmox.com,localhost,127.0.0.1
 Environment=TAILMOX_PUBLIC_SNAPSHOT_FILE=/run/tailmox-public-monitor/status.json
+Environment=TAILMOX_GA_MEASUREMENT_ID=G-1S8QD1E46H
 EnvironmentFile=-/etc/tailmox/public-monitor.env
 ExecStart=/usr/bin/python3 @TAILMOX_DIR@/tailmox-public-monitor.py
 Restart=on-failure
@@ -38,6 +39,8 @@ LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 UMask=0077
+TasksMax=64
+LimitNOFILE=128
 IPAddressDeny=any
 IPAddressAllow=localhost
 

@@ -58,6 +58,26 @@ In particular, treat these as potentially destructive or state-changing:
 - VM cloning, starting, stopping, snapshotting, or reverting.
 - Storage-image downloads and template creation.
 
+## Public web security
+
+- Keep the Internet-facing monitor isolated in `tailmox-public-monitor.py`; do
+  not add privileged handlers, command execution, configuration reads, or
+  private monitor proxying to that service.
+- Treat `tailmox-monitor.py` and its port `8088` as private even when a route is
+  read-only. Never expose it through an Internet-facing proxy.
+- Extend the public snapshot through explicit exporter and origin allowlists.
+  Reject unknown fields at the origin, and never export IP addresses, node IDs,
+  cluster names, logs, credentials, or raw command output.
+- Keep public request concurrency, request duration, file size, collection
+  sizes, strings, and numeric values bounded. Public snapshot files must be
+  regular, fresh, non-symlink files in a root-owned runtime directory.
+- Preserve the restrictive CSP and other browser headers. Any new third-party
+  script or network destination requires an explicit, narrowly scoped policy
+  change and matching tests.
+- Keep `tests/test-public-monitor.sh` mandatory in `tailmox test`. It must verify
+  both runtime route denial and the separate unprivileged service/process
+  boundary; do not replace those checks with browser-only assertions.
+
 For ordinary development and verification, use mocks and temporary directories.
 Do not assume the current machine is a disposable Proxmox host.
 

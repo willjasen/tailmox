@@ -53,6 +53,8 @@ PUBLIC_SNAPSHOT_HISTORY_LIMIT = max(
     30, int(os.environ.get("TAILMOX_PUBLIC_SNAPSHOT_HISTORY_LIMIT", "120"))
 )
 PUBLIC_SNAPSHOT_HISTORY = []
+PUBLIC_MAX_NUMBER = 1_000_000_000_000
+PUBLIC_BOOLEAN_SAMPLE_FIELDS = {"automatic", "quorate"}
 INFLUX_ENV_FILE = os.environ.get("TAILMOX_INFLUXDB_ENV_FILE", "/etc/tailmox-monitor.env")
 LEGACY_CONFIG_FILE = pathlib.Path(
     os.environ.get(
@@ -1425,19 +1427,22 @@ def collect_status():
 
 
 def public_hostname(value):
-    """Return a bounded hostname label, rejecting IP address literals."""
+    """Return a bounded hostname label, rejecting addresses and unsafe text."""
     if not isinstance(value, str) or not value.strip():
         return None
     label = value.strip().rstrip(".")
+    if len(label) > 160 or not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?", label):
+        return None
     try:
         ipaddress.ip_address(label)
         return None
     except ValueError:
-        return label[:160]
+        return label
 
 
 def public_graph_series(
     source, prefix, sample_fields, extra_fields=None, hostname_fields=(),
+    label_fields=(),
 ):
     """Return bounded graph series with labels and allowlisted measurements."""
     extra_fields = extra_fields or {}
@@ -1447,25 +1452,37 @@ def public_graph_series(
         samples = []
         for source_sample in item.get("samples", [])[-120:]:
             timestamp = source_sample.get("timestamp")
-            if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
+            if (
+                not isinstance(timestamp, (int, float))
+                or isinstance(timestamp, bool)
+                or not math.isfinite(timestamp)
+                or abs(timestamp) > PUBLIC_MAX_NUMBER
+            ):
                 continue
             sample = {"timestamp": timestamp}
             for field in sample_fields:
                 value = source_sample.get(field)
-                if isinstance(value, bool) or (
+                if field in PUBLIC_BOOLEAN_SAMPLE_FIELDS:
+                    if isinstance(value, bool):
+                        sample[field] = value
+                    continue
+                if (
                     isinstance(value, (int, float))
                     and not isinstance(value, bool)
                     and math.isfinite(value)
+                    and abs(value) <= PUBLIC_MAX_NUMBER
                 ):
                     sample[field] = value
             if len(sample) > 1:
                 samples.append(sample)
         if not samples:
             continue
-        name = item.get("name")
-        if not isinstance(name, str) or not name.strip():
-            name = f"{prefix} {len(sanitized) + 1}"
-        public_item = {"name": name.strip()[:160], "samples": samples}
+        labels = [public_hostname(item.get(field)) for field in label_fields]
+        name = " → ".join(labels) if labels and all(labels) else None
+        public_item = {
+            "name": name or f"{prefix} {len(sanitized) + 1}",
+            "samples": samples,
+        }
         for destination, allowed_values in extra_fields.items():
             value = item.get(destination)
             if value in allowed_values:
@@ -1490,6 +1507,7 @@ def public_graphs(graph_sources):
                     "displayMtu", "configuredMtu", "discoveredGlobalMtu",
                     "automatic", "pmtudIntervalSeconds",
                 ),
+                label_fields=("host",),
             )
         },
         "members": {
@@ -1500,6 +1518,7 @@ def public_graphs(graph_sources):
                     "memberCount", "quorumNodeCount", "configuredNodeCount",
                     "offlineNodeCount", "quorate",
                 ),
+                label_fields=("host",),
             )
         },
         "linkQuality": {
@@ -1508,6 +1527,7 @@ def public_graphs(graph_sources):
                 "Link",
                 ("avgMs", "maxMs", "jitterMs", "packetLossPercent"),
                 hostname_fields=("host", "peer"),
+                label_fields=("host", "peer"),
             )
         },
         "cmapKnet": {
@@ -1518,6 +1538,7 @@ def public_graphs(graph_sources):
                     "latencyAvg", "latencyMax", "jitter", "txPacketDelta",
                     "rxPacketDelta", "errorDelta",
                 ),
+                label_fields=("host", "hostname"),
             )
         },
         "tests": {
@@ -1526,6 +1547,7 @@ def public_graphs(graph_sources):
                 "Test",
                 ("avgMs", "maxMs", "received", "sent"),
                 {"kind": ("tailmox_icmp", "tailmox_tcp")},
+                label_fields=("host", "target"),
             )
         },
     }
@@ -1535,10 +1557,8 @@ def public_link_quality_details(link_quality):
     """Expose current link measurements without IPs, node IDs, or raw output."""
     details = []
     for link in link_quality.get("links", [])[:64]:
-        hostname = link.get("hostname")
-        if not isinstance(hostname, str) or not hostname.strip():
-            hostname = "unknown peer"
-        item = {"hostname": hostname.strip()[:160]}
+        hostname = public_hostname(link.get("hostname")) or "unknown peer"
+        item = {"hostname": hostname}
         for field in ("status", "quality"):
             value = link.get(field)
             if isinstance(value, str):
@@ -2973,9 +2993,21 @@ class MonitorHTTPServer(ThreadingHTTPServer):
         self._request_slots = threading.BoundedSemaphore(MAX_HTTP_THREADS)
         super().__init__(*args, **kwargs)
 
+    def process_request(self, request, client_address):
+        if not self._request_slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._request_slots.release()
+            raise
+
     def process_request_thread(self, request, client_address):
-        with self._request_slots:
+        try:
             super().process_request_thread(request, client_address)
+        finally:
+            self._request_slots.release()
 
 
 if __name__ == "__main__":

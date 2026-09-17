@@ -46,6 +46,16 @@ fi
 
 printf 'PASS: bootstrap preserves an unrelated existing command\n'
 
+if ! grep -Fq \
+    'required_public_boundary_test="$TAILMOX_ROOT/tests/test-public-monitor.sh"' \
+    "$TEST_ROOT/tailmox" ||
+    ! grep -Fq 'public_boundary_included=true' "$TEST_ROOT/tailmox"; then
+    printf 'FAIL: the main test command does not require the public boundary test\n'
+    exit 1
+fi
+
+printf 'PASS: main test command requires the public/private monitor boundary test\n'
+
 DISPATCH_DIR="$TEST_DIR/dispatch"
 mkdir -p "$DISPATCH_DIR"
 cp "$TEST_ROOT/tailmox" "$DISPATCH_DIR/tailmox"

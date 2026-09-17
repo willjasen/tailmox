@@ -280,10 +280,11 @@ port `8089`. The root monitor writes a fixed, sanitized snapshot under
 no administrative routes, accepts only `GET` and `HEAD`, validates the HTTP
 host, and sends restrictive browser security headers. The public page mirrors
 the private monitor's six one-hour graphs, but the export schema only permits
-their timestamps, numeric measurements, health booleans, and display labels.
-Those labels intentionally expose the hostnames and Tailscale addresses shown
-by the private graphs. Cluster names, logs, configuration, credentials, and raw
-command output never enter the public snapshot. Point Cloudflare Tunnel at
+their timestamps, bounded numeric measurements, health booleans, and sanitized
+hostname labels. Hostnames are intentionally public, but IP addresses are
+rejected even when they appear where a hostname is expected. Cluster names,
+logs, configuration, credentials, and raw command output never enter the public
+snapshot. Point Cloudflare Tunnel at
 `http://localhost:8089`, never `8088`.
 
 The public Corosync link-quality section includes a hostname-only topology. It
@@ -303,13 +304,20 @@ limit the hostname, and enable managed WAF and bot protections. These edge
 controls are defense in depth; the origin remains safe if they are misconfigured
 because port `8089` contains no privileged handler.
 
-To enable Google Analytics 4 for the public page, create the root-owned file
-`/etc/tailmox/public-monitor.env` with mode `0600` and set the site's measurement
-ID, for example `TAILMOX_GA_MEASUREMENT_ID=G-ABC123`. Restart
-`tailmox-public-monitor.service` after changing it. Analytics is disabled when
-the setting is absent. The service validates the ID and only relaxes its Content
-Security Policy for Google Analytics while analytics is enabled; the private
-Tailmox console is unaffected.
+The origin independently validates the complete snapshot schema before serving
+it, rejects stale or future-dated snapshots and symbolic links, reads no more
+than the configured snapshot limit, and caps simultaneous request threads.
+Keep `/run/tailmox-public-monitor` root-owned; the public service account needs
+read access only. Set `TAILMOX_PUBLIC_ALLOWED_HOSTS` to the exact public hostname
+(and any explicit local health-check names) rather than adding wildcard hosts.
+
+The public service enables Google Analytics 4 for `tailmox.com` with measurement
+ID `G-1S8QD1E46H`. To override or disable it for another deployment, create the
+root-owned file `/etc/tailmox/public-monitor.env` with mode `0600` and set
+`TAILMOX_GA_MEASUREMENT_ID` to another GA4 ID or an empty value. Restart
+`tailmox-public-monitor.service` after changing it. The service validates
+non-empty IDs and only relaxes its Content Security Policy while analytics is
+enabled; the private Tailmox console is unaffected.
 
 InfluxDB credentials are configured only from the monitor UI at
 `/monitor/editInfluxDB`. On the first host, create the dedicated Tailmox age

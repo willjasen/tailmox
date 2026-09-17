@@ -27,7 +27,7 @@ graph_sources = {
     "members": {"series": [{"name": "secret-node", "samples": [{"timestamp": status["generatedAt"], "memberCount": 1, "configuredNodeCount": 1, "quorate": True, "ip": "100.64.0.1"}]}]},
     "linkQuality": {"series": [{"name": "secret-node to secret-peer", "host": "secret-node", "peer": "secret-peer", "samples": [{"timestamp": status["generatedAt"], "avgMs": 1.2, "maxMs": 2.4, "jitterMs": 0.4, "packetLossPercent": 0, "hostname": "secret-peer"}]}]},
     "cmapKnet": {"series": [{"name": "secret-node to secret-peer", "nodeid": "9", "samples": [{"timestamp": status["generatedAt"], "latencyAvg": 12, "jitter": 2, "txPacketDelta": 10, "rxPacketDelta": 9, "errorDelta": 0, "raw": "secret-raw"}]}]},
-    "tests": {"series": [{"name": "secret-node to secret-target", "target": "secret-target", "kind": "tailmox_icmp", "samples": [{"timestamp": status["generatedAt"], "avgMs": 3.2, "maxMs": 4.8, "received": 3, "sent": 3}]}]},
+    "tests": {"series": [{"name": "secret-node to secret-target", "host": "secret-node", "target": "secret-target", "kind": "tailmox_icmp", "samples": [{"timestamp": status["generatedAt"], "avgMs": 3.2, "maxMs": 4.8, "received": 3, "sent": 3}]}]},
 }
 snapshot = private["public_snapshot"](status, {"links": [{
     "hostname": "secret-peer", "ip": "100.64.0.2", "nodeid": "9",
@@ -44,7 +44,7 @@ assert snapshot["history"][-1] == {
     "webOnline": 1, "webTotal": 1,
 }
 assert snapshot["graphs"]["mtu"]["series"][0]["name"] == "secret-node"
-assert snapshot["graphs"]["linkQuality"]["series"][0]["name"] == "secret-node to secret-peer"
+assert snapshot["graphs"]["linkQuality"]["series"][0]["name"] == "secret-node → secret-peer"
 assert snapshot["graphs"]["linkQuality"]["series"][0]["host"] == "secret-node"
 assert snapshot["graphs"]["linkQuality"]["series"][0]["peer"] == "secret-peer"
 ip_labeled = private["public_graph_series"](
@@ -53,7 +53,17 @@ ip_labeled = private["public_graph_series"](
 )
 assert ip_labeled[0]["host"] == "secret-node"
 assert "peer" not in ip_labeled[0]
-assert snapshot["graphs"]["tests"]["series"][0]["name"] == "secret-node to secret-target"
+assert ip_labeled[0]["name"] == "Link 1"
+assert "100.64.0.9" not in json.dumps(ip_labeled)
+assert private["public_hostname"]("bad host") is None
+assert private["public_hostname"]("node\nforged") is None
+assert private["public_hostname"]("2001:db8::1") is None
+bounded = private["public_graph_series"](
+    {"series": [{"name": "poisoned", "host": "safe-node", "samples": [{"timestamp": status["generatedAt"], "avgMs": 1e308, "automatic": 1}]}]},
+    "Node", ("avgMs", "automatic"), label_fields=("host",),
+)
+assert bounded == [], bounded
+assert snapshot["graphs"]["tests"]["series"][0]["name"] == "secret-node → secret-target", snapshot["graphs"]["tests"]["series"][0]
 assert snapshot["graphs"]["tests"]["series"][0]["kind"] == "tailmox_icmp"
 assert snapshot["linkQualityDetails"] == [{
     "hostname": "secret-peer", "status": "joined", "quality": "good",
@@ -71,7 +81,13 @@ assert len(snapshot["history"]) == 120
 assert len(json.dumps(snapshot).encode("utf-8")) < 2 * 1024 * 1024
 
 public = runpy.run_path(str(root / "tailmox-public-monitor.py"))
+public_source = (root / "tailmox-public-monitor.py").read_text(encoding="utf-8")
+assert "subprocess" not in public_source
+assert "import tailmox_config" not in public_source
+assert "tailmox-monitor.py" not in public_source
+assert "do_POST = method_not_allowed" in public_source
 with tempfile.TemporaryDirectory() as directory:
+    snapshot["generatedAt"] = int(time.time())
     snapshot_path = pathlib.Path(directory) / "status.json"
     snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
     handler = public["Handler"]
@@ -117,10 +133,27 @@ with tempfile.TemporaryDirectory() as directory:
     assert response["headers"]["Strict-Transport-Security"] == "max-age=31536000"
     response = request("GET", "/snapshot.json")
     assert json.loads(response["body"]) == snapshot
+    assert public["validate_snapshot"]({**snapshot, "unexpected": "secret"}) is False
+    assert public["validate_snapshot"]({**snapshot, "generatedAt": int(time.time()) + 31}) is False
+    assert public["validate_snapshot"]({**snapshot, "monitorHostname": "100.64.0.1"}) is False
+    snapshot_path.write_text(json.dumps({**snapshot, "unexpected": "secret"}), encoding="utf-8")
+    assert request("GET", "/snapshot.json")["status"] == 503
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+    real_snapshot_path = pathlib.Path(directory) / "real-status.json"
+    real_snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
+    snapshot_path.unlink()
+    snapshot_path.symlink_to(real_snapshot_path)
+    assert request("GET", "/snapshot.json")["status"] == 503
+    snapshot_path.unlink()
+    snapshot_path.write_bytes(b"x" * (public["MAX_SNAPSHOT_BYTES"] + 1))
+    assert request("GET", "/snapshot.json")["status"] == 503
+    snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")
     for path in ("/settings", "/api/status", "/api/actions", "/monitor"):
         assert request("GET", path)["status"] == 404, path
     assert request("POST", "/")["status"] == 405
     assert request("GET", "/", "evil.example")["status"] == 421
+    assert request("GET", "/", "tailmox.com:8089")["status"] == 200
+    assert request("GET", "/", "tailmox.com:bad")["status"] == 421
 
     handler.handle_read.__globals__["GA_MEASUREMENT_ID"] = "G-TEST123"
     response = request("GET", "/")
@@ -131,12 +164,18 @@ with tempfile.TemporaryDirectory() as directory:
     assert b"G-TEST123" in response["body"]
 
 unit = (root / "tailmox-public-monitor.service").read_text(encoding="utf-8")
+private_unit = (root / "tailmox-monitor.service").read_text(encoding="utf-8")
 for directive in (
     "User=tailmox-public", "NoNewPrivileges=yes", "ProtectSystem=strict",
     "CapabilityBoundingSet=", "IPAddressDeny=any", "IPAddressAllow=localhost",
-    "EnvironmentFile=-/etc/tailmox/public-monitor.env",
+    "Environment=TAILMOX_GA_MEASUREMENT_ID=G-1S8QD1E46H",
+    "EnvironmentFile=-/etc/tailmox/public-monitor.env", "TasksMax=64",
+    "LimitNOFILE=128",
 ):
     assert directive in unit, directive
+assert "ExecStart=/usr/bin/python3 @TAILMOX_DIR@/tailmox-public-monitor.py" in unit
+assert "ExecStart=/usr/bin/python3 @TAILMOX_DIR@/tailmox-monitor.py" in private_unit
+assert "tailmox-public-monitor.py" not in private_unit
 export_drop_in = (root / "tailmox-public-monitor-export.conf").read_text(encoding="utf-8")
 assert "TAILMOX_PUBLIC_SNAPSHOT_FILE=/run/tailmox-public-monitor/status.json" in export_drop_in
 assert "RuntimeDirectory=tailmox-public-monitor" in export_drop_in
