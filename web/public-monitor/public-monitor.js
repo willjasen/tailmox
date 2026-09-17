@@ -161,7 +161,19 @@ function renderLinkTopology(series, currentLinks, monitorHostname) {
   });
 
   const description = svgNode("desc", {id: "link-topology-description"}, "Current host-to-host latency measurements.");
-  chart.replaceChildren(svgNode("title", {id: "link-topology-title"}, "Corosync link topology"), description);
+  const glowFilter = svgNode("filter", {id: "topology-good-glow", x: "-40%", y: "-40%", width: "180%", height: "180%"});
+  glowFilter.append(
+    svgNode("feGaussianBlur", {in: "SourceGraphic", stdDeviation: "5", result: "glow"}),
+    svgNode("feMerge", {}, ""),
+  );
+  glowFilter.lastChild.append(
+    svgNode("feMergeNode", {in: "glow"}),
+    svgNode("feMergeNode", {in: "glow"}),
+    svgNode("feMergeNode", {in: "SourceGraphic"}),
+  );
+  const definitions = svgNode("defs");
+  definitions.append(glowFilter);
+  chart.replaceChildren(svgNode("title", {id: "link-topology-title"}, "Corosync link topology"), description, definitions);
   const nodeNames = [...nodes].sort((a, b) => a.localeCompare(b));
   if (nodeNames.length < 2) {
     chart.append(svgNode("text", {x: 450, y: 250, class: "empty", "text-anchor": "middle"}, "Waiting for host-to-host measurements…"));
@@ -205,11 +217,13 @@ function renderLinkTopology(series, currentLinks, monitorHostname) {
     line.append(svgNode("title", {}, details));
     chart.append(line);
     const latencies = measurements.map(item => item.avgMs).filter(Number.isFinite);
-    const label = latencies.length ? `${Math.max(...latencies).toFixed(1)} ms` : (health === "bad" ? "offline" : "—");
-    const offset = [-28, -14, 0, 14, 28][index % 5];
-    const labelX = (start.x + end.x) / 2 + (-dy / distance) * offset;
-    const labelY = (start.y + end.y) / 2 + (dx / distance) * offset;
-    chart.append(svgNode("text", {x: labelX, y: labelY, class: "topology-latency", dy: "0.35em"}, label));
+    if (latencies.length) {
+      const label = `${Math.max(...latencies).toFixed(1)} ms`;
+      const offset = [-28, -14, 0, 14, 28][index % 5];
+      const labelX = (start.x + end.x) / 2 + (-dy / distance) * offset;
+      const labelY = (start.y + end.y) / 2 + (dx / distance) * offset;
+      chart.append(svgNode("text", {x: labelX, y: labelY, class: "topology-latency", dy: "0.35em"}, label));
+    }
   });
 
   nodeNames.forEach(name => {

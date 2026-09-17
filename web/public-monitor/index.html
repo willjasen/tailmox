@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>tailmox</title>
-  <link rel="stylesheet" href="/public-monitor.css?v=11">
-  <script src="/public-monitor.js?v=11" defer></script>
+  <link rel="stylesheet" href="/public-monitor.css?v=12">
+  <script src="/public-monitor.js?v=15" defer></script>
   <!-- __GOOGLE_ANALYTICS__ -->
 </head>
 <body>
@@ -22,6 +22,22 @@
       <article><h2>Peer links</h2><strong id="links">…</strong><span id="links-detail">Sanitized network health</span></article>
       <article><h2>Web monitors</h2><strong id="web">…</strong><span>Internal health checks</span></article>
       <article><h2>Tailscale</h2><strong id="tailscale">…</strong><span>Private network plane</span></article>
+    </section>
+    <section class="link-quality-panel" aria-labelledby="link-quality-heading">
+      <h2 id="link-quality-heading">Corosync Link Quality</h2>
+      <div class="topology-scroll">
+        <svg id="link-topology" viewBox="0 0 900 500" role="img" aria-labelledby="link-topology-title link-topology-description">
+          <title id="link-topology-title">Corosync link topology</title>
+          <desc id="link-topology-description">Loading host-to-host latency measurements.</desc>
+        </svg>
+      </div>
+      <div class="topology-legend" aria-label="Link health legend"><span><i class="good"></i>Healthy</span><span><i class="warn"></i>Degraded</span><span><i class="bad"></i>Offline or poor</span><span><i class="unknown"></i>No measurement</span></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Hostname</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead>
+          <tbody id="link-quality-rows"><tr><td colspan="8">Loading link measurements…</td></tr></tbody>
+        </table>
+      </div>
     </section>
     <section class="charts" aria-label="Cluster graph history">
       <figure>
@@ -60,22 +76,6 @@
         <figcaption id="test-latency-caption">Collecting history…</figcaption>
         <div class="legend" id="test-latency-legend"></div>
       </figure>
-    </section>
-    <section class="link-quality-panel" aria-labelledby="link-quality-heading">
-      <h2 id="link-quality-heading">Corosync Link Quality</h2>
-      <div class="topology-scroll">
-        <svg id="link-topology" viewBox="0 0 900 500" role="img" aria-labelledby="link-topology-title link-topology-description">
-          <title id="link-topology-title">Corosync link topology</title>
-          <desc id="link-topology-description">Loading host-to-host latency measurements.</desc>
-        </svg>
-      </div>
-      <div class="topology-legend" aria-label="Link health legend"><span><i class="good"></i>Healthy</span><span><i class="warn"></i>Degraded</span><span><i class="bad"></i>Offline or poor</span><span><i class="unknown"></i>No measurement</span></div>
-      <div class="table-scroll">
-        <table>
-          <thead><tr><th>Hostname</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead>
-          <tbody id="link-quality-rows"><tr><td colspan="8">Loading link measurements…</td></tr></tbody>
-        </table>
-      </div>
     </section>
     <aside><strong>Public data boundary</strong><p>This public view includes graph history and hostnames. Cluster names, logs, configuration, credentials, raw command output, and administrative controls never enter the public service.</p></aside>
   </main>

@@ -103,10 +103,11 @@ with tempfile.TemporaryDirectory() as directory:
     assert b'id="test-latency-chart"' in response["body"]
     assert b'<h1>tailmox</h1>' in response["body"]
     assert b'<h1>Tailmox Monitor</h1>' not in response["body"]
-    assert b'public-monitor.css?v=11' in response["body"]
-    assert b'public-monitor.js?v=11' in response["body"]
+    assert b'public-monitor.css?v=12' in response["body"]
+    assert b'public-monitor.js?v=15' in response["body"]
     assert b'id="link-quality-rows"' in response["body"]
     assert b'id="link-topology"' in response["body"]
+    assert response["body"].index(b'id="link-topology"') < response["body"].index(b'id="mtu-chart"')
     assert b'href="https://github.com/willjasen/tailmox"' in response["body"]
     assert b'aria-label="View tailmox on GitHub"' in response["body"]
     assert b'This public view includes graph history and hostnames.' in response["body"]

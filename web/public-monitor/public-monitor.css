@@ -43,7 +43,7 @@ aside p{margin:6px 0 0;color:var(--muted)}
 .topology-scroll{overflow-x:auto;margin-bottom:10px}
 #link-topology{display:block;width:100%;min-width:680px;height:auto;min-height:360px}
 .topology-edge{fill:none;stroke-width:3;stroke-linecap:round;opacity:.78}
-.topology-edge.good{stroke:var(--good)}
+.topology-edge.good{stroke:var(--good);filter:url(#topology-good-glow);opacity:1}
 .topology-edge.warn{stroke:var(--warn)}
 .topology-edge.bad{stroke:var(--bad)}
 .topology-edge.unknown{stroke:#64748b;stroke-dasharray:7 6}
