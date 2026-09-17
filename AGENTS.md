@@ -91,6 +91,19 @@ internet connection for the local test suite.
 
 ## Documentation
 
+### Monitor page design
+
+- New monitor pages and options must match the existing Monitor, ID, and Settings
+  design: typography, colors, content width, spacing, controls, and top Page dropdown.
+- Reuse `web/monitor-forms.css` for form pages. File templates use the
+  `__MONITOR_FORM_STYLE__` placeholder, resolved with `MONITOR_FORM_STYLE` by the
+  monitor handler. ID and Settings use this same stylesheet.
+- Use the existing `page-picker`, `actions`, `field`, and form control patterns;
+  do not introduce a separate palette or page shell for a new workflow.
+- Include new destinations consistently in page navigation and preserve the
+  `/monitor` and `/control` URL prefixes.
+- Check desktop and mobile layouts and ensure existing confirmations still work.
+
 Update `README.md` whenever commands, requirements, ports, ACL rules, supported
 Proxmox versions, or user-visible behavior change.
 

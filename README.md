@@ -167,7 +167,8 @@ are rejected for manual review. No Tailscale service is stopped.
 
 The port 8669 website includes **Move Corosync to LAN** in its terminal actions.
 The monitor site also has a dedicated **Disable Tailmox** page in the top page
-dropdown (`/disable`, or `/monitor/disable` behind Tailscale Serve). The page scans
+dropdown (`/disable`, or `/monitor/disable` behind Tailscale Serve), sharing its
+form styling with ID and Settings. The page scans
 the host's assigned IPv4 networks and lists LAN subnets with their interface names,
 excluding loopback, link-local and Tailscale interfaces. Choose a discovered
 subnet or **Enter manually**, choose whether to retain the Tailscale fallback,

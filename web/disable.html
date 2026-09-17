@@ -5,48 +5,51 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Disable Tailmox</title>
 <style>
+__MONITOR_FORM_STYLE__
 * { box-sizing: border-box; }
-body { margin: 0; color: #e4e4e7; background: #18181b; font: 16px system-ui, sans-serif; }
-main { max-width: 1100px; margin: auto; padding: 24px; }
-header { display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; align-items: center; border-bottom: 1px solid #52525b; padding-bottom: 20px; }
-h1 { font-size: 26px; margin: 0; }
-h2 { font-size: 18px; }
-label { display: block; margin: 16px 0 8px; }
-input, select, button { font: inherit; padding: 10px; border: 1px solid #71717a; border-radius: 4px; color: inherit; background: #27272a; max-width: 100%; }
-button { cursor: pointer; background: #166534; margin: 12px 8px 0 0; }
+header { flex-wrap: wrap; }
+header > div { min-width: 0; }
+h1, h2 { letter-spacing: 0; overflow-wrap: anywhere; }
+.migration-section { margin-bottom: 20px; }
+.migration-form { gap: 14px; }
+.migration-form select { width: 100%; max-width: 100%; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 11px 12px; color: var(--text); background: rgba(2,6,23,0.42); font: inherit; }
+.migration-form select:focus { outline: 2px solid rgba(56,189,248,0.34); border-color: var(--accent); }
+.checkbox-label { display: flex; align-items: center; gap: 10px; }
+.checkbox-label input { width: 16px; height: 16px; flex: 0 0 16px; margin: 0; accent-color: var(--accent); }
+.field { display: grid; gap: 7px; min-width: 0; }
 button:disabled { opacity: .5; cursor: default; }
-input[type=text] { width: 320px; }
-input[type=checkbox] { accent-color: #22c55e; }
-section { padding: 18px 0; border-bottom: 1px solid #52525b; }
-pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
-.warning { color: #fda4af; max-width: 760px; }
-#cancel { background: #3f3f46; }
-#apply { background: #9f1239; }
-#error { color: #fda4af; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 ui-monospace, monospace; margin: 0; }
+.warning, #error { color: #fecdd3; line-height: 1.5; }
+.danger { border-color: rgba(239,68,68,0.5); color: #fecaca; background: rgba(127,29,29,0.3); }
+#scanStatus:empty, #error:empty { display: none; }
 [hidden] { display: none !important; }
+@media (max-width: 600px) { main { padding: 20px 16px; } header { align-items: flex-start; } header .actions { width: 100%; } .page-picker select { max-width: 100%; } }
 </style>
 </head>
 <body><main>
-<header><h1>Disable Tailmox</h1><label>Page
-<select id="pagePicker"><option value="id">ID</option><option value="settings">Settings</option><option value="./">Monitor</option><option value="disable" selected>Disable Tailmox</option></select>
-</label></header>
-<section>
-<form id="planForm">
+<header><div><h1>Disable Tailmox</h1><div class="muted">Corosync LAN migration</div></div><div class="actions"><label class="page-picker">Page
+<select id="pagePicker" aria-label="Tailmox page"><option value="id">ID</option><option value="settings">Settings</option><option value="health">Health</option><option value="./">Monitor</option><option value="disable" selected>Disable Tailmox</option></select>
+</label></div></header>
+<section class="panel migration-section">
+<h2>Migration settings</h2>
+<form id="planForm" class="migration-form">
+<div class="field">
 <label for="subnet">LAN subnet</label>
 <select id="subnet" required><option value="" disabled selected>Scanning host subnets...</option><option value="manual">Enter manually</option></select>
-<p id="scanStatus" role="status"></p>
-<div id="manualSubnet" hidden><label for="cidr">Manual subnet</label><input id="cidr" type="text" placeholder="192.168.1.0/24" autocomplete="off" disabled></div>
-<label><input id="keep" type="checkbox"> Keep Tailscale as a fallback</label>
-<button id="dryRun" type="submit">Run dry run</button>
+<p id="scanStatus" class="muted" role="status"></p>
+</div>
+<div id="manualSubnet" class="field" hidden><label for="cidr">Manual subnet</label><input id="cidr" type="text" placeholder="192.168.1.0/24" autocomplete="off" disabled></div>
+<label class="checkbox-label"><input id="keep" type="checkbox"> Keep Tailscale as a fallback</label>
+<div class="actions"><button id="dryRun" type="submit">Run dry run</button></div>
 </form>
 <p id="error" role="alert"></p>
 </section>
-<section aria-live="polite"><h2 id="status">No migration started</h2><pre id="output"></pre></section>
-<section id="confirmation" hidden>
+<section class="panel migration-section" aria-live="polite"><h2 id="status">No migration started</h2><pre id="output"></pre></section>
+<section class="panel migration-section" id="confirmation" hidden>
 <h2>Confirm migration</h2>
 <p class="warning">This changes cluster networking. A failure can lose quorum and trigger HA recovery. Keep console access available. The dry run does not guarantee live LAN connectivity.</p>
-<label for="accept">Type DISABLE to apply the plan above</label><input id="accept" type="text" autocomplete="off">
-<div><button id="apply" type="button" disabled>Apply migration</button><button id="cancel" type="button">Cancel</button></div>
+<div class="migration-form field"><label for="accept">Type DISABLE to apply the plan above</label><input id="accept" type="text" autocomplete="off">
+<div class="actions"><button id="apply" class="danger" type="button" disabled>Apply migration</button><button id="cancel" type="button">Cancel</button></div></div>
 </section>
 </main>
 <script>
