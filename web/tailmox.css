@@ -911,6 +911,9 @@ h2 {
     color: var(--amber);
 }
 
+.redeploy-button .redeploy-spinner { display: inline-block; animation: spin 700ms linear infinite; }
+.redeploy-button.is-complete { border-color: var(--green-strong); color: var(--green); }
+
 .button-test,
 .button-backup,
 .button-primary {

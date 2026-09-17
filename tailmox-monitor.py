@@ -1586,6 +1586,8 @@ INDEX_HTML = """<!doctype html>
     .test-fail { color: #fecdd3; font-weight: 800; }
     .test-section { color: #bae6fd; font-weight: 800; }
     .test-summary { color: #fde68a; font-weight: 800; }
+    .redeploy-button .redeploy-spinner { display: inline-block; animation: spin 700ms linear infinite; }
+    .redeploy-button.is-complete { border-color: var(--good); color: #bbf7d0; }
     .redeploy-button.update-available { border-color: var(--accent); color: #bae6fd; box-shadow: 0 0 16px rgba(56,189,248,0.28); }
     a { color: var(--accent); }
     @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid, .workflow-grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } }
@@ -1599,7 +1601,7 @@ INDEX_HTML = """<!doctype html>
         <div class="muted" id="subtitle">Loading cluster health...</div>
       </div>
       <div class="actions">
-        <button class="workflow-button redeploy-button" data-action="redeploy" id="redeployButton" type="button">Redeploy Tailmox</button>
+        <button class="workflow-button redeploy-button" data-action="redeploy" id="redeployButton" type="button"><span aria-hidden="true">↻</span> Redeploy</button>
         <label class="page-picker">Page
           <select id="pagePicker" aria-label="Tailmox page">
             <option value="id">ID</option>
@@ -2053,6 +2055,9 @@ INDEX_HTML = """<!doctype html>
     const renderAction = data => {
       const running = data.status === "running";
       document.querySelectorAll(".workflow-button").forEach(button => button.disabled = running);
+      const redeployButton = document.getElementById("redeployButton");
+      if (data.action === "redeploy" && data.status === "running") redeployButton.innerHTML = '<span class="redeploy-spinner" aria-hidden="true">↻</span> Redeploy';
+      if (data.action === "redeploy" && data.status === "succeeded") { redeployButton.innerHTML = '<span aria-hidden="true">✓</span> Redeploy'; redeployButton.classList.add("is-complete"); }
       document.getElementById("actionMeta").textContent = data.status === "idle"
         ? "No workflow is running."
         : `${actionLabel(data.action)} · ${data.status}${Number.isInteger(data.exitCode) ? ` · exit ${data.exitCode}` : ""}`;
@@ -2087,6 +2092,7 @@ INDEX_HTML = """<!doctype html>
       const authInput = document.getElementById("stageAuthKey");
       document.getElementById("actionDialogTitle").textContent = action === "test" ? "Test output" : "Workflow output";
       if (action !== "redeploy") showActionOutput();
+      if (action === "redeploy") { const button = document.getElementById("redeployButton"); button.disabled = true; button.classList.remove("is-complete"); button.innerHTML = '<span class="redeploy-spinner" aria-hidden="true">↻</span> Redeploy'; }
       const payload = action === "stage" ? { authKey: authInput.value } : {};
       document.querySelectorAll(".workflow-button").forEach(button => button.disabled = true);
       try {

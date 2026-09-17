@@ -123,6 +123,11 @@ async function runWorkflow(action) {
     if (action === "analytics-uninstall" && !window.confirm("Uninstall Tailmox analytics? Its history will be preserved.")) return;
     const payload = action === "stage" ? {authKey: stageAuthKey.value} : {};
     document.querySelectorAll(".workflow-action").forEach((button) => { button.disabled = true; });
+    if (action === "redeploy") {
+        redeployButton.disabled = true;
+        redeployButton.classList.remove("is-complete");
+        redeployButton.innerHTML = '<span class="redeploy-spinner" aria-hidden="true">↻</span> Redeploy';
+    }
     try {
         if (!controlCsrfToken) await loadControlState();
         const response = await fetch(`/control/api/actions/${action}`, {
@@ -134,10 +139,19 @@ async function runWorkflow(action) {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Unable to start workflow.");
         renderWorkflow(data);
+        if (action === "redeploy" && data.status !== "running") {
+            redeployButton.classList.toggle("is-complete", data.status === "succeeded");
+            redeployButton.innerHTML = data.status === "succeeded" ? '<span aria-hidden="true">✓</span> Redeploy' : '<span aria-hidden="true">↻</span> Redeploy';
+            redeployButton.disabled = false;
+        }
     } catch (error) {
         stageAuthKey.value = "";
         workflowStatus.textContent = error.message;
         document.querySelectorAll(".workflow-action").forEach((button) => { button.disabled = false; });
+        if (action === "redeploy") {
+            redeployButton.disabled = false;
+            redeployButton.innerHTML = '<span aria-hidden="true">↻</span> Redeploy';
+        }
     }
 }
 
