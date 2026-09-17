@@ -2076,6 +2076,7 @@ INDEX_HTML = """<!doctype html>
       } catch (error) { document.getElementById("actionMeta").textContent = error.message; }
     };
     const actionDialog = document.getElementById("actionDialog");
+    let redeployPendingAt = 0;
     const showActionOutput = () => { if (!actionDialog.open) actionDialog.showModal(); };
     document.getElementById("showActionOutput").addEventListener("click", showActionOutput);
     document.getElementById("closeActionOutput").addEventListener("click", () => actionDialog.close());
@@ -2092,7 +2093,7 @@ INDEX_HTML = """<!doctype html>
       const authInput = document.getElementById("stageAuthKey");
       document.getElementById("actionDialogTitle").textContent = action === "test" ? "Test output" : "Workflow output";
       if (action !== "redeploy") showActionOutput();
-      if (action === "redeploy") { const button = document.getElementById("redeployButton"); button.disabled = true; button.classList.remove("is-complete"); button.innerHTML = '<span class="redeploy-spinner" aria-hidden="true">↻</span> Redeploy'; }
+      if (action === "redeploy") { const button = document.getElementById("redeployButton"); redeployPendingAt = Date.now(); button.disabled = true; button.classList.remove("is-complete"); button.innerHTML = '<span class="redeploy-spinner" aria-hidden="true">↻</span> Redeploy'; }
       const payload = action === "stage" ? { authKey: authInput.value } : {};
       document.querySelectorAll(".workflow-button").forEach(button => button.disabled = true);
       try {
@@ -2125,9 +2126,17 @@ INDEX_HTML = """<!doctype html>
       text("tailmoxState", data.tailmox.active ? "active" : (data.tailmox.status || "unknown"));
       const redeployButton = document.getElementById("redeployButton");
       const updateAvailable = Boolean(data.tailmoxUpdate?.available);
-      const redeployed = data.action === "redeploy" && data.status === "succeeded";
-      redeployButton.classList.toggle("update-available", updateAvailable && !redeployed);
-      redeployButton.textContent = updateAvailable && !redeployed ? "Redeploy Tailmox · Update available" : redeployed ? "Tailmox is up to date" : "Redeploy Tailmox";
+      redeployButton.classList.toggle("update-available", updateAvailable);
+      if (redeployPendingAt && !updateAvailable) {
+        redeployPendingAt = 0;
+        redeployButton.disabled = false;
+        redeployButton.classList.add("is-complete");
+        redeployButton.innerHTML = '<span aria-hidden="true">✓</span> Redeploy';
+      } else if (redeployPendingAt && Date.now() - redeployPendingAt > 180000) {
+        redeployPendingAt = 0;
+        redeployButton.disabled = false;
+        redeployButton.innerHTML = '<span aria-hidden="true">↻</span> Redeploy';
+      }
       redeployButton.title = data.tailmoxUpdate?.available ? "A newer Tailmox version is available." : "Tailmox is up to date.";
       text("tailmoxDetail", `${number(data.tailmox.activeMemberCount)} active in state; ${number(data.tailmox.configuredNodeCount)} configured. ${data.tailmox.detail || ""}`);
       text("corosyncState", yesNo(data.services.corosync.active));
