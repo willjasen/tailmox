@@ -58,8 +58,10 @@ else:
     raise AssertionError("unknown workflow was accepted")
 
 html = module["INDEX_HTML"]
-for label in ("Run tailmox stage", "Analytics", "Run tests", "Create backup"):
-    assert label in html, label
+for element in ("<a ", "<button", "<select", "<input", "<form"):
+    assert element not in html, element
+for behavior in ("runAction", "refreshAction", "showModal", "window.location.href"):
+    assert behavior not in html, behavior
 assert html.count('class="chart-loading-indicator"') == 6
 assert "Loading cmap Knet packet history..." not in html
 assert "Loading exported test history..." not in html

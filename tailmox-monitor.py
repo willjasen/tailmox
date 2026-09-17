@@ -12,6 +12,7 @@ import concurrent.futures
 import datetime as dt
 import io
 import json
+import math
 import os
 import pathlib
 import socket
@@ -43,6 +44,14 @@ MIGRATION_CONTROL = MigrationControl()
 
 HOST = os.environ.get("TAILMOX_MONITOR_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TAILMOX_MONITOR_PORT", "8088"))
+PUBLIC_SNAPSHOT_FILE = os.environ.get("TAILMOX_PUBLIC_SNAPSHOT_FILE", "")
+PUBLIC_SNAPSHOT_INTERVAL_SECONDS = max(
+    10, int(os.environ.get("TAILMOX_PUBLIC_SNAPSHOT_INTERVAL_SECONDS", "30"))
+)
+PUBLIC_SNAPSHOT_HISTORY_LIMIT = max(
+    30, int(os.environ.get("TAILMOX_PUBLIC_SNAPSHOT_HISTORY_LIMIT", "120"))
+)
+PUBLIC_SNAPSHOT_HISTORY = []
 INFLUX_ENV_FILE = os.environ.get("TAILMOX_INFLUXDB_ENV_FILE", "/etc/tailmox-monitor.env")
 LEGACY_CONFIG_FILE = pathlib.Path(
     os.environ.get(
@@ -1414,6 +1423,233 @@ def collect_status():
     return status
 
 
+def public_graph_series(source, prefix, sample_fields, extra_fields=None):
+    """Return bounded graph series with labels and allowlisted measurements."""
+    extra_fields = extra_fields or {}
+    sanitized = []
+    source_series = source.get("series", []) if isinstance(source, dict) else []
+    for item in source_series[:64]:
+        samples = []
+        for source_sample in item.get("samples", [])[-120:]:
+            timestamp = source_sample.get("timestamp")
+            if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
+                continue
+            sample = {"timestamp": timestamp}
+            for field in sample_fields:
+                value = source_sample.get(field)
+                if isinstance(value, bool) or (
+                    isinstance(value, (int, float))
+                    and not isinstance(value, bool)
+                    and math.isfinite(value)
+                ):
+                    sample[field] = value
+            if len(sample) > 1:
+                samples.append(sample)
+        if not samples:
+            continue
+        name = item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            name = f"{prefix} {len(sanitized) + 1}"
+        public_item = {"name": name.strip()[:160], "samples": samples}
+        for destination, allowed_values in extra_fields.items():
+            value = item.get(destination)
+            if value in allowed_values:
+                public_item[destination] = value
+        sanitized.append(public_item)
+    return sanitized
+
+
+def public_graphs(graph_sources):
+    """Build the public graph schema through strict per-graph allowlists."""
+    graph_sources = graph_sources or {}
+    return {
+        "mtu": {
+            "series": public_graph_series(
+                graph_sources.get("mtu", {}),
+                "Node",
+                (
+                    "displayMtu", "configuredMtu", "discoveredGlobalMtu",
+                    "automatic", "pmtudIntervalSeconds",
+                ),
+            )
+        },
+        "members": {
+            "series": public_graph_series(
+                graph_sources.get("members", {}),
+                "Node",
+                (
+                    "memberCount", "quorumNodeCount", "configuredNodeCount",
+                    "offlineNodeCount", "quorate",
+                ),
+            )
+        },
+        "linkQuality": {
+            "series": public_graph_series(
+                graph_sources.get("linkQuality", {}),
+                "Link",
+                ("avgMs", "maxMs", "jitterMs", "packetLossPercent"),
+            )
+        },
+        "cmapKnet": {
+            "series": public_graph_series(
+                graph_sources.get("cmapKnet", {}),
+                "Link",
+                (
+                    "latencyAvg", "latencyMax", "jitter", "txPacketDelta",
+                    "rxPacketDelta", "errorDelta",
+                ),
+            )
+        },
+        "tests": {
+            "series": public_graph_series(
+                graph_sources.get("tests", {}),
+                "Test",
+                ("avgMs", "maxMs", "received", "sent"),
+                {"kind": ("tailmox_icmp", "tailmox_tcp")},
+            )
+        },
+    }
+
+
+def public_link_quality_details(link_quality):
+    """Expose current link measurements without IPs, node IDs, or raw output."""
+    details = []
+    for link in link_quality.get("links", [])[:64]:
+        hostname = link.get("hostname")
+        if not isinstance(hostname, str) or not hostname.strip():
+            hostname = "unknown peer"
+        item = {"hostname": hostname.strip()[:160]}
+        for field in ("status", "quality"):
+            value = link.get(field)
+            if isinstance(value, str):
+                item[field] = value[:32]
+        for field in (
+            "packetLossPercent", "avgMs", "maxMs", "jitterMs", "lastUpdatedAt",
+        ):
+            value = link.get(field)
+            if (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+            ):
+                item[field] = value
+        details.append(item)
+    return details
+
+
+def public_snapshot(status, link_quality, graph_sources=None):
+    """Return the deliberately small, non-identifying public status schema."""
+    members = status.get("corosync", {}).get("members", [])
+    links = link_quality.get("links", [])
+    quality_counts = {"healthy": 0, "degraded": 0, "offline": 0, "unknown": 0}
+    for link in links:
+        quality = link.get("quality")
+        if link.get("status") == "offline" or quality == "offline":
+            quality_counts["offline"] += 1
+        elif quality in ("loss", "jittery", "slow"):
+            quality_counts["degraded"] += 1
+        elif quality in ("good", "healthy"):
+            quality_counts["healthy"] += 1
+        else:
+            quality_counts["unknown"] += 1
+
+    webservers = status.get("webservers", {})
+    webserver_hosts = webservers.get("hosts", [])
+    influx = status.get("influxdb", {})
+    generated_at = status.get("generatedAt")
+    active_members = sum(1 for member in members if member.get("active"))
+    configured_members = len(members)
+    web_online = sum(1 for host in webserver_hosts if host.get("running"))
+    web_total = len(webserver_hosts)
+    sample = {
+        "timestamp": generated_at,
+        "activeMembers": active_members,
+        "configuredMembers": configured_members,
+        "healthyLinks": quality_counts["healthy"],
+        "degradedLinks": quality_counts["degraded"],
+        "offlineLinks": quality_counts["offline"],
+        "webOnline": web_online,
+        "webTotal": web_total,
+    }
+    if not PUBLIC_SNAPSHOT_HISTORY or PUBLIC_SNAPSHOT_HISTORY[-1].get("timestamp") != generated_at:
+        PUBLIC_SNAPSHOT_HISTORY.append(sample)
+        del PUBLIC_SNAPSHOT_HISTORY[:-PUBLIC_SNAPSHOT_HISTORY_LIMIT]
+
+    return {
+        "schemaVersion": 4,
+        "generatedAt": status.get("generatedAt"),
+        "overall": status.get("overall") if status.get("overall") in ("healthy", "attention") else "unknown",
+        "services": {
+            "corosync": bool(status.get("services", {}).get("corosync", {}).get("active")),
+            "proxmoxCluster": bool(status.get("services", {}).get("pveCluster", {}).get("active")),
+            "tailscale": status.get("tailscale", {}).get("backendState") == "Running",
+        },
+        "cluster": {
+            "quorate": status.get("cluster", {}).get("quorate") == "Yes",
+            "activeMembers": active_members,
+            "configuredMembers": configured_members,
+            "offlineMembers": configured_members - active_members,
+        },
+        "links": quality_counts,
+        "linkQualityDetails": public_link_quality_details(link_quality),
+        "web": {
+            "online": web_online,
+            "total": web_total,
+        },
+        "metrics": {
+            "configured": bool(influx.get("enabled")),
+            "online": bool(influx.get("online")) if influx.get("enabled") else None,
+        },
+        "history": list(PUBLIC_SNAPSHOT_HISTORY),
+        "graphs": public_graphs(graph_sources),
+    }
+
+
+def write_public_snapshot(path):
+    destination = pathlib.Path(path)
+    destination.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+    status = collect_status()
+    link_quality = collect_link_quality()
+    graph_sources = {
+        "mtu": collect_mtu_history(),
+        "members": collect_member_count_history(),
+        "linkQuality": collect_link_quality_history(),
+        "cmapKnet": collect_cmap_knet_history(),
+        "tests": collect_test_history(),
+    }
+    snapshot = public_snapshot(status, link_quality, graph_sources)
+    temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
+    try:
+        with open(temporary, "w", encoding="utf-8") as handle:
+            json.dump(snapshot, handle, separators=(",", ":"), sort_keys=True)
+            handle.write("\n")
+        os.chmod(temporary, 0o644)
+        os.replace(temporary, destination)
+    finally:
+        try:
+            temporary.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def public_snapshot_worker(path):
+    while True:
+        try:
+            write_public_snapshot(path)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            print(f"Unable to refresh public monitor snapshot: {error}", file=sys.stderr)
+        time.sleep(PUBLIC_SNAPSHOT_INTERVAL_SECONDS)
+
+
+def start_public_snapshot_exporter():
+    if not PUBLIC_SNAPSHOT_FILE:
+        return
+    thread = threading.Thread(
+        target=public_snapshot_worker, args=(PUBLIC_SNAPSHOT_FILE,), daemon=True
+    )
+    thread.start()
+
+
 def collect_member_count_history():
     influx_series = influx_member_count_history()
     if influx_series:
@@ -1598,7 +1834,7 @@ from(bucket: "{escape_string(config["bucket"])}")
 HEALTH_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tailmox Health</title><style>
 :root{color-scheme:dark;--line:#334155;--text:#e5e7eb;--muted:#9ca3af}body{margin:0;min-height:100vh;color:var(--text);font:16px system-ui,sans-serif;background:linear-gradient(135deg,#0b1020,#14213d)}main{max-width:760px;margin:auto;padding:clamp(24px,7vw,64px) 20px}header{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:28px}h1{margin:0 0 6px;font-size:32px}p{color:var(--muted);margin:0}.pill{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-weight:700;white-space:nowrap}.good{color:#bbf7d0;border-color:#347b51;background:#14532d55}.warn{color:#fde68a;border-color:#8a641f;background:#78350f55}.bad{color:#fecdd3;border-color:#8f3042;background:#7f1d1d55}.issues{display:grid;gap:10px}.check{padding:17px 18px;border:1px solid var(--line);border-left:4px solid #f59e0b;border-radius:10px;background:#111827dd}.check.bad{border-left-color:#ef4444}.check.pass{border-color:#347b51;border-left-color:#22c55e;background:#14532d33}.check strong{display:block;margin-bottom:4px}.check.pass strong{color:#bbf7d0}a{color:#7dd3fc;display:inline-block;margin-top:24px}label{color:var(--muted);font-size:13px}select{margin-left:4px;padding:7px;border:1px solid #38bdf86b;border-radius:7px;color:#f8fafc;background:#0f172a;cursor:pointer;box-shadow:0 4px 14px #0206173d}select:hover{border-color:#38bdf8b8;background:#172033}select:focus{outline:2px solid #38bdf857;outline-offset:2px;border-color:#38bdf8}select option{color:#f8fafc;background:#0f172a;font-weight:600}select option:checked{color:#ecfeff;background:#155e75}@media(max-width:540px){header{display:block}.pill{display:inline-block;margin-top:15px}}
 </style></head><body><main><header><div><h1>Tailmox Monitor</h1><p>Cluster health at a glance</p></div><div><label>Page <select id="page"><option value="health">Health</option><option value="monitor">Monitor</option><option value="settings">Settings</option><option value="id">ID</option><option value="disable">Disable Tailmox</option></select></label><div class="pill" id="overall">Checking…</div></div></header><section><h2>Cluster health</h2><p id="updated">Checking current status…</p></section><section class="issues" id="issues"><div class="check">Loading health checks…</div></section><a href="/">Open detailed monitor</a></main><script>
-const apiPrefix=(window.location.pathname==="/monitor/health"||window.location.pathname.startsWith("/monitor/"))?"/monitor":"";document.querySelector("a").href=`${apiPrefix}/`;document.getElementById("page").addEventListener("change",event=>{const target=event.target.value;window.location.href=target==="health"?`${apiPrefix}/health`:target==="monitor"?`${apiPrefix}/`:`${apiPrefix}/${target}`});const issues=document.getElementById("issues"),overall=document.getElementById("overall"),add=(title,detail,state="warn")=>{const item=document.createElement("div");item.className=`check ${state}`;item.innerHTML=`<strong>${title}</strong><span>${detail}</span>`;issues.append(item)};
+const apiPrefix=(window.location.pathname==="/monitor/health"||window.location.pathname.startsWith("/monitor/"))?"/monitor":"";document.querySelector("a").href=`${apiPrefix}/`;document.getElementById("page").addEventListener("change",event=>{const target=event.target.value;window.location.href=target==="health"?`${apiPrefix}/health`:target==="monitor"?`${apiPrefix}/`:`${apiPrefix}/${target}`});const issues=document.getElementById("issues"),overall=document.getElementById("overall"),add=(title,detail,state="warn")=>{const item=document.createElement("div"),heading=document.createElement("strong"),description=document.createElement("span");item.className=`check ${state}`;heading.textContent=title;description.textContent=detail;item.append(heading,description);issues.append(item)};
 async function load(){try{const [sr,lr]=await Promise.all([fetch(`${apiPrefix}/api/status`,{cache:"no-store"}),fetch(`${apiPrefix}/api/link-quality`,{cache:"no-store"})]),data=await sr.json(),links=await lr.json();if(!sr.ok)throw Error(data.error||"Unable to read cluster status.");issues.replaceChildren();if(data.services?.corosync?.active)add("Corosync is online","The cluster communication service is active.","pass");else add("Corosync is offline","The cluster communication service is not active.","bad");if(data.services?.pveCluster?.active)add("Proxmox cluster service is online","The pve-cluster service is active.","pass");else add("Proxmox cluster service is offline","The pve-cluster service is not active.","bad");if(data.influxdb?.enabled){if(data.influxdb?.online)add("InfluxDB is online",data.influxdb.detail||"The configured InfluxDB health endpoint responded.","pass");else add("InfluxDB is offline",data.influxdb.detail||"The configured InfluxDB health endpoint did not respond.","bad")}const offline=data.corosync?.offlineMembers||[];if(offline.length)add(`${offline.length} host${offline.length===1?" is":"s are"} offline`,offline.map(m=>m.name||m.ip||`node ${m.nodeid}`).join(", "),data.cluster?.quorate!=="Yes"?"bad":"warn");else add("All cluster hosts are online",`${data.corosync?.members?.length||0} configured host${data.corosync?.members?.length===1?" is":"s are"} active.`,"pass");const missingWebservers=data.webservers?.offlineHosts||[];if(missingWebservers.length)add(`${missingWebservers.length} host${missingWebservers.length===1?" is":"s are"} not running the port ${data.webservers?.port||8088} webserver`,missingWebservers.map(host=>host.name||host.host||`node ${host.nodeid}`).join(", "),"bad");else add("Tailmox webservers are online",`${data.webservers?.hosts?.length||0} configured host${data.webservers?.hosts?.length===1?" is":"s are"} accepting connections on port ${data.webservers?.port||8088}.`,"pass");if(data.cluster?.quorate==="Yes")add("Cluster has quorum","Cluster operations can proceed safely.","pass");else add("Cluster has no quorum","Cluster operations may be unsafe until quorum is restored.","bad");for(const link of(links.links||[])){const peer=link.hostname||link.ip||"peer";if(link.quality==="loss")add(`Packet loss to ${peer}`,`${link.packetLossPercent??"unknown"}% packet loss.`);else if(link.quality==="jittery")add(`High jitter to ${peer}`,`${(link.jitterMs??0).toFixed(1)} ms jitter.`);else if(link.quality==="slow")add(`High latency to ${peer}`,`${(link.avgMs??0).toFixed(1)} ms average latency.`);else if(link.quality==="unknown")add(`Link quality unavailable for ${peer}`,"The peer could not be measured.","bad");else add(`Link to ${peer} is healthy`,`${(link.avgMs??0).toFixed(1)} ms average latency with no packet loss.`,"pass")}const attention=issues.querySelector(".check:not(.pass)"),failure=issues.querySelector(".check.bad");overall.textContent=attention?"Needs attention":"Healthy";overall.className=`pill ${failure?"bad":attention?"warn":"good"}`;document.getElementById("updated").textContent=`${data.hostname||"Host"} · updated ${new Date(data.generatedAt*1000).toLocaleString()}`}catch(error){issues.replaceChildren();add("Health check unavailable",error.message,"bad");overall.textContent="Unavailable";overall.className="pill bad"}}load();setInterval(load,30000);
 </script></body></html>
 """
@@ -1655,31 +1891,7 @@ INDEX_HTML = """<!doctype html>
     .loading { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); }
     .spinner { width: 16px; height: 16px; border: 2px solid rgba(148,163,184,0.28); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    form { display: grid; gap: 14px; max-width: 720px; }
-    label { display: grid; gap: 7px; color: #bae6fd; font-size: 13px; font-weight: 700; }
-    input { width: 100%; box-sizing: border-box; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 11px 12px; color: var(--text); background: rgba(2,6,23,0.42); font: inherit; }
-    input:focus { outline: 2px solid rgba(56,189,248,0.34); border-color: var(--accent); }
-    button, .button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(56,189,248,0.42); border-radius: 8px; padding: 10px 14px; color: #e0f2fe; background: rgba(14,116,144,0.32); font: inherit; font-weight: 800; text-decoration: none; cursor: pointer; }
     .actions { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
-    .page-picker { display: grid; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 700; }
-    .page-picker select { min-width: 132px; border: 1px solid rgba(56,189,248,0.42); border-radius: 8px; padding: 9px 30px 9px 10px; color: #f8fafc; background: #0f172a; font: inherit; font-size: 13px; cursor: pointer; box-shadow: 0 4px 14px rgba(2,6,23,0.24); }
-    .page-picker select:hover { border-color: rgba(56,189,248,0.72); background: #172033; }
-    .page-picker select:focus { outline: 2px solid rgba(56,189,248,0.34); outline-offset: 2px; border-color: var(--accent); }
-    .page-picker select option { color: #f8fafc; background: #0f172a; font-weight: 600; }
-    .page-picker select option:checked { color: #ecfeff; background: #155e75; }
-    .workflow-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
-    .workflow { border: 1px solid rgba(148,163,184,0.22); border-radius: 8px; padding: 14px; background: rgba(2,6,23,0.28); }
-    .workflow h3 { margin: 0 0 7px; font-size: 16px; }
-    .workflow p { min-height: 42px; margin: 0 0 12px; color: var(--muted); font-size: 13px; line-height: 1.45; }
-    .workflow input { margin-bottom: 10px; }
-    .danger { border-color: rgba(239,68,68,0.5); color: #fecaca; background: rgba(127,29,29,0.3); }
-    button:disabled { cursor: wait; opacity: 0.5; }
-    .action-meta { margin: 10px 0; color: var(--muted); }
-    #actionDialog { width: min(960px, calc(100vw - 48px)); max-height: 85vh; box-sizing: border-box; border: 1px solid var(--line); border-radius: 12px; padding: 20px; background: var(--panel); color: var(--text); }
-    #actionDialog::backdrop { background: rgba(2,6,23,0.75); }
-    #actionDialog header { gap: 16px; margin-bottom: 12px; }
-    #actionDialog h2 { margin: 0; }
-    #actionOutput { max-height: 60vh; overflow: auto; }
     .message { min-height: 20px; color: var(--muted); }
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
@@ -1713,11 +1925,7 @@ INDEX_HTML = """<!doctype html>
     .test-fail { color: #fecdd3; font-weight: 800; }
     .test-section { color: #bae6fd; font-weight: 800; }
     .test-summary { color: #fde68a; font-weight: 800; }
-    .redeploy-button .redeploy-spinner { display: inline-block; animation: spin 700ms linear infinite; }
-    .redeploy-button.is-complete { border-color: var(--good); color: #bbf7d0; }
-    .redeploy-button.update-available { border-color: var(--accent); color: #bae6fd; box-shadow: 0 0 16px rgba(56,189,248,0.28); }
-    a { color: var(--accent); }
-    @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid, .workflow-grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } }
+    @media (max-width: 850px) { main { padding: 18px; } header { display: block; } .grid { grid-template-columns: 1fr; } .wide, .wide-primary { grid-column: auto; } }
   </style>
 </head>
 <body>
@@ -1728,35 +1936,16 @@ INDEX_HTML = """<!doctype html>
         <div class="muted" id="subtitle">Loading cluster health...</div>
       </div>
       <div class="actions">
-        <button class="workflow-button redeploy-button" data-action="redeploy" id="redeployButton" type="button"><span aria-hidden="true">↻</span> Redeploy</button>
-        <label class="page-picker">Page
-          <select id="pagePicker" aria-label="Tailmox page">
-            <option value="id">ID</option>
-            <option value="settings">Settings</option>
-            <option value="health">Health</option>
-            <option value="./" selected>Monitor</option>
-            <option value="disable">Disable Tailmox</option>
-          </select>
-        </label>
         <div class="pill" id="overall"><span class="dot"></span><span>Loading</span></div>
       </div>
     </header>
     <section class="grid">
-      <div class="panel full">
-        <h2>Tailmox controls</h2>
-        <div class="workflow-grid">
-          <div class="workflow"><h3>Stage this host</h3><p>Install prerequisites, connect Tailscale, configure certificates, and start the monitor without joining a Proxmox cluster.</p><input id="stageAuthKey" type="password" autocomplete="new-password" placeholder="Optional Tailscale auth key"><button class="workflow-button" data-action="stage">Run tailmox stage</button></div>
-          <div class="workflow"><h3>Analytics</h3><p>Manage the once-per-minute analytics service. Existing monitoring history is preserved by restart and uninstall.</p><div class="actions"><button class="workflow-button" data-action="analytics-install">Install</button><button class="workflow-button" data-action="analytics-restart">Restart</button><button class="workflow-button danger" data-action="analytics-uninstall">Uninstall</button></div></div>
-          <div class="workflow"><h3>Maintenance</h3><p>Run Tailmox's local test suite or create a root-only snapshot of the current cluster configuration.</p><div class="actions"><button class="workflow-button" data-action="test">Run tests</button><button class="workflow-button" data-action="backup-create">Create backup</button></div></div>
-        </div>
-        <button type="button" id="showActionOutput">View workflow output</button>
-      </div>
       <div class="panel" id="tailmoxPanel"><h2>Tailmox</h2><div class="metric" id="tailmoxState">...</div><div class="muted" id="tailmoxDetail"></div></div>
       <div class="panel" id="corosyncPanel"><h2>Corosync</h2><div class="metric" id="corosyncState">...</div><div class="muted" id="corosyncEnabled"></div></div>
       <div class="panel" id="quorumPanel"><h2>Quorum</h2><div class="metric" id="quorumState">...</div><div class="muted" id="votes"></div></div>
       <div class="panel" id="clusterPanel"><h2>Cluster</h2><div class="metric" id="clusterName">...</div><div class="muted" id="transport"></div></div>
       <div class="panel" id="tailscalePanel"><h2>Tailscale</h2><div class="metric" id="tailscaleState">...</div><div class="muted" id="tailscaleName"></div></div>
-      <div class="panel" id="influxPanel"><h2>InfluxDB</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div><div style="margin-top: 10px;"><a href="settings">Edit InfluxDB settings</a></div></div>
+      <div class="panel" id="influxPanel"><h2>InfluxDB</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div></div>
       <div class="panel wide-primary"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>Peer IP</th><th>ID</th><th>Votes</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
       <div class="panel full"><h2>Global MTU by Host (last hour)</h2><div class="muted" id="mtuDetail"></div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU by host over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="mtuLegend"></div></div>
@@ -1770,19 +1959,9 @@ INDEX_HTML = """<!doctype html>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
     </section>
   </main>
-  <dialog id="actionDialog" aria-labelledby="actionDialogTitle">
-    <header><h2 id="actionDialogTitle">Workflow output</h2><button type="button" id="closeActionOutput" autofocus>Close</button></header>
-    <div class="action-meta" id="actionMeta" role="status">Checking workflow status...</div>
-    <pre id="actionOutput">Loading...</pre>
-  </dialog>
   <div class="chart-tooltip" id="chartTooltip"></div>
   <script>
-    const csrfToken = "__CSRF_TOKEN__";
     const apiPrefix = (window.location.pathname === "/monitor" || window.location.pathname.startsWith("/monitor/")) ? "/monitor" : (window.location.pathname === "/control" || window.location.pathname.startsWith("/control/") ? "/control" : "");
-    document.getElementById("pagePicker").addEventListener("change", event => {
-      const target = event.target.value.replace("./", "");
-      window.location.href = apiPrefix ? `${apiPrefix}/${target}` : event.target.value;
-    });
     const text = (id, value) => document.getElementById(id).textContent = value || "unknown";
     const setPanelStatus = (id, status) => {
       const panel = document.getElementById(id);
@@ -1887,7 +2066,7 @@ INDEX_HTML = """<!doctype html>
       attachChartTooltips(chart);
     };
     const renderLinkQuality = links => {
-      document.getElementById("linkQuality").innerHTML = (links || []).map(link => `<tr><td>${link.hostname || "unknown"}</td><td>${link.ip || ""}</td><td><span class="tag ${link.status === "offline" ? "offline" : "joined"}">${link.status || "unknown"}</span></td><td>${metricCell(link.packetLossPercent, percent(link.packetLossPercent), 0.1, 1)}</td><td>${metricCell(link.avgMs, ms(link.avgMs), 50, 150)}</td><td>${metricCell(link.maxMs, ms(link.maxMs), 100, 250)}</td><td>${metricCell(link.jitterMs, ms(link.jitterMs), 10, 20)}</td><td><span class="tag ${link.quality || "unknown"}">${link.quality || "unknown"}</span></td><td>${localTime(link.lastUpdatedAt)}</td></tr>`).join("") || "<tr><td colspan='9'>No remote corosync links measured</td></tr>";
+      document.getElementById("linkQuality").innerHTML = (links || []).map(link => `<tr><td>${escapeHtml(link.hostname || "unknown")}</td><td>${escapeHtml(link.ip || "")}</td><td><span class="tag ${link.status === "offline" ? "offline" : "joined"}">${escapeHtml(link.status || "unknown")}</span></td><td>${metricCell(link.packetLossPercent, percent(link.packetLossPercent), 0.1, 1)}</td><td>${metricCell(link.avgMs, ms(link.avgMs), 50, 150)}</td><td>${metricCell(link.maxMs, ms(link.maxMs), 100, 250)}</td><td>${metricCell(link.jitterMs, ms(link.jitterMs), 10, 20)}</td><td><span class="tag ${escapeHtml(link.quality || "unknown")}">${escapeHtml(link.quality || "unknown")}</span></td><td>${localTime(link.lastUpdatedAt)}</td></tr>`).join("") || "<tr><td colspan='9'>No remote corosync links measured</td></tr>";
     };
     const memberSampleColor = sample => {
       if (sample.quorate === false) return "#ef4444";
@@ -1999,7 +2178,7 @@ INDEX_HTML = """<!doctype html>
         { value: number(totalSamples), label: "samples" },
         { value: "average", label: "latency metric" },
       ]);
-      legend.innerHTML = series.map(item => `<span class="legend-item"><span class="swatch" style="background:${item.color}"></span>${item.name}</span>`).join("");
+      legend.innerHTML = series.map(item => `<span class="legend-item"><span class="swatch" style="background:${item.color}"></span>${escapeHtml(item.name)}</span>`).join("");
       if (!series.length) {
         chart.innerHTML = svg("text", { x: 32, y: 112 }, "No link-quality history collected yet.");
         hideChartTooltip();
@@ -2162,40 +2341,6 @@ INDEX_HTML = """<!doctype html>
       const result = renderCmapSeriesChart(document.getElementById("testHistoryChart"), document.getElementById("testHistoryLegend"), series, "avgMs", { label: "Average latency", axisLabel: "ms", format: ms, emptyText: "No exported tailmox test samples yet." });
       detailChips("testHistoryDetail", [{ value: number(result.seriesCount), label: "targets" }, { value: number(result.sampleCount), label: "samples" }, { value: "1h", label: "window" }]);
     };
-    const actionLabel = value => ({
-      "test": "tailmox test", "backup-create": "tailmox backups create",
-      "stage": "tailmox stage", "analytics-install": "tailmox analytics install",
-      "analytics-restart": "tailmox analytics restart", "analytics-uninstall": "tailmox analytics uninstall",
-      "redeploy": "Redeploy Tailmox",
-    }[value] || "Tailmox workflow");
-    const renderAction = data => {
-      const running = data.status === "running";
-      document.querySelectorAll(".workflow-button").forEach(button => button.disabled = running);
-      const redeployButton = document.getElementById("redeployButton");
-      if (data.action === "redeploy" && data.status === "running") redeployButton.innerHTML = '<span class="redeploy-spinner" aria-hidden="true">↻</span> Redeploy';
-      if (data.action === "redeploy" && data.status === "succeeded") { redeployButton.innerHTML = '<span aria-hidden="true">✓</span> Redeploy'; redeployButton.classList.add("is-complete"); }
-      document.getElementById("actionMeta").textContent = data.status === "idle"
-        ? "No workflow is running."
-        : `${actionLabel(data.action)} · ${data.status}${Number.isInteger(data.exitCode) ? ` · exit ${data.exitCode}` : ""}`;
-      const output = data.output || "No output.";
-      document.getElementById("actionOutput").innerHTML = output.split("\\n").map(line => {
-        const className = /^FAIL:|failed|exit [1-9]/i.test(line) ? "test-fail" : /^PASS:|passed|All .* passed/i.test(line) ? "test-pass" : /^==>/.test(line) ? "test-section" : /^\\d+ passed; \\d+ failed/i.test(line) ? "test-summary" : "";
-        return `<span class="test-line ${className}">${escapeHtml(line) || "&nbsp;"}</span>`;
-      }).join("");
-    };
-    const refreshAction = async () => {
-      try {
-        const response = await fetch(`${apiPrefix}/api/actions`, { cache: "no-store" });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Unable to read workflow status.");
-        renderAction(data);
-      } catch (error) { document.getElementById("actionMeta").textContent = error.message; }
-    };
-    const actionDialog = document.getElementById("actionDialog");
-    let redeployPendingAt = 0;
-    const showActionOutput = () => { if (!actionDialog.open) actionDialog.showModal(); };
-    document.getElementById("showActionOutput").addEventListener("click", showActionOutput);
-    document.getElementById("closeActionOutput").addEventListener("click", () => actionDialog.close());
     try {
       const previousStatus = JSON.parse(localStorage.getItem("tailmox-overall-status") || "null");
       const overall = document.getElementById("overall");
@@ -2204,32 +2349,6 @@ INDEX_HTML = """<!doctype html>
         overall.lastElementChild.textContent = previousStatus.label;
       }
     } catch { /* Ignore unavailable or malformed browser storage. */ }
-    const runAction = async action => {
-      if (action === "analytics-uninstall" && !window.confirm("Uninstall the Tailmox analytics service? Monitoring history will be preserved.")) return;
-      const authInput = document.getElementById("stageAuthKey");
-      document.getElementById("actionDialogTitle").textContent = action === "test" ? "Test output" : "Workflow output";
-      if (action !== "redeploy") showActionOutput();
-      if (action === "redeploy") { const button = document.getElementById("redeployButton"); redeployPendingAt = Date.now(); button.disabled = true; button.classList.remove("is-complete"); button.innerHTML = '<span class="redeploy-spinner" aria-hidden="true">↻</span> Redeploy'; }
-      const payload = action === "stage" ? { authKey: authInput.value } : {};
-      document.querySelectorAll(".workflow-button").forEach(button => button.disabled = true);
-      try {
-        const response = await fetch(`${apiPrefix}/api/actions/${action}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken },
-          body: JSON.stringify(payload),
-        });
-        authInput.value = "";
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Unable to start workflow.");
-        renderAction(data);
-      } catch (error) {
-        authInput.value = "";
-        document.getElementById("actionMeta").textContent = error.message;
-        document.querySelectorAll(".workflow-button").forEach(button => button.disabled = false);
-      }
-    };
-    document.querySelectorAll(".workflow-button").forEach(button => button.addEventListener("click", () => runAction(button.dataset.action)));
-
     let latestStatus = null;
     async function refreshStatus() {
       const response = await fetch(`${apiPrefix}/api/status`, { cache: "no-store" });
@@ -2242,20 +2361,6 @@ INDEX_HTML = """<!doctype html>
       overall.lastElementChild.textContent = statusLabel;
       localStorage.setItem("tailmox-overall-status", JSON.stringify({ className: overall.className, label: statusLabel }));
       text("tailmoxState", data.tailmox.active ? "active" : (data.tailmox.status || "unknown"));
-      const redeployButton = document.getElementById("redeployButton");
-      const updateAvailable = Boolean(data.tailmoxUpdate?.available);
-      redeployButton.classList.toggle("update-available", updateAvailable);
-      if (redeployPendingAt && !updateAvailable) {
-        redeployPendingAt = 0;
-        redeployButton.disabled = false;
-        redeployButton.classList.add("is-complete");
-        redeployButton.innerHTML = '<span aria-hidden="true">✓</span> Redeploy';
-      } else if (redeployPendingAt && Date.now() - redeployPendingAt > 180000) {
-        redeployPendingAt = 0;
-        redeployButton.disabled = false;
-        redeployButton.innerHTML = '<span aria-hidden="true">↻</span> Redeploy';
-      }
-      redeployButton.title = data.tailmoxUpdate?.available ? "A newer Tailmox version is available." : "Tailmox is up to date.";
       text("tailmoxDetail", `${number(data.tailmox.activeMemberCount)} active in state; ${number(data.tailmox.configuredNodeCount)} configured. ${data.tailmox.detail || ""}`);
       text("corosyncState", yesNo(data.services.corosync.active));
       text("corosyncEnabled", `enabled: ${data.services.corosync.enabled || "unknown"}`);
@@ -2274,8 +2379,8 @@ INDEX_HTML = """<!doctype html>
       setPanelStatus("clusterPanel", data.cluster.name ? (offlineCount ? "warn" : "good") : "bad");
       setPanelStatus("tailscalePanel", data.tailscale.backendState === "Running" ? "good" : "bad");
       setPanelStatus("influxPanel", data.influxdb.enabled ? (data.influxdb.online ? "good" : "bad") : "warn");
-      document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.name || ""}${member.local ? " (local)" : ""}</td><td>${member.ip || ""}</td><td>${member.nodeid || ""}</td><td>${number(member.votes)}</td><td><span class="tag ${member.active ? "joined" : "offline"}">${member.active ? "active" : "offline"}</span></td></tr>`).join("") || "<tr><td colspan='5'>No member data available</td></tr>";
-      document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${node.name || ""}</td><td>${node.nodeid || ""}</td><td>${node.votes || ""}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
+      document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${escapeHtml(member.name || "")}${member.local ? " (local)" : ""}</td><td>${escapeHtml(member.ip || "")}</td><td>${escapeHtml(member.nodeid || "")}</td><td>${number(member.votes)}</td><td><span class="tag ${member.active ? "joined" : "offline"}">${member.active ? "active" : "offline"}</span></td></tr>`).join("") || "<tr><td colspan='5'>No member data available</td></tr>";
+      document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${escapeHtml(node.name || "")}</td><td>${escapeHtml(node.nodeid || "")}</td><td>${escapeHtml(node.votes || "")}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
       renderLogs(data.corosync.recentLogs);
       text("raw", data.corosync.rawStatus || "No pvecm status output available.");
     }
@@ -2329,9 +2434,7 @@ INDEX_HTML = """<!doctype html>
       ]);
     }
     refresh();
-    refreshAction();
     setInterval(refreshStatus, 15000);
-    setInterval(refreshAction, 2000);
     setInterval(refreshMtuHistory, 15000);
     setInterval(refreshMemberCountHistory, 15000);
     setInterval(refreshCmapKnetHistory, 15000);
@@ -2615,6 +2718,13 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
         for key, value in (extra_headers or {}).items():
             self.send_header(key, value)
         self.end_headers()
@@ -2627,6 +2737,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_body(status, "application/json", json.dumps(payload))
 
     def require_tailscale_user(self):
+        # Cloudflare always adds these headers. Refuse privileged authentication
+        # if this service is ever routed through a Cloudflare proxy by mistake.
+        if any(
+            self.headers.get(name)
+            for name in ("CF-Ray", "CF-Connecting-IP", "CF-IPCountry", "CDN-Loop")
+        ):
+            self.send_json(403, {"error": "Privileged Tailmox pages are private to Tailscale Serve."})
+            return None
         login = request_identity(self.headers)
         if login:
             return login
@@ -2841,6 +2959,7 @@ class MonitorHTTPServer(ThreadingHTTPServer):
 
 if __name__ == "__main__":
     start_cmap_stats_exporter()
+    start_public_snapshot_exporter()
     server = MonitorHTTPServer((HOST, PORT), Handler)
     print(f"Tailmox monitor listening on http://{HOST}:{PORT}")
     server.serve_forever()

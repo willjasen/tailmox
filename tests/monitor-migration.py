@@ -115,6 +115,13 @@ class HttpTests(unittest.TestCase):
                 instance.send_body = lambda status, kind, body, *args: responses.append((status, body))
                 getattr(instance, 'do_' + method)()
                 return responses[0]
+            self.assertEqual(request('GET', '/')[0], 403)
+            self.assertEqual(request('GET', '/', headers={
+                'Test-User': 'alice', 'CF-Connecting-IP': '203.0.113.9'
+            })[0], 403)
+            self.assertEqual(request('GET', '/settings', headers={
+                'Test-User': 'alice', 'CF-Ray': 'test'
+            })[0], 403)
             self.assertEqual(request('GET', '/disable')[0], 403)
             self.assertEqual(request('GET', '/api/migration/subnets')[0], 403)
             with patch.dict(globals_, {'discover_subnets': lambda: [{'cidr': '10.0.0.0/24', 'interfaces': []}]}):
@@ -132,8 +139,8 @@ class HttpTests(unittest.TestCase):
             self.assertIn('class="page-picker"', html)
             self.assertIn('.page-picker select option { color: #f8fafc; background: #0f172a;', html)
             self.assertIn('value="health"', html)
-            self.assertIn('value="disable"', module['INDEX_HTML'])
-            self.assertIn('.page-picker select option { color: #f8fafc; background: #0f172a;', module['INDEX_HTML'])
+            for element in ('<a ', '<button', '<select', '<input', '<form'):
+                self.assertNotIn(element, module['INDEX_HTML'])
             self.assertIn('select option{color:#f8fafc;background:#0f172a;', module['HEALTH_HTML'])
             self.assertIn('value="disable"', module['SETTINGS_HTML'])
             self.assertEqual(request('POST', '/api/migration/start', {'cidr': '10.0.0.0/24'}, {'Test-User': 'alice'})[0], 403)

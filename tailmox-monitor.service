@@ -13,6 +13,8 @@ ExecStart=/usr/bin/python3 @TAILMOX_DIR@/tailmox-monitor.py
 Restart=on-failure
 RestartSec=5
 RestartPreventExitStatus=132
+PrivateTmp=yes
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target
