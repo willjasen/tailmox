@@ -34,9 +34,14 @@ LOG_DIR="${TAILMOX_LOG_DIR:-/var/log}"
 LOG_FILE="$LOG_DIR/tailmox.log"
 STATE_FILE="${TAILMOX_STATE_FILE:-${TAILMOX_CLUSTER_STATE_FILE:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/tailmox/state.json}}"
 
+if [[ "${1:-}" == "--test" ]]; then
+    LOG_FILE=/dev/null
+fi
+
 # `info` is intentionally usable from a non-Proxmox machine, so it must not
 # require write access to /var/log.
 if [ "${1:-}" != "info" ] && [ "${1:-}" != "--backups-list" ] &&
+    [ "${1:-}" != "--test" ] &&
     [ "${TAILMOX_LIBRARY_MODE:-false}" != "true" ]; then
     mkdir -p "$LOG_DIR"
 
@@ -863,6 +868,7 @@ function test_setup_safely() {
     local cluster_status
     local cluster_name
     local has_warnings=false
+    local peer_checks_failed=false
 
     TAILMOX_ICMP_WARNINGS_RECORDED=false
 
@@ -897,10 +903,15 @@ function test_setup_safely() {
     are_hosts_tcp_port_443_reachable "" "the local Proxmox host" || return 1
 
     printf '4. Peer connectivity\n'
-    check_all_peers_online || return 1
-    ensure_ping_reachability "" "all other Tailmox peers" false || return 1
-    are_hosts_tcp_port_8006_reachable "" "all other Tailmox peers" || return 1
-    are_hosts_tcp_port_443_reachable "" "all other Tailmox peers" || return 1
+    if ! check_all_peers_online; then
+        if [[ "${TAILMOX_MONITOR_OUTPUT:-false}" != "true" ]]; then
+            return 1
+        fi
+        peer_checks_failed=true
+    fi
+    ensure_ping_reachability "" "all other Tailmox peers" false || peer_checks_failed=true
+    are_hosts_tcp_port_8006_reachable "" "all other Tailmox peers" || peer_checks_failed=true
+    are_hosts_tcp_port_443_reachable "" "all other Tailmox peers" || peer_checks_failed=true
 
     printf '5. Proxmox cluster status\n'
     cluster_status=$(pvecm status 2>&1) || cluster_status=""
@@ -923,6 +934,8 @@ function test_setup_safely() {
     else
         printf 'RESULT: Setup test passed\n'
     fi
+
+    [[ "$peer_checks_failed" == "false" ]]
 }
 
 function record_local_host() {
@@ -1300,6 +1313,37 @@ function ensure_ping_reachability() {
             local small_status=0
             local large_status=0
 
+            emit_icmp_result() {
+                local packet_size="$1"
+                local output="$2"
+                local command_status="$3"
+                local transmitted received average maximum packet_loss
+
+                transmitted=$(awk -F',' '/packets transmitted/ {gsub(/[^0-9]/, "", $1); print $1}' <<< "$output" | tail -1)
+                received=$(awk -F',' '/packets transmitted/ {gsub(/[^0-9]/, "", $2); print $2}' <<< "$output" | tail -1)
+                average=$(awk -F'/' '/^(rtt|round-trip)/ {print $5}' <<< "$output" | tail -1)
+                maximum=$(awk -F'/' '/^(rtt|round-trip)/ {print $6}' <<< "$output" | tail -1)
+                packet_loss=$(awk -F',' '/packet loss/ {gsub(/^[ \t]+|[ \t]+$/, "", $3); print $3}' <<< "$output" | tail -1)
+
+                if [[ "$command_status" -eq 0 && -n "$transmitted" &&
+                    "$received" == "$transmitted" && -n "$average" && -n "$maximum" ]]; then
+                    printf '%b\n' "${GREEN}   - ${packet_size}-byte ICMP: average latency ${average} ms; maximum latency ${maximum} ms; ${received} of ${transmitted} replies arrived within 50 ms; ${packet_loss:-0% packet loss}.${RESET}"
+                    if [[ "${TAILMOX_MONITOR_OUTPUT:-false}" == "true" ]]; then
+                        printf '__TAILMOX_MONITOR_ICMP__\t%s\t%s\tpassed\t%s\t%s\t%s\t%s\tunknown\n' \
+                            "$hostname" "$packet_size" "$received" "$transmitted" "$average" "$maximum"
+                    fi
+                    return
+                fi
+
+                printf '%b\n' "${YELLOW}   - ${packet_size}-byte ICMP: result could not be interpreted. No cluster changes will be made.${RESET}"
+                if [[ "${TAILMOX_MONITOR_OUTPUT:-false}" == "true" ]]; then
+                    printf '__TAILMOX_MONITOR_ICMP__\t%s\t%s\twarning\t%s\t%s\t%s\t%s\tunknown\n' \
+                        "$hostname" "$packet_size" "${received:-unknown}" \
+                        "${transmitted:-unknown}" "${average:-unknown}" "${maximum:-unknown}"
+                fi
+                printf 'warning\n' >> "$work_dir/status-${index}"
+            }
+
             hostname=$(jq -r '.hostname' <<< "$peer")
             dns_name=$(jq -r '.dnsName // .hostname' <<< "$peer" | sed 's/\.$//')
 
@@ -1319,18 +1363,8 @@ function ensure_ping_reachability() {
 
                 small_output=$(ping -c 15 -i 0.357142857 -W 0.05 -w 6 -s 56 "$dns_name" 2>&1) || small_status=$?
                 large_output=$(ping -c 15 -i 0.357142857 -W 0.05 -w 6 -s 1272 "$dns_name" 2>&1) || large_status=$?
-                if [[ "$small_status" -eq 0 && "$small_output" == *"15 received"* ]]; then
-                    printf '%b\n' "${GREEN}   - 64-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; 15 of 15 replies arrived within 50 ms; 0% packet loss.${RESET}"
-                else
-                    printf '%b\n' "${YELLOW}   - 64-byte ICMP: result could not be interpreted. No cluster changes will be made.${RESET}"
-                    printf 'warning\n' >> "$work_dir/status-${index}"
-                fi
-                if [[ "$large_status" -eq 0 && "$large_output" == *"15 received"* ]]; then
-                    printf '%b\n' "${GREEN}   - 1280-byte ICMP: average latency 2.000 ms; maximum latency 3.000 ms; 15 of 15 replies arrived within 50 ms; 0% packet loss.${RESET}"
-                else
-                    printf '%b\n' "${YELLOW}   - 1280-byte ICMP: result could not be interpreted. No cluster changes will be made.${RESET}"
-                    printf 'warning\n' >> "$work_dir/status-${index}"
-                fi
+                emit_icmp_result 64 "$small_output" "$small_status"
+                emit_icmp_result 1280 "$large_output" "$large_status"
             } > "$work_dir/output-${index}"
         ) &
         index=$((index + 1))
@@ -1736,12 +1770,14 @@ if [ "${TAILMOX_LIBRARY_MODE:-false}" = "true" ]; then
     return 0 2>/dev/null || exit 0
 fi
 
-if [ "${1:-}" != "info" ] && [ "${1:-}" != "--backups-list" ]; then
+if [ "${1:-}" != "info" ] && [ "${1:-}" != "--backups-list" ] &&
+    [ "${1:-}" != "--test" ]; then
     log_echo "${GREEN}--- TAILMOX SCRIPT RUNNING ---${RESET}"
 fi
 
 # Parse the script parameters
 AUTH_KEY="${TAILMOX_AUTH_KEY:-}"
+TEST_ONLY=false
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         info) show_info; exit 0 ;;
@@ -1788,12 +1824,36 @@ while [[ "$#" -gt 0 ]]; do
             printf 'Tailmox InfluxDB exporter %s.\n' "$( [[ "$action" == install ]] && printf 'installed and running' || printf 'restarted' )"
             exit 0
             ;;
+        --test) TEST_ONLY=true ;;
         --staging) STAGING="true"; log_echo "${YELLOW}Staging mode enabled.${RESET}"; ;;
         --auth-key) AUTH_KEY="$2"; log_echo "${YELLOW}Using auth key for Tailscale...${RESET}"; shift; ;;
         *) log_echo "${RED}Unknown parameter: $1${RESET}"; exit 1 ;;
     esac
     shift
 done
+
+if [[ "$TEST_ONLY" == "true" ]]; then
+    if ! STATUS_JSON=$(tailscale status --json) ||
+        ! jq empty <<< "$STATUS_JSON" >/dev/null 2>&1; then
+        printf 'Unable to read Tailscale status.\n' >&2
+        exit 1
+    fi
+    TAILSCALE_IP=$(tailscale ip -4) || exit 1
+    TAILSCALE_DNS_NAME=$(jq -r '.Self.DNSName // ""' <<< "$STATUS_JSON" | sed 's/\.$//')
+    MAGICDNS_DOMAIN_NAME=$(printf '%s' "$TAILSCALE_DNS_NAME" | cut -d'.' -f2-)
+    LOCAL_PEER=$(jq -n \
+        --arg hostname "$HOSTNAME" \
+        --arg ip "$TAILSCALE_IP" \
+        --arg dnsName "$TAILSCALE_DNS_NAME" \
+        '{hostname: $hostname, ip: $ip, dnsName: $dnsName, online: true}')
+    OTHER_PEERS=$(jq -c '
+        [.Peer[] | select((.Tags // []) | index("tag:tailmox") != null) |
+            {hostname: .HostName, ip: .TailscaleIPs[0], dnsName: .DNSName, online: .Online}]
+    ' <<< "$STATUS_JSON") || exit 1
+    ALL_PEERS=$(jq -c --argjson localPeer "$LOCAL_PEER" '. + [$localPeer]' <<< "$OTHER_PEERS") || exit 1
+    test_setup_safely
+    exit $?
+fi
 
 if ! check_if_supported_proxmox_is_installed; then
     log_echo "${RED}Proxmox VE 8.x or 9.x is required. Exiting...${RESET}"

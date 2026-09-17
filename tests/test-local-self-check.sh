@@ -17,6 +17,7 @@ HOSTNAME="pve-local"
 MOCK_TAGS='["tag:tailmox"]'
 MOCK_MISSING_DEPENDENCY=""
 MOCK_ICMP_WARNING=false
+MOCK_PEERS_ONLINE=true
 MOCK_CLUSTER_STATUS='Cluster information
 -------------------
 Name:             production
@@ -37,7 +38,7 @@ function command() {
 }
 function check_all_peers_online() {
     CHECK_LOG+="peer-online "
-    return 0
+    [[ "$MOCK_PEERS_ONLINE" == true ]]
 }
 function ensure_ping_reachability() {
     CHECK_LOG+="ping:${2:-all other Tailmox peers}:${3:-true} "
@@ -217,6 +218,22 @@ else
     printf 'PASS: missing local tag:tailmox identity fails before network checks\n'
     PASS_COUNT=$((PASS_COUNT + 1))
 fi
+
+MOCK_TAGS='["tag:tailmox"]'
+MOCK_PEERS_ONLINE=false
+CHECK_LOG=""
+TAILMOX_MONITOR_OUTPUT=true
+if test_setup_safely >/dev/null 2>&1; then
+    printf 'FAIL: monitor check ignored an offline Tailmox peer\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+elif [[ "$CHECK_LOG" != *"peer-online ping:all other Tailmox peers:false"* ]]; then
+    printf 'FAIL: monitor check did not measure reachable peers after an offline peer\n'
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+else
+    printf 'PASS: monitor check measures reachable peers and reports an offline peer\n'
+    PASS_COUNT=$((PASS_COUNT + 1))
+fi
+unset TAILMOX_MONITOR_OUTPUT
 
 printf '\n%s passed; %s failed\n' "$PASS_COUNT" "$FAIL_COUNT"
 [[ "$FAIL_COUNT" -eq 0 ]]

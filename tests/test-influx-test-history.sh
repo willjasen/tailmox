@@ -32,5 +32,7 @@ assert " or " in captured["flux"]
 PY
 
 grep -Fq 'hostname=$(hostname)' "$ROOT_DIR/tailmox-influx-export.sh"
+grep -Fq '"$TAILMOX_ROOT/tailmox" check' "$ROOT_DIR/tailmox-influx-export.sh"
+grep -Fq 'run_command([test_command, "check"]' "$ROOT_DIR/tailmox-monitor"
 
 printf 'InfluxDB test history hostname tests passed\n'

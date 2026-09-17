@@ -14,7 +14,7 @@ WEB_OUTPUT="$TEST_TMP/web/monitor.json"
 
 printf '%s\n' \
     '#!/usr/bin/env bash' \
-    '[[ "${1:-}" == "test" ]] || exit 2' \
+    '[[ "${1:-}" == "check" ]] || exit 2' \
     'printf "%s\n" " - pve-local (pve-local.example.ts.net)"' \
     'printf "%s\n" "   - Tailscale path: 5 of 5 Tailscale pings succeeded (80% required); average latency 4.25 ms; maximum latency 7.50 ms; duration 3 s."' \
     'printf "%s\n" "   - 64-byte ICMP: average latency 1.25 ms; maximum latency 2.50 ms; 15 of 15 replies arrived within 50 ms; 0% packet loss."' \
@@ -154,7 +154,7 @@ assert analytics["history"][0]["failureReasons"] == [
     {
         "category": "tailmox",
         "name": "test command",
-        "detail": "tailmox test exited with code 1.",
+        "detail": "tailmox check exited with code 1.",
     }
 ], analytics
 PY

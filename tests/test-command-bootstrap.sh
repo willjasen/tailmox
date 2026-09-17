@@ -81,10 +81,12 @@ printf 'PASS: serve defaults to the explicit start action\n'
 CLUSTER_OUTPUT=$(TAILMOX_BIN_DIR="$BIN_DIR" "$DISPATCH_DIR/tailmox" cluster --auth-key test-key)
 STAGE_OUTPUT=$(TAILMOX_BIN_DIR="$BIN_DIR" "$DISPATCH_DIR/tailmox" stage --auth-key test-key)
 DISABLE_OUTPUT=$(TAILMOX_BIN_DIR="$BIN_DIR" "$DISPATCH_DIR/tailmox" disable 10.10.0.0/24)
+CHECK_OUTPUT=$(TAILMOX_BIN_DIR="$BIN_DIR" "$DISPATCH_DIR/tailmox" check)
 
 if [[ "$CLUSTER_OUTPUT" != 'tailmox.sh <--auth-key> <test-key>' ||
     "$STAGE_OUTPUT" != 'tailmox.sh <--staging> <--auth-key> <test-key>' ||
-    "$DISABLE_OUTPUT" != 'tailmox.sh <--disable> <10.10.0.0/24>' ]]; then
+    "$DISABLE_OUTPUT" != 'tailmox.sh <--disable> <10.10.0.0/24>' ||
+    "$CHECK_OUTPUT" != 'tailmox.sh <--test>' ]]; then
     printf 'FAIL: cluster or stage dispatched unsupported terminal options\n'
     exit 1
 fi

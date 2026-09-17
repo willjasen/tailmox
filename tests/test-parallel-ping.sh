@@ -174,6 +174,16 @@ if [[ "$(printf '%s\n' "$FIRST_CHECK_OUTPUT" | grep -Fxc -- "$expected_small_icm
     exit 1
 fi
 
+TAILMOX_MONITOR_OUTPUT=true
+MONITOR_OUTPUT=$(ensure_ping_reachability "$OTHER_PEERS" "all other Tailmox peers" false)
+if [[ "$(printf '%s\n' "$MONITOR_OUTPUT" | grep -c '^__TAILMOX_MONITOR_ICMP__')" -ne 6 ]] ||
+    [[ "$(printf '%s\n' "$MONITOR_OUTPUT" | grep -c $'\t64\tpassed\t15\t15\t2.000\t3.000\tunknown$')" -ne 3 ]] ||
+    [[ "$(printf '%s\n' "$MONITOR_OUTPUT" | grep -c $'\t1280\tpassed\t15\t15\t2.000\t3.000\tunknown$')" -ne 3 ]]; then
+    printf 'FAIL: monitor output did not include structured ICMP samples\n'
+    exit 1
+fi
+unset TAILMOX_MONITOR_OUTPUT
+
 printf 'PASS: all peers use Tailscale path checks and both ICMP packet sizes in parallel\n'
 
 : > "$PING_TARGETS_FILE"

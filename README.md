@@ -265,9 +265,9 @@ max network delay, and related corosync config values. If the encrypted
 settings are incomplete or cannot be decrypted, the monitor continues without
 exporting data and reports the configuration error in the web interface.
 
-The older periodic test collector is still available as `tailmox analytics`. It records `tailmox test` results, latency summaries, and cluster samples in SQLite, and can be installed as `tailmox-analytics.service` with `tailmox analytics install`.
+The older periodic test collector is still available as `tailmox analytics`. It records `tailmox check` results, latency summaries, and cluster samples in SQLite, and can be installed as `tailmox-analytics.service` with `tailmox analytics install`.
 
-To export the latency and TCP results from `tailmox test` to InfluxDB, configure
+To export the latency and TCP results from the read-only `tailmox check` to InfluxDB, configure
 InfluxDB in the monitor settings, then run `tailmox influx install`. The exporter
 runs the real Tailmox monitoring check once per minute and writes
 `tailmox_icmp` and `tailmox_tcp` measurements. Use `tailmox influx restart` or
@@ -326,7 +326,7 @@ entry for that host without recreating or rejoining the cluster.
 - refreshes the dashboard automatically
 
 `tailmox-monitor` - this is the legacy test analytics collector behind `tailmox analytics`
-- stores periodic `tailmox test` results in SQLite
+- stores periodic `tailmox check` results in SQLite
 - exposes an event stream for the older dashboard assets in `web/`
 
 There are further scripts related to testing in the "test-env" folder.

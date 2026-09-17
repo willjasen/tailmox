@@ -926,7 +926,7 @@ def publish_analytics(
                 }
             )
         if run[8] not in (None, 0):
-            test_failure_detail = f"tailmox test exited with code {run[8]}."
+            test_failure_detail = f"tailmox check exited with code {run[8]}."
             if not failed_checks:
                 test_failure_detail += (
                     " No failed individual check was recorded, so the host "
@@ -1143,7 +1143,7 @@ def monitor_once(
 
     test_environment = os.environ.copy()
     test_environment["TAILMOX_MONITOR_OUTPUT"] = "true"
-    test_result = run_command([test_command, "test"], test_environment)
+    test_result = run_command([test_command, "check"], test_environment)
     combined_output = "\n".join(part for part in (test_result.stdout, test_result.stderr) if part)
     if os.environ.get("TAILMOX_MONITOR_PRINT_TEST_OUTPUT") == "true":
         print(combined_output, flush=True)
@@ -1191,7 +1191,7 @@ def monitor_once(
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="tailmox monitor",
-        description="Run tailmox test every minute and store normalized health history.",
+        description="Run tailmox check every minute and store normalized health history.",
     )
     parser.add_argument(
         "--mode",

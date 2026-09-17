@@ -249,6 +249,7 @@ show_usage() {
  "  tailmox ${blue}stage${reset} [options]    Set up Tailscale and certificates only" \
  "  tailmox ${blue}backups${reset} [list]     List Tailmox configuration backups" \
  "      ${blue}create${reset}                   Create a configuration backup now" \
+ "  tailmox ${blue}check${reset}              Run the read-only network health check" \
  "  tailmox ${blue}test${reset}               Run the regression test suite" \
  "  tailmox ${blue}monitor${reset} [subcommand] Manage the live Corosync web monitor" \
  "      ${blue}install${reset}                  Install and start the web monitor service" \
@@ -443,6 +444,14 @@ case "${1:-}" in
             install|restart|uninstall) action="$1"; shift; [[ "$#" -eq 0 ]] || { printf 'tailmox influx %s does not accept arguments.\n' "$action" >&2; exit 2; }; exec "$TAILMOX_ROOT/tailmox.sh" "--influx-$action" ;;
             *) printf 'Usage: tailmox influx [install|restart|uninstall]\n' >&2; exit 2 ;;
         esac
+        ;;
+    check)
+        shift
+        if [[ "$#" -ne 0 ]]; then
+            printf 'tailmox check does not accept arguments.\n' >&2
+            exit 2
+        fi
+        exec "$TAILMOX_ROOT/tailmox.sh" --test
         ;;
     test|self-test)
         command_name="${1:-test}"
