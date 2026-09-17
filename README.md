@@ -258,6 +258,11 @@ The node's normal HTTPS port `443` continues to proxy the Proxmox interface.
 
 The monitor includes corosync-specific details: whether the `corosync` service is active and enabled, whether the cluster is quorate, expected and current votes, corosync transport, configured and active member information from `corosync-cmapctl`, quorum node details from `corosync-quorumtool`, cluster member count over time, link-quality history for each peer, and recent `corosync` journal entries. Configured cluster members that are not active in corosync are shown as offline. The Health page shows successful and failed checks for cluster services, hosts, quorum, Tailmox webservers, peer links, and configured InfluxDB availability.
 
+When InfluxDB is configured, monitor graphs query the shared bucket across every
+reporting Tailmox host. Legends identify the source host, and path-specific
+graphs label both ends (for example, `pve3 → pve4`) so the load-balanced service
+shows the same cluster-wide history regardless of which host serves the page.
+
 The same page is also the Tailmox control console. A signed-in Tailscale user
 can run `tailmox stage`, install, restart, or uninstall `tailmox analytics`, run
 the local test suite, and create a root-only configuration backup. Only one

@@ -940,18 +940,19 @@ def influx_mtu_history():
 from(bucket: "{escape_string(config["bucket"])}")
   |> range(start: -1h)
   |> filter(fn: (r) => r._measurement == "tailmox_corosync_config")
-  |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r._field == "configured_mtu" or r._field == "discovered_global_mtu" or r._field == "display_mtu" or r._field == "automatic" or r._field == "pmtud_interval_seconds" or r._field == "knet_ping_interval_ms" or r._field == "knet_ping_timeout_ms" or r._field == "token_ms" or r._field == "token_retransmit_ms" or r._field == "token_retransmits_before_loss" or r._field == "consensus_ms" or r._field == "max_network_delay_ms" or r._field == "max_messages" or r._field == "window_size" or r._field == "knet_compression_threshold" or r._field == "knet_compression_level")
   |> aggregateWindow(every: 1m, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
   |> limit(n: 120)
 ''')
-    by_timestamp = {}
+    by_host = {}
     for row in rows:
         timestamp = influx_time(row.get("_time"))
-        if timestamp is None:
+        host = row.get("host")
+        if timestamp is None or not host:
             continue
-        sample = by_timestamp.setdefault(timestamp, {"timestamp": timestamp})
+        samples = by_host.setdefault(host, {})
+        sample = samples.setdefault(timestamp, {"timestamp": timestamp, "host": host})
         field = row.get("_field")
         if field == "configured_mtu":
             sample["configuredMtu"] = influx_int(row, "_value")
@@ -985,18 +986,26 @@ from(bucket: "{escape_string(config["bucket"])}")
             sample["knetCompressionThreshold"] = influx_int(row, "_value")
         elif field == "knet_compression_level":
             sample["knetCompressionLevel"] = influx_int(row, "_value")
-    return sorted(by_timestamp.values(), key=lambda sample: sample["timestamp"])[-720:]
+    return [
+        {
+            "name": host,
+            "host": host,
+            "samples": sorted(samples.values(), key=lambda sample: sample["timestamp"])[-720:],
+        }
+        for host, samples in sorted(by_host.items())
+    ]
 
 
 def collect_mtu_history():
     status = collect_mtu_status()
-    history = influx_mtu_history()
-    if not history:
-        history = MTU_HISTORY
+    series = influx_mtu_history()
+    if not series:
+        series = [{"name": socket.gethostname(), "host": socket.gethostname(), "samples": list(MTU_HISTORY)}]
     return {
         "generatedAt": status["generatedAt"],
         "current": status["current"],
-        "history": history,
+        "history": list(MTU_HISTORY),
+        "series": series,
     }
 
 
@@ -1113,17 +1122,10 @@ def collect_link_quality_history():
 
 def influx_test_history():
     config = influx_config()
-    hostname = socket.gethostname()
-    short_hostname = hostname.split(".", 1)[0]
-    host_filter = f'r.host == "{escape_string(hostname)}"'
-    if short_hostname != hostname:
-        host_filter = (
-            f'({host_filter} or r.host == "{escape_string(short_hostname)}")'
-        )
     rows = influx_query(f'''
 from(bucket: "{escape_string(config["bucket"])}")
   |> range(start: -1h)
-  |> filter(fn: (r) => (r._measurement == "tailmox_icmp" or r._measurement == "tailmox_tcp") and {host_filter})
+  |> filter(fn: (r) => r._measurement == "tailmox_icmp" or r._measurement == "tailmox_tcp")
   |> filter(fn: (r) => r._field == "average_ms" or r._field == "maximum_ms" or r._field == "latency_ms" or r._field == "packets_received" or r._field == "packets_sent")
   |> aggregateWindow(every: 1m, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
@@ -1135,8 +1137,12 @@ from(bucket: "{escape_string(config["bucket"])}")
         if timestamp is None:
             continue
         measurement = row.get("_measurement")
-        key = (measurement, row.get("node") or f"port {row.get('port', 'unknown')}")
-        group = groups.setdefault(key, {"name": key[1], "kind": measurement, "samples": {}})
+        host = row.get("host")
+        target = row.get("node") or f"port {row.get('port', 'unknown')}"
+        if not host:
+            continue
+        key = (host, measurement, target)
+        group = groups.setdefault(key, {"name": f"{host} → {target}", "host": host, "target": target, "kind": measurement, "samples": {}})
         sample = group["samples"].setdefault(timestamp, {"timestamp": timestamp})
         field = row.get("_field")
         value = influx_float(row, "_value")
@@ -1148,7 +1154,7 @@ from(bucket: "{escape_string(config["bucket"])}")
             sample["received"] = influx_int(row, "_value")
         elif field == "packets_sent":
             sample["sent"] = influx_int(row, "_value")
-    return [{"name": key[1], "kind": key[0], "samples": sorted(value["samples"].values(), key=lambda item: item["timestamp"])[-720:]}
+    return [{**{name: value[name] for name in ("name", "host", "target", "kind")}, "samples": sorted(value["samples"].values(), key=lambda item: item["timestamp"])[-720:]}
             for key, value in sorted(groups.items())]
 
 
@@ -1162,7 +1168,6 @@ def influx_link_quality_history():
 from(bucket: "{escape_string(config["bucket"])}")
   |> range(start: -1h)
   |> filter(fn: (r) => r._measurement == "tailmox_corosync_link_quality")
-  |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r._field == "packet_loss_percent" or r._field == "avg_ms" or r._field == "max_ms" or r._field == "jitter_ms")
   |> aggregateWindow(every: 1m, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
@@ -1173,12 +1178,14 @@ from(bucket: "{escape_string(config["bucket"])}")
         timestamp = influx_time(row.get("_time"))
         if timestamp is None:
             continue
+        host = row.get("host")
         peer_ip = row.get("peer_ip")
         peer_host = row.get("peer_host")
         peer_key = peer_ip or peer_host
-        if not peer_key:
+        if not host or not peer_key:
             continue
-        peer = by_peer.setdefault(peer_key, {"hostname": None, "samples": {}})
+        key = (host, peer_key)
+        peer = by_peer.setdefault(key, {"host": host, "hostname": None, "samples": {}})
         if peer_host:
             peer["hostname"] = peer_host
         samples = peer["samples"]
@@ -1203,10 +1210,12 @@ from(bucket: "{escape_string(config["bucket"])}")
             sample["packetLossPercent"] = influx_float(row, "_value")
     return [
         {
-            "name": peer["hostname"] or peer_key,
+            "name": f"{peer['host']} → {peer['hostname'] or peer_key}",
+            "host": peer["host"],
+            "peer": peer["hostname"] or peer_key,
             "samples": sorted(peer["samples"].values(), key=lambda sample: sample["timestamp"])[-720:],
         }
-        for peer_key, peer in sorted(by_peer.items(), key=lambda item: item[1]["hostname"] or item[0])
+        for (_, peer_key), peer in sorted(by_peer.items(), key=lambda item: (item[1]["host"], item[1]["hostname"] or item[0][1]))
     ]
 
 
@@ -1406,12 +1415,17 @@ def collect_status():
 
 
 def collect_member_count_history():
-    influx_history = influx_member_count_history()
-    if influx_history:
+    influx_series = influx_member_count_history()
+    if influx_series:
+        latest = max(
+            (series["samples"][-1] for series in influx_series if series["samples"]),
+            key=lambda sample: sample["timestamp"],
+        )
         return {
             "generatedAt": int(time.time()),
-            "current": influx_history[-1],
-            "history": influx_history,
+            "current": latest,
+            "history": [],
+            "series": influx_series,
         }
     if not MEMBER_COUNT_HISTORY:
         status = collect_status()
@@ -1419,11 +1433,13 @@ def collect_member_count_history():
             "generatedAt": status["generatedAt"],
             "current": status["corosync"]["memberCount"],
             "history": MEMBER_COUNT_HISTORY,
+            "series": [{"name": socket.gethostname(), "host": socket.gethostname(), "samples": list(MEMBER_COUNT_HISTORY)}],
         }
     return {
         "generatedAt": int(time.time()),
         "current": MEMBER_COUNT_HISTORY[-1],
         "history": MEMBER_COUNT_HISTORY,
+        "series": [{"name": socket.gethostname(), "host": socket.gethostname(), "samples": list(MEMBER_COUNT_HISTORY)}],
     }
 
 
@@ -1433,18 +1449,19 @@ def influx_member_count_history():
 from(bucket: "{escape_string(config["bucket"])}")
   |> range(start: -1h)
   |> filter(fn: (r) => r._measurement == "tailmox_cluster_status")
-  |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r._field == "member_count" or r._field == "quorum_node_count" or r._field == "configured_node_count" or r._field == "offline_node_count" or r._field == "quorate")
   |> aggregateWindow(every: 1m, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
   |> limit(n: 120)
 ''')
-    by_timestamp = {}
+    by_host = {}
     for row in rows:
         timestamp = influx_time(row.get("_time"))
-        if timestamp is None:
+        host = row.get("host")
+        if timestamp is None or not host:
             continue
-        sample = by_timestamp.setdefault(timestamp, {"timestamp": timestamp})
+        samples = by_host.setdefault(host, {})
+        sample = samples.setdefault(timestamp, {"timestamp": timestamp, "host": host})
         field = row.get("_field")
         if field == "member_count":
             sample["memberCount"] = influx_int(row, "_value")
@@ -1456,8 +1473,18 @@ from(bucket: "{escape_string(config["bucket"])}")
             sample["offlineNodeCount"] = influx_int(row, "_value")
         elif field == "quorate":
             sample["quorate"] = influx_bool(row, "_value")
-    history = sorted(by_timestamp.values(), key=lambda sample: sample["timestamp"])
-    return [sample for sample in history if sample.get("memberCount") is not None]
+    return [
+        {
+            "name": host,
+            "host": host,
+            "samples": [
+                sample
+                for sample in sorted(samples.values(), key=lambda sample: sample["timestamp"])
+                if sample.get("memberCount") is not None
+            ][-720:],
+        }
+        for host, samples in sorted(by_host.items())
+    ]
 
 
 def collect_cmap_knet_history():
@@ -1480,12 +1507,10 @@ def influx_cmap_knet_history():
         for node in collect_configured_nodes()
         if node.get("nodeid") and node.get("name")
     }
-    local_node_name = socket.gethostname()
     rows = influx_query(f'''
 from(bucket: "{escape_string(config["bucket"])}")
   |> range(start: -1h)
   |> filter(fn: (r) => r._measurement == "tailmox_corosync_cmap_stat")
-  |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r.family == "knet")
   |> filter(fn: (r) => exists r.nodeid and exists r.link and exists r.metric)
   |> filter(fn: (r) => r._field == "value")
@@ -1501,17 +1526,19 @@ from(bucket: "{escape_string(config["bucket"])}")
         nodeid = row.get("nodeid")
         link = row.get("link")
         metric = row.get("metric")
-        if timestamp is None or value is None or not nodeid or not link or not metric:
+        host = row.get("host")
+        if timestamp is None or value is None or not host or not nodeid or not link or not metric:
             continue
         if active_nodeids and nodeid not in active_nodeids:
             continue
-        if node_names.get(nodeid) == local_node_name:
+        if node_names.get(nodeid) == host:
             continue
-        key = (nodeid, link)
+        key = (host, nodeid, link)
         series = by_link.setdefault(
             key,
             {
-                "name": f"{node_names.get(nodeid, f'node {nodeid}')} link {link}",
+                "name": f"{host} → {node_names.get(nodeid, f'node {nodeid}')} link {link}",
+                "host": host,
                 "hostname": node_names.get(nodeid),
                 "nodeid": nodeid,
                 "link": link,
@@ -1565,7 +1592,7 @@ from(bucket: "{escape_string(config["bucket"])}")
                 previous_errors = errors
         item["samples"] = samples
         series_values.append(item)
-    return sorted(series_values, key=lambda item: (int_or_none(item["nodeid"]) or 0, int_or_none(item["link"]) or 0))
+    return sorted(series_values, key=lambda item: (item["host"], int_or_none(item["nodeid"]) or 0, int_or_none(item["link"]) or 0))
 
 
 HEALTH_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tailmox Health</title><style>
@@ -1732,8 +1759,8 @@ INDEX_HTML = """<!doctype html>
       <div class="panel" id="influxPanel"><h2>InfluxDB</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div><div style="margin-top: 10px;"><a href="settings">Edit InfluxDB settings</a></div></div>
       <div class="panel wide-primary"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>Peer IP</th><th>ID</th><th>Votes</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
-      <div class="panel full"><h2>Global MTU (last hour)</h2><div class="muted" id="mtuDetail"></div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg></div>
-      <div class="panel full"><h2>Cluster Members (last hour)</h2><div class="muted" id="memberCountDetail"></div><svg class="chart" id="memberCountChart" viewBox="0 0 900 220" role="img" aria-label="Cluster members over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend"><span class="legend-item"><span class="swatch" style="background:#22c55e"></span>All online</span><span class="legend-item"><span class="swatch" style="background:#f59e0b"></span>Quorate with offline hosts</span><span class="legend-item"><span class="swatch" style="background:#ef4444"></span>No quorum</span></div></div>
+      <div class="panel full"><h2>Global MTU by Host (last hour)</h2><div class="muted" id="mtuDetail"></div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU by host over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="mtuLegend"></div></div>
+      <div class="panel full"><h2>Cluster Members by Host (last hour)</h2><div class="muted" id="memberCountDetail"></div><svg class="chart" id="memberCountChart" viewBox="0 0 900 220" role="img" aria-label="Cluster members reported by each host over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="memberCountLegend"></div></div>
       <div class="panel full"><h2>Link Quality (last hour)</h2><div class="muted" id="linkQualityGraphDetail"></div><svg class="chart" id="linkQualityChart" viewBox="0 0 900 220" role="img" aria-label="Link quality over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="linkQualityLegend"></div></div>
       <div class="panel full"><h2>Corosync Knet Latency and Jitter (last hour, microseconds)</h2><div class="muted" id="cmapLatencyDetail"></div><svg class="chart" id="cmapLatencyChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet average latency over the last hour in microseconds"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="cmapLatencyLegend"></div></div>
       <div class="panel full"><h2>Corosync Knet Packets and Errors (last hour, count per minute)</h2><div class="muted" id="cmapPacketDetail"></div><svg class="chart" id="cmapPacketChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet packet and error count per minute over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="cmapPacketLegend"></div></div>
@@ -1924,51 +1951,39 @@ INDEX_HTML = """<!doctype html>
       attachChartTooltips(chart);
     };
     const renderMtu = data => {
-      const current = data.current || {};
-      const history = (data.history || []).filter(sample => Number.isFinite(sample.displayMtu));
-      const discovered = Number.isFinite(current.discoveredGlobalMtu);
-      const configured = current.automatic ? "auto" : `${number(current.configuredMtu)} bytes`;
-      const plotted = discovered ? `${number(current.discoveredGlobalMtu)} bytes discovered` : configured;
-      detailChips("mtuDetail", [
-        { value: plotted, label: "global data MTU", status: discovered ? "good" : "warn" },
-        { value: configured, label: "configured knet MTU" },
-        { value: current.pmtudIntervalSeconds ? `${number(current.pmtudIntervalSeconds)}s` : "unknown", label: "PMTUD interval" },
-        { value: number((data.history || []).length), label: "samples" },
-      ]);
-
-      const chart = document.getElementById("mtuChart");
-      if (!history.length) {
-        chart.innerHTML = svg("text", { x: 32, y: 112 }, "No global MTU samples collected yet.");
-        return;
-      }
-
-      renderLineChart(
-        chart,
-        history,
-        "displayMtu",
-        "No global MTU samples collected yet.",
-        value => value === 0 ? "auto" : number(value),
-        sample => [
-          dateTimeLabel(sample.timestamp),
-          `Displayed MTU: ${number(sample.displayMtu)} bytes`,
+      const series = data.series || [{ name: latestStatus?.hostname || "local host", samples: data.history || [] }];
+      const result = renderCmapSeriesChart(document.getElementById("mtuChart"), document.getElementById("mtuLegend"), series, "displayMtu", {
+        label: "Displayed MTU", axisLabel: "bytes", format: number, emptyText: "No global MTU samples collected yet.",
+        tooltip: (item, sample) => [
           `Configured MTU: ${sample.automatic ? "auto" : `${number(sample.configuredMtu)} bytes`}`,
           `Discovered global MTU: ${Number.isFinite(sample.discoveredGlobalMtu) ? `${number(sample.discoveredGlobalMtu)} bytes` : "unknown"}`,
           `PMTUD interval: ${Number.isFinite(sample.pmtudIntervalSeconds) ? `${number(sample.pmtudIntervalSeconds)}s` : "unknown"}`,
-        ]
-      );
+        ],
+      });
+      detailChips("mtuDetail", [
+        { value: number(result.seriesCount), label: "hosts" },
+        { value: number(result.sampleCount), label: "samples" },
+        { value: "1h", label: "window" },
+      ]);
     };
     const renderMemberCount = data => {
-      const current = data.current || {};
-      const history = (data.history || []).filter(sample => Number.isFinite(sample.memberCount));
-      const offline = Number.isFinite(current.offlineNodeCount) ? current.offlineNodeCount : Math.max(0, (current.configuredNodeCount || 0) - (current.memberCount || 0));
-      const quorumStatus = current.quorate === false ? "bad" : (offline ? "warn" : "good");
+      const series = data.series || [{ name: latestStatus?.hostname || "local host", samples: data.history || [] }];
+      const latest = series.map(item => (item.samples || [])[item.samples.length - 1]).filter(Boolean);
+      const issueHosts = latest.filter(sample => sample.quorate === false || (sample.offlineNodeCount || 0) > 0).length;
+      const result = renderCmapSeriesChart(document.getElementById("memberCountChart"), document.getElementById("memberCountLegend"), series, "memberCount", {
+        label: "Members online", axisLabel: "hosts", format: number, emptyText: "No member-count samples collected yet.", pointColor: memberSampleColor,
+        tooltip: (item, sample) => [
+          `Configured hosts: ${number(sample.configuredNodeCount)}`,
+          `Offline hosts: ${number(sample.offlineNodeCount)}`,
+          `Quorum nodes: ${number(sample.quorumNodeCount)}`,
+          `Quorate: ${sample.quorate === false ? "no" : "yes"}`,
+        ],
+      });
       detailChips("memberCountDetail", [
-        { value: `${number(current.memberCount)} / ${number(current.configuredNodeCount)}`, label: "members online", status: offline ? "warn" : "good" },
-        { value: number(offline), label: "offline", status: offline ? "warn" : "good" },
-        { value: current.quorate === false ? "no quorum" : "quorate", label: "quorum", status: quorumStatus },
-        { value: number((data.history || []).length), label: "samples" },
+        { value: number(result.seriesCount), label: "reporting hosts" },
+        { value: number(issueHosts), label: "hosts reporting issues", status: issueHosts ? "warn" : "good" },
+        { value: number(result.sampleCount), label: "samples" },
       ]);
-      renderMemberCountChart(document.getElementById("memberCountChart"), history);
     };
     const renderLinkQualityHistory = data => {
       const chart = document.getElementById("linkQualityChart");
@@ -1980,7 +1995,7 @@ INDEX_HTML = """<!doctype html>
       })).filter(item => item.samples.length);
       const totalSamples = series.reduce((sum, item) => sum + item.samples.length, 0);
       detailChips("linkQualityGraphDetail", [
-        { value: number(series.length), label: "hosts" },
+        { value: number(series.length), label: "host-to-peer paths" },
         { value: number(totalSamples), label: "samples" },
         { value: "average", label: "latency metric" },
       ]);
@@ -2072,11 +2087,12 @@ INDEX_HTML = """<!doctype html>
           cx: x(sample).toFixed(1),
           cy: y(sample).toFixed(1),
           r: 4,
-          fill: item.color,
+          fill: options.pointColor ? options.pointColor(sample) : item.color,
           "data-tooltip": tooltipText([
             item.name,
             dateTimeLabel(sample.timestamp),
             `${options.label}: ${options.format(sample[valueKey])}`,
+            ...(options.tooltip ? options.tooltip(item, sample) : []),
             Number.isFinite(sample.latencyAvg) ? `Latency avg: ${number(sample.latencyAvg)}` : null,
             Number.isFinite(sample.latencyMax) ? `Latency max: ${number(sample.latencyMax)}` : null,
             Number.isFinite(sample.jitter) ? `Jitter: ${number(sample.jitter)}` : null,
