@@ -29,10 +29,14 @@ assert module["influx_test_history"]() == []
 assert 'r.host == "node1.example.test"' in captured["flux"]
 assert 'r.host == "node1"' in captured["flux"]
 assert " or " in captured["flux"]
+assert "range(start: -1h)" in captured["flux"]
+assert "aggregateWindow(every: 1m, fn: last, createEmpty: false)" in captured["flux"]
 PY
 
 grep -Fq 'hostname=$(hostname)' "$ROOT_DIR/tailmox-influx-export.sh"
 grep -Fq '"$TAILMOX_ROOT/tailmox" check' "$ROOT_DIR/tailmox-influx-export.sh"
 grep -Fq 'run_command([test_command, "check"]' "$ROOT_DIR/tailmox-monitor"
+[[ "$(grep -Fc 'range(start: -1h)' "$ROOT_DIR/tailmox-monitor.py")" -eq 5 ]]
+[[ "$(grep -Fc 'aggregateWindow(every: 1m, fn: last, createEmpty: false)' "$ROOT_DIR/tailmox-monitor.py")" -eq 5 ]]
 
 printf 'InfluxDB test history hostname tests passed\n'

@@ -861,12 +861,13 @@ def influx_mtu_history():
     config = influx_config()
     rows = influx_query(f'''
 from(bucket: "{escape_string(config["bucket"])}")
-  |> range(start: -24h)
+  |> range(start: -1h)
   |> filter(fn: (r) => r._measurement == "tailmox_corosync_config")
   |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r._field == "configured_mtu" or r._field == "discovered_global_mtu" or r._field == "display_mtu" or r._field == "automatic" or r._field == "pmtud_interval_seconds" or r._field == "knet_ping_interval_ms" or r._field == "knet_ping_timeout_ms" or r._field == "token_ms" or r._field == "token_retransmit_ms" or r._field == "token_retransmits_before_loss" or r._field == "consensus_ms" or r._field == "max_network_delay_ms" or r._field == "max_messages" or r._field == "window_size" or r._field == "knet_compression_threshold" or r._field == "knet_compression_level")
+  |> aggregateWindow(every: 1m, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
-  |> limit(n: 720)
+  |> limit(n: 120)
 ''')
     by_timestamp = {}
     for row in rows:
@@ -1044,11 +1045,12 @@ def influx_test_history():
         )
     rows = influx_query(f'''
 from(bucket: "{escape_string(config["bucket"])}")
-  |> range(start: -24h)
+  |> range(start: -1h)
   |> filter(fn: (r) => (r._measurement == "tailmox_icmp" or r._measurement == "tailmox_tcp") and {host_filter})
   |> filter(fn: (r) => r._field == "average_ms" or r._field == "maximum_ms" or r._field == "latency_ms" or r._field == "packets_received" or r._field == "packets_sent")
+  |> aggregateWindow(every: 1m, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
-  |> limit(n: 2880)
+  |> limit(n: 120)
 ''')
     groups = {}
     for row in rows:
@@ -1081,12 +1083,13 @@ def influx_link_quality_history():
     config = influx_config()
     rows = influx_query(f'''
 from(bucket: "{escape_string(config["bucket"])}")
-  |> range(start: -24h)
+  |> range(start: -1h)
   |> filter(fn: (r) => r._measurement == "tailmox_corosync_link_quality")
   |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r._field == "packet_loss_percent" or r._field == "avg_ms" or r._field == "max_ms" or r._field == "jitter_ms")
+  |> aggregateWindow(every: 1m, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
-  |> limit(n: 2880)
+  |> limit(n: 120)
 ''')
     by_peer = {}
     for row in rows:
@@ -1345,12 +1348,13 @@ def influx_member_count_history():
     config = influx_config()
     rows = influx_query(f'''
 from(bucket: "{escape_string(config["bucket"])}")
-  |> range(start: -24h)
+  |> range(start: -1h)
   |> filter(fn: (r) => r._measurement == "tailmox_cluster_status")
   |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r._field == "member_count" or r._field == "quorum_node_count" or r._field == "configured_node_count" or r._field == "offline_node_count" or r._field == "quorate")
+  |> aggregateWindow(every: 1m, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
-  |> limit(n: 720)
+  |> limit(n: 120)
 ''')
     by_timestamp = {}
     for row in rows:
@@ -1396,15 +1400,16 @@ def influx_cmap_knet_history():
     local_node_name = socket.gethostname()
     rows = influx_query(f'''
 from(bucket: "{escape_string(config["bucket"])}")
-  |> range(start: -6h)
+  |> range(start: -1h)
   |> filter(fn: (r) => r._measurement == "tailmox_corosync_cmap_stat")
   |> filter(fn: (r) => r.host == "{escape_string(socket.gethostname())}")
   |> filter(fn: (r) => r.family == "knet")
   |> filter(fn: (r) => exists r.nodeid and exists r.link and exists r.metric)
   |> filter(fn: (r) => r._field == "value")
   |> filter(fn: (r) => r.metric == "latency_ave" or r.metric == "latency_max" or r.metric == "tx_data_packets" or r.metric == "rx_data_packets" or r.metric =~ /.*error.*/)
+  |> aggregateWindow(every: 1m, fn: last, createEmpty: false)
   |> sort(columns: ["_time"])
-  |> limit(n: 6000)
+  |> limit(n: 120)
 ''', timeout=12)
     by_link = {}
     for row in rows:
@@ -1641,12 +1646,12 @@ INDEX_HTML = """<!doctype html>
       <div class="panel" id="influxPanel"><h2>InfluxDB</h2><div class="metric" id="influxState">...</div><div class="muted" id="influxDetail"></div><div style="margin-top: 10px;"><a href="settings">Edit InfluxDB settings</a></div></div>
       <div class="panel wide-primary"><h2>Corosync Members</h2><table><thead><tr><th>Node</th><th>Peer IP</th><th>ID</th><th>Votes</th><th>Status</th></tr></thead><tbody id="members"></tbody></table></div>
       <div class="panel wide"><h2>Quorum Nodes</h2><table><thead><tr><th>Node</th><th>ID</th><th>Votes</th><th>Local</th></tr></thead><tbody id="quorumNodes"></tbody></table></div>
-      <div class="panel full"><h2>Global MTU Over Time</h2><div class="muted" id="mtuDetail"></div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over time"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg></div>
-      <div class="panel full"><h2>Cluster Members Over Time</h2><div class="muted" id="memberCountDetail"></div><svg class="chart" id="memberCountChart" viewBox="0 0 900 220" role="img" aria-label="Cluster members over time"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend"><span class="legend-item"><span class="swatch" style="background:#22c55e"></span>All online</span><span class="legend-item"><span class="swatch" style="background:#f59e0b"></span>Quorate with offline hosts</span><span class="legend-item"><span class="swatch" style="background:#ef4444"></span>No quorum</span></div></div>
-      <div class="panel full"><h2>Link Quality Over Time</h2><div class="muted" id="linkQualityGraphDetail"></div><svg class="chart" id="linkQualityChart" viewBox="0 0 900 220" role="img" aria-label="Link quality over time"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="linkQualityLegend"></div></div>
-      <div class="panel full"><h2>Corosync Knet Latency and Jitter (microseconds)</h2><div class="muted" id="cmapLatencyDetail"></div><svg class="chart" id="cmapLatencyChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet average latency in microseconds over time"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="cmapLatencyLegend"></div></div>
-      <div class="panel full"><h2>Corosync Knet Packets and Errors (count per interval)</h2><div class="muted" id="cmapPacketDetail"></div><svg class="chart" id="cmapPacketChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet packet and error count per collection interval over time"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="cmapPacketLegend"></div></div>
-      <div class="panel full"><h2>Tailmox Test Latency (last 24 hours)</h2><div class="muted" id="testHistoryDetail"></div><svg class="chart" id="testHistoryChart" viewBox="0 0 900 220" role="img" aria-label="Tailmox test latency over time"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="testHistoryLegend"></div></div>
+      <div class="panel full"><h2>Global MTU (last hour)</h2><div class="muted" id="mtuDetail"></div><svg class="chart" id="mtuChart" viewBox="0 0 900 220" role="img" aria-label="Global MTU over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg></div>
+      <div class="panel full"><h2>Cluster Members (last hour)</h2><div class="muted" id="memberCountDetail"></div><svg class="chart" id="memberCountChart" viewBox="0 0 900 220" role="img" aria-label="Cluster members over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend"><span class="legend-item"><span class="swatch" style="background:#22c55e"></span>All online</span><span class="legend-item"><span class="swatch" style="background:#f59e0b"></span>Quorate with offline hosts</span><span class="legend-item"><span class="swatch" style="background:#ef4444"></span>No quorum</span></div></div>
+      <div class="panel full"><h2>Link Quality (last hour)</h2><div class="muted" id="linkQualityGraphDetail"></div><svg class="chart" id="linkQualityChart" viewBox="0 0 900 220" role="img" aria-label="Link quality over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="linkQualityLegend"></div></div>
+      <div class="panel full"><h2>Corosync Knet Latency and Jitter (last hour, microseconds)</h2><div class="muted" id="cmapLatencyDetail"></div><svg class="chart" id="cmapLatencyChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet average latency over the last hour in microseconds"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="cmapLatencyLegend"></div></div>
+      <div class="panel full"><h2>Corosync Knet Packets and Errors (last hour, count per minute)</h2><div class="muted" id="cmapPacketDetail"></div><svg class="chart" id="cmapPacketChart" viewBox="0 0 900 220" role="img" aria-label="Corosync Knet packet and error count per minute over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="cmapPacketLegend"></div></div>
+      <div class="panel full"><h2>Tailmox Test Latency (last hour)</h2><div class="muted" id="testHistoryDetail"></div><svg class="chart" id="testHistoryChart" viewBox="0 0 900 220" role="img" aria-label="Tailmox test latency over the last hour"><circle class="chart-loading-track" cx="450" cy="110" r="17"></circle><circle class="chart-loading-indicator" cx="450" cy="110" r="17" pathLength="100"></circle></svg><div class="legend" id="testHistoryLegend"></div></div>
       <div class="panel full"><h2>Corosync Link Quality</h2><table><thead><tr><th>Hostname</th><th>Peer IP</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead><tbody id="linkQuality"></tbody></table></div>
       <div class="panel full"><h2>Recent Corosync Logs</h2><pre id="logs">Loading...</pre></div>
       <div class="panel full"><h2>Raw Cluster Status</h2><pre id="raw"></pre></div>
@@ -2053,7 +2058,7 @@ INDEX_HTML = """<!doctype html>
     const renderTestHistory = data => {
       const series = (data.series || []).map(item => ({ ...item, color: item.kind === "tailmox_tcp" ? "#f59e0b" : seriesColors[0] }));
       const result = renderCmapSeriesChart(document.getElementById("testHistoryChart"), document.getElementById("testHistoryLegend"), series, "avgMs", { label: "Average latency", axisLabel: "ms", format: ms, emptyText: "No exported tailmox test samples yet." });
-      detailChips("testHistoryDetail", [{ value: number(result.seriesCount), label: "targets" }, { value: number(result.sampleCount), label: "samples" }, { value: "24h", label: "window" }]);
+      detailChips("testHistoryDetail", [{ value: number(result.seriesCount), label: "targets" }, { value: number(result.sampleCount), label: "samples" }, { value: "1h", label: "window" }]);
     };
     const actionLabel = value => ({
       "test": "tailmox test", "backup-create": "tailmox backups create",

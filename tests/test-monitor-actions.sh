@@ -63,6 +63,8 @@ for label in ("Run tailmox stage", "Analytics", "Run tests", "Create backup"):
 assert html.count('class="chart-loading-indicator"') == 6
 assert "Loading cmap Knet packet history..." not in html
 assert "Loading exported test history..." not in html
+assert html.count("last hour") >= 6
+assert '{ value: "1h", label: "window" }' in html
 PY
 
 printf 'monitor action tests passed\n'
