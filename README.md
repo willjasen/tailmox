@@ -159,6 +159,12 @@ Older archive-based installations are migrated to a Git checkout. Each run
 refreshes the Tailscale Serve and monitor staging configuration, but does not
 create or join a Proxmox cluster.
 
+Tailscale Serve is configured non-interactively and each request is limited to
+30 seconds by default, so an approval prompt or stalled daemon cannot leave the
+setup process hanging indefinitely. Set
+`TAILMOX_TAILSCALE_SERVE_TIMEOUT_SECONDS` to a positive integer to adjust this
+limit. Setup exits with an error if a Serve route cannot be configured.
+
 After every host is staged and has the same cluster identity, start clustering
 explicitly:
 

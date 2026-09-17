@@ -1117,6 +1117,39 @@ function install_tailscale() {
     fi
 }
 
+# Configure Tailscale Serve without allowing an interactive prompt or daemon
+# request to stall setup indefinitely.
+function configure_tailscale_serve() {
+    local timeout_seconds="${TAILMOX_TAILSCALE_SERVE_TIMEOUT_SECONDS:-30}"
+    local output
+    local status
+
+    if [[ ! "$timeout_seconds" =~ ^[1-9][0-9]*$ ]]; then
+        log_echo "${RED}TAILMOX_TAILSCALE_SERVE_TIMEOUT_SECONDS must be a positive integer.${RESET}"
+        return 1
+    fi
+    if ! command -v timeout &>/dev/null; then
+        log_echo "${RED}The timeout command is required to configure Tailscale Serve safely.${RESET}"
+        return 1
+    fi
+
+    output=$(timeout --foreground "${timeout_seconds}s" \
+        tailscale serve --yes "$@" 2>&1)
+    status=$?
+    if [[ "$status" -eq 0 ]]; then
+        return 0
+    fi
+    if [[ "$status" -eq 124 ]]; then
+        log_echo "${RED}Tailscale Serve did not respond within ${timeout_seconds} seconds.${RESET}"
+    else
+        log_echo "${RED}Unable to configure Tailscale Serve.${RESET}"
+    fi
+    if [[ -n "$output" ]]; then
+        log_echo "$output"
+    fi
+    return 1
+}
+
 # Bring up Tailscale
 function verify_local_tailmox_tag() {
     local status_json
@@ -1706,10 +1739,10 @@ function setup_monitoring_interface() {
         return 1
     fi
 
-    tailscale serve --bg --https=8088 --set-path=/monitor localhost:8088 &>/dev/null
+    configure_tailscale_serve --bg --https=8088 --set-path=/monitor localhost:8088 || return 1
     log_echo "${GREEN}Tailmox monitoring is available at /monitor on this node's Tailscale URL.${RESET}"
 
-    tailscale serve --service=svc:tailmox --bg --https=443 localhost:8088 &>/dev/null
+    configure_tailscale_serve --service=svc:tailmox --bg --https=443 localhost:8088 || return 1
     log_echo "${GREEN}Tailmox monitoring is available at the tailmox Tailscale service URL.${RESET}"
 }
 
@@ -1897,15 +1930,16 @@ install_dependencies
 install_tailscale
 
 # Start Tailscale; use auth key if supplied
-start_tailscale "$AUTH_KEY"
+start_tailscale "$AUTH_KEY" || exit 1
 
 ### Now that Tailscale is running...
 
-# running 'tailscale serve' with these options allows a valid certificate on port 443, along with the built-in handling of the certificate
-tailscale serve --bg https+insecure://localhost:8006 &>/dev/null
+# Running 'tailscale serve' with these options allows a valid certificate on
+# port 443, along with the built-in handling of the certificate.
+configure_tailscale_serve --bg https+insecure://localhost:8006 || exit 1
 log_echo "${GREEN}Tailscale serve is now running.${RESET}"
 
-setup_monitoring_interface
+setup_monitoring_interface || exit 1
 
 # Exit early if staging mode is enabled
 if [[ "$STAGING" == "true" ]]; then
