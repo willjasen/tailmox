@@ -63,6 +63,7 @@ for element in ("<a ", "<button", "<select", "<input", "<form"):
 for behavior in ("runAction", "refreshAction", "showModal", "window.location.href"):
     assert behavior not in html, behavior
 assert html.count('class="chart-loading-indicator"') == 6
+assert "#linkQualityChart { height: 120px; }" in html
 assert "Loading cmap Knet packet history..." not in html
 assert "Loading exported test history..." not in html
 assert html.count("last hour") >= 6
