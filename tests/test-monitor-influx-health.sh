@@ -44,6 +44,7 @@ with patch.dict(module["collect_influx_health"].__globals__, {"influx_config": l
         urlopen.assert_not_called()
 
 assert 'add("InfluxDB is offline"' in module["HEALTH_HTML"]
+assert 'add("InfluxDB is online"' in module["HEALTH_HTML"]
 assert 'data.influxdb.online ? "online" : "offline"' in module["INDEX_HTML"]
 PY
 

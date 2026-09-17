@@ -33,6 +33,13 @@ assert [host["name"] for host in result["hosts"] if host["running"]] == ["pve1"]
 assert [host["name"] for host in result["offlineHosts"]] == ["pve2", "pve3"]
 assert "not running the port ${data.webservers?.port||8088} webserver" in module["HEALTH_HTML"]
 assert "missingWebservers.map(host=>host.name" in module["HEALTH_HTML"]
+assert 'add("Tailmox webservers are online"' in module["HEALTH_HTML"]
+assert 'add("Corosync is online"' in module["HEALTH_HTML"]
+assert 'add("Proxmox cluster service is online"' in module["HEALTH_HTML"]
+assert 'add("All cluster hosts are online"' in module["HEALTH_HTML"]
+assert 'add("Cluster has quorum"' in module["HEALTH_HTML"]
+assert 'add(`Link to ${peer} is healthy`' in module["HEALTH_HTML"]
+assert 'issues.querySelector(".check:not(.pass)")' in module["HEALTH_HTML"]
 PY
 
 printf 'PASS: health page identifies hosts without the port 8088 webserver\n'
