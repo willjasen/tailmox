@@ -86,6 +86,8 @@ Be sure to include the "--auth-key" parameter as well.
 
 `test-env/prepare-linked-clone.sh` - prepares a newly booted clone with DHCP, a unique hostname, and the latest Tailmox development branch
 
+`test-env/IMAGE-BUILD-NOTES.md` - records the next-image checklist and the image/preparation-helper versioning contract
+
 `test-env/download-template.sh` - used to download the disk image of a previously configured Proxmox host that is ready for testing with Tailmox
 
 `test-env/deploy-vms-api.sh` - creates linked clones of an existing template through the Proxmox API
