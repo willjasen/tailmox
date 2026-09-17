@@ -6,9 +6,16 @@ ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 INSTALLER="$ROOT_DIR/tailmox.sh"
 
 if ! grep -Fq \
-    'configure_tailscale_serve --service=svc:tailmox --bg --https=443 localhost:8088' \
+    'configure_tailscale_serve "--service=svc:${TAILMOX_TAILSCALE_SERVICE_NAME}" --bg --https=443 localhost:8088' \
     "$INSTALLER"; then
-    printf 'FAIL: shared Tailmox service does not route HTTPS port 443 to the monitor\n'
+    printf 'FAIL: configurable shared Tailmox service does not route HTTPS port 443 to the monitor\n'
+    exit 1
+fi
+
+if ! grep -Fq \
+    'TAILMOX_TAILSCALE_SERVICE_NAME="${TAILMOX_TAILSCALE_SERVICE_NAME:-tailmox}"' \
+    "$INSTALLER"; then
+    printf 'FAIL: shared Tailmox service does not retain a compatible default\n'
     exit 1
 fi
 
@@ -22,4 +29,4 @@ if grep -Fq \
     exit 1
 fi
 
-printf 'PASS: shared Tailmox service routes HTTPS port 443 to the monitor\n'
+printf 'PASS: configurable shared Tailmox service routes HTTPS port 443 to the monitor\n'

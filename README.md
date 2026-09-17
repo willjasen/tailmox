@@ -117,6 +117,8 @@ Under the "Advertised" section, click "Define Service". Then fill in the followi
 
 then submit.
 
+For a separate test cluster, set a distinct service label on every host before running the installer or Tailmox command. For example, `TAILMOX_TAILSCALE_SERVICE_NAME=test-tailmox` publishes the shared monitor at `https://test-tailmox.MAGICDNS_NAME.ts.net/` and advertises `svc:test-tailmox`, avoiding the production `svc:tailmox` service.
+
 ---
 
 ### ⚒️ Installation ⚒️

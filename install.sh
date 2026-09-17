@@ -9,6 +9,12 @@ BIN_DIR="${TAILMOX_BIN_DIR:-/usr/local/bin}"
 REPOSITORY_URL="${TAILMOX_REPOSITORY_URL:-https://github.com/${REPOSITORY}.git}"
 IDENTITY_FILE="${TAILMOX_AGE_IDENTITY_FILE:-/etc/tailmox/identity.txt}"
 SECURITY_FILE="${TAILMOX_SECURITY_FILE:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/tailmox/security.json}"
+TAILMOX_TAILSCALE_SERVICE_NAME="${TAILMOX_TAILSCALE_SERVICE_NAME:-tailmox}"
+
+if [[ ! "$TAILMOX_TAILSCALE_SERVICE_NAME" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$ ]]; then
+    printf 'Tailmox installation failed: TAILMOX_TAILSCALE_SERVICE_NAME must be a lowercase DNS label.\n' >&2
+    exit 1
+fi
 
 if [[ "${TAILMOX_FORCE_COLOR:-false}" == true ]] ||
     { [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]] && [[ "${TERM:-}" != dumb ]]; }; then
@@ -216,8 +222,8 @@ if [[ -n "$TAILSCALE_DNS_NAME" ]]; then
     printf 'Node monitor     %bhttps://%s:8088/monitor/%b\n' \
         "$BLUE" "$TAILSCALE_DNS_NAME" "$RESET"
     if [[ -n "$MAGICDNS_DOMAIN" && "$MAGICDNS_DOMAIN" != "$TAILSCALE_DNS_NAME" ]]; then
-        printf 'Service monitor  %bhttps://tailmox.%s/monitor/%b\n' \
-            "$BLUE" "$MAGICDNS_DOMAIN" "$RESET"
+        printf 'Service monitor  %bhttps://%s.%s/monitor/%b\n' \
+            "$BLUE" "$TAILMOX_TAILSCALE_SERVICE_NAME" "$MAGICDNS_DOMAIN" "$RESET"
     fi
 else
     printf '\n%bREADY%b\n' "$GREEN" "$RESET"

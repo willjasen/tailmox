@@ -33,6 +33,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/.colors.sh"
 LOG_DIR="${TAILMOX_LOG_DIR:-/var/log}"
 LOG_FILE="$LOG_DIR/tailmox.log"
 STATE_FILE="${TAILMOX_STATE_FILE:-${TAILMOX_CLUSTER_STATE_FILE:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/tailmox/state.json}}"
+TAILMOX_TAILSCALE_SERVICE_NAME="${TAILMOX_TAILSCALE_SERVICE_NAME:-tailmox}"
+
+if [[ ! "$TAILMOX_TAILSCALE_SERVICE_NAME" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$ ]]; then
+    printf 'TAILMOX_TAILSCALE_SERVICE_NAME must be a lowercase DNS label.\n' >&2
+    exit 1
+fi
 
 if [[ "${1:-}" == "--test" ]]; then
     LOG_FILE=/dev/null
@@ -1742,8 +1748,8 @@ function setup_monitoring_interface() {
     configure_tailscale_serve --bg --https=8088 --set-path=/monitor localhost:8088 || return 1
     log_echo "${GREEN}Tailmox monitoring is available at /monitor on this node's Tailscale URL.${RESET}"
 
-    configure_tailscale_serve --service=svc:tailmox --bg --https=443 localhost:8088 || return 1
-    log_echo "${GREEN}Tailmox monitoring is available at the tailmox Tailscale service URL.${RESET}"
+    configure_tailscale_serve "--service=svc:${TAILMOX_TAILSCALE_SERVICE_NAME}" --bg --https=443 localhost:8088 || return 1
+    log_echo "${GREEN}Tailmox monitoring is available at the ${TAILMOX_TAILSCALE_SERVICE_NAME} Tailscale service URL.${RESET}"
 }
 
 # Create a new Proxmox cluster named "tailmox"
@@ -1972,7 +1978,7 @@ else
     fi
     log_echo "${GREEN}This node is already part of a cluster, nothing further to do.${RESET}"
     log_echo "${GREEN}You can now access your tailmox server directly at: ${BLUE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
-    log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
+    log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://${TAILMOX_TAILSCALE_SERVICE_NAME}.$MAGICDNS_DOMAIN_NAME/${RESET}"
     log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     exit 0
 fi
@@ -1990,7 +1996,7 @@ if ! check_local_node_cluster_status; then
         fi
         log_echo "${GREEN}Cluster created successfully.${RESET}"
         log_echo "${GREEN}You can now access your tailmox server directly at: ${BLUE}https://$HOSTNAME.$MAGICDNS_DOMAIN_NAME/${RESET}"
-        log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://tailmox.$MAGICDNS_DOMAIN_NAME/${RESET}"
+        log_echo "${GREEN}You can now access your tailmox service at: ${BLUE}https://${TAILMOX_TAILSCALE_SERVICE_NAME}.$MAGICDNS_DOMAIN_NAME/${RESET}"
         log_echo "${GREEN}--- TAILMOX SCRIPT EXITING ---${RESET}"
     else
         log_echo "${RED}Exiting without creating a cluster.${RESET}"
