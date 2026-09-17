@@ -45,6 +45,7 @@ escape_tag() {
 
 collect_once() {
     local output_file payload_file hostname timestamp
+    local link_seen=$'\n'
     output_file=$(mktemp)
     payload_file=$(mktemp)
     trap 'rm -f "$output_file" "$payload_file"' RETURN
@@ -68,6 +69,17 @@ collect_once() {
                 printf 'tailmox_icmp,host=%s,node=%s,packet_size=%s average_ms=%s,maximum_ms=%s,packets_received=%si,packets_sent=%si,status="%s" %s\n' \
                     "$(escape_tag "$hostname")" "$(escape_tag "$node")" "$packet_size" \
                     "$average" "$maximum" "$received" "$sent" "$status" "$timestamp" >>"$payload_file"
+                if [[ "$link_seen" != *$'\n'"$node"$'\n'* && "$received" =~ ^[0-9]+$ &&
+                    "$sent" =~ ^[1-9][0-9]*$ && "$average" =~ ^[0-9]+([.][0-9]+)?$ &&
+                    "$maximum" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+                    local packet_loss
+                    packet_loss=$(awk -v received="$received" -v sent="$sent" \
+                        'BEGIN { printf "%.6f", ((sent - received) * 100) / sent }')
+                    printf 'tailmox_corosync_link_quality,host=%s,peer_host=%s packet_loss_percent=%s,avg_ms=%s,max_ms=%s %s\n' \
+                        "$(escape_tag "$hostname")" "$(escape_tag "$node")" \
+                        "$packet_loss" "$average" "$maximum" "$timestamp" >>"$payload_file"
+                    link_seen+="$node"$'\n'
+                fi
             fi
         elif [[ "$line" =~ $tcp_pattern ]]; then
             local available=1
@@ -108,7 +120,11 @@ collect_once() {
     fi
 }
 
-while :; do
-    collect_once || true
-    sleep "$INTERVAL_SECONDS"
-done
+if [[ "${TAILMOX_INFLUX_RUN_ONCE:-false}" == true ]]; then
+    collect_once
+else
+    while :; do
+        collect_once || true
+        sleep "$INTERVAL_SECONDS"
+    done
+fi

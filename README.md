@@ -372,8 +372,10 @@ The older periodic test collector is still available as `tailmox analytics`. It 
 To export the latency and TCP results from the read-only `tailmox check` to InfluxDB, configure
 InfluxDB in the monitor settings, then run `tailmox influx install`. The exporter
 runs the real Tailmox monitoring check once per minute and writes
-`tailmox_icmp` and `tailmox_tcp` measurements. Use `tailmox influx restart` or
-`tailmox influx uninstall` to manage it.
+`tailmox_icmp`, `tailmox_tcp`, and `tailmox_corosync_link_quality`
+measurements. The per-host link-quality export keeps the shared topology graph
+current without requiring anyone to open each host's private monitor. Use
+`tailmox influx restart` or `tailmox influx uninstall` to manage it.
 
 ---
 

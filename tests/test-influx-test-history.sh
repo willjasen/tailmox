@@ -51,8 +51,50 @@ PY
 
 grep -Fq 'hostname=$(hostname)' "$ROOT_DIR/tailmox-influx-export.sh"
 grep -Fq '"$TAILMOX_ROOT/tailmox" check' "$ROOT_DIR/tailmox-influx-export.sh"
+grep -Fq 'tailmox_corosync_link_quality,host=%s,peer_host=%s' "$ROOT_DIR/tailmox-influx-export.sh"
+grep -Fq 'TAILMOX_INFLUX_RUN_ONCE' "$ROOT_DIR/tailmox-influx-export.sh"
 grep -Fq 'run_command([test_command, "check"]' "$ROOT_DIR/tailmox-monitor"
 [[ "$(grep -Fc 'range(start: -1h)' "$ROOT_DIR/tailmox-monitor.py")" -eq 5 ]]
 [[ "$(grep -Fc 'aggregateWindow(every: 1m, fn: last, createEmpty: false)' "$ROOT_DIR/tailmox-monitor.py")" -eq 5 ]]
+
+mkdir -p "$TEST_DIR/exporter/bin" "$TEST_DIR/exporter/root"
+cp "$ROOT_DIR/tailmox-influx-export.sh" "$TEST_DIR/exporter/root/"
+cat > "$TEST_DIR/exporter/root/tailmox" <<'SH'
+#!/usr/bin/env bash
+printf '__TAILMOX_MONITOR_ICMP__\tpve3\t64\tpassed\t15\t15\t1.25\t2.50\t5\n'
+printf '__TAILMOX_MONITOR_ICMP__\tpve3\t1280\tpassed\t15\t15\t1.50\t2.75\t5\n'
+printf '__TAILMOX_MONITOR_ICMP__\tpve4\t64\twarning\t12\t15\t3.00\t7.00\t6\n'
+printf '__TAILMOX_MONITOR_ICMP__\tpve5\t64\tfailed\tunknown\tunknown\tunknown\tunknown\t7\n'
+SH
+cat > "$TEST_DIR/exporter/bin/corosync-cmapctl" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+cat > "$TEST_DIR/exporter/bin/curl" <<'SH'
+#!/usr/bin/env bash
+for argument in "$@"; do
+    if [[ "$argument" == @* ]]; then
+        cp "${argument#@}" "$TAILMOX_CAPTURE_FILE"
+        exit 0
+    fi
+done
+exit 1
+SH
+chmod +x "$TEST_DIR/exporter/root/tailmox" "$TEST_DIR/exporter/bin/corosync-cmapctl" "$TEST_DIR/exporter/bin/curl"
+cat > "$TEST_DIR/exporter/influx.env" <<'EOF'
+TAILMOX_INFLUXDB_URL=https://influx.example.test
+TAILMOX_INFLUXDB_TOKEN=test-token
+TAILMOX_INFLUXDB_ORG=test-org
+TAILMOX_INFLUXDB_BUCKET=test-bucket
+EOF
+PATH="$TEST_DIR/exporter/bin:$PATH" \
+TAILMOX_INFLUX_ENV_FILE="$TEST_DIR/exporter/influx.env" \
+TAILMOX_INFLUX_RUN_ONCE=true \
+TAILMOX_CAPTURE_FILE="$TEST_DIR/exporter/payload" \
+bash "$TEST_DIR/exporter/root/tailmox-influx-export.sh"
+grep -Eq '^tailmox_corosync_link_quality,host=[^,]+,peer_host=pve3 packet_loss_percent=0[.]000000,avg_ms=1[.]25,max_ms=2[.]50 ' "$TEST_DIR/exporter/payload"
+grep -Eq '^tailmox_corosync_link_quality,host=[^,]+,peer_host=pve4 packet_loss_percent=20[.]000000,avg_ms=3[.]00,max_ms=7[.]00 ' "$TEST_DIR/exporter/payload"
+[[ "$(grep -c 'tailmox_corosync_link_quality.*peer_host=pve3' "$TEST_DIR/exporter/payload")" -eq 1 ]]
+! grep -q 'tailmox_corosync_link_quality.*peer_host=pve5' "$TEST_DIR/exporter/payload"
 
 printf 'InfluxDB all-host history tests passed\n'
