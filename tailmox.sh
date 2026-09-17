@@ -1660,8 +1660,8 @@ function setup_monitoring_interface() {
     tailscale serve --bg --https=8088 --set-path=/monitor localhost:8088 &>/dev/null
     log_echo "${GREEN}Tailmox monitoring is available at /monitor on this node's Tailscale URL.${RESET}"
 
-    tailscale serve --service=svc:tailmox --https=8088 --set-path=/monitor localhost:8088 &>/dev/null
-    log_echo "${GREEN}Tailmox monitoring is available at /monitor on the tailmox Tailscale service URL.${RESET}"
+    tailscale serve --service=svc:tailmox --bg --https=443 localhost:8088 &>/dev/null
+    log_echo "${GREEN}Tailmox monitoring is available at the tailmox Tailscale service URL.${RESET}"
 }
 
 # Create a new Proxmox cluster named "tailmox"
@@ -1876,9 +1876,6 @@ start_tailscale "$AUTH_KEY"
 # running 'tailscale serve' with these options allows a valid certificate on port 443, along with the built-in handling of the certificate
 tailscale serve --bg https+insecure://localhost:8006 &>/dev/null
 log_echo "${GREEN}Tailscale serve is now running.${RESET}"
-
-tailscale serve --service=svc:tailmox https+insecure://localhost:8006 &>/dev/null
-log_echo "${GREEN}Tailscale service started for tailmox.${RESET}"
 
 setup_monitoring_interface
 

@@ -249,10 +249,12 @@ the original analytics dashboard, terminal actions, and backup inventory. The
 console publishes the authenticated monitor service beneath `/control` on the
 same Tailscale Serve listener.
 
-Tailmox installs a lightweight monitoring interface as `tailmox-monitor.service`. It listens locally on port `8088` and is mounted through Tailscale Serve on HTTPS port `8088` at `/monitor`, so each node can show its own health from:
+Tailmox installs a lightweight monitoring interface as `tailmox-monitor.service`. It listens locally on port `8088`. Each node mounts it through Tailscale Serve on HTTPS port `8088` at `/monitor`, while the shared Tailmox service publishes it at the root of its HTTPS port `443` URL:
 
 - `https://HOSTNAME.MAGICDNS_NAME.ts.net:8088/monitor/`
-- `https://tailmox.MAGICDNS_NAME.ts.net:8088/monitor/`
+- `https://tailmox.MAGICDNS_NAME.ts.net/`
+
+The node's normal HTTPS port `443` continues to proxy the Proxmox interface.
 
 The monitor includes corosync-specific details: whether the `corosync` service is active and enabled, whether the cluster is quorate, expected and current votes, corosync transport, configured and active member information from `corosync-cmapctl`, quorum node details from `corosync-quorumtool`, cluster member count over time, link-quality history for each peer, and recent `corosync` journal entries. Configured cluster members that are not active in corosync are shown as offline. The Health page shows successful and failed checks for cluster services, hosts, quorum, Tailmox webservers, peer links, and configured InfluxDB availability.
 
