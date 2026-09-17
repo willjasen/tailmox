@@ -20,6 +20,7 @@ all_checks = {
     "exporter_active": True,
     "exporter_enabled": True,
     "monitor_port": True,
+    "serve_https": True,
 }
 all_measurements = {
     label: {host: 30 for host in hosts}
@@ -37,7 +38,7 @@ output = io.StringIO()
 with contextlib.redirect_stdout(output):
     status = module["run_audit"]()
 assert status == 0, output.getvalue()
-assert "PASS pve-a1: monitor and exporter active, enabled, and reachable" in output.getvalue()
+assert "PASS pve-a1: monitor and exporter active and enabled" in output.getvalue()
 assert "PASS Influx link mesh: all 6 directed pairs present" in output.getvalue()
 assert "RESULT: observability audit passed" in output.getvalue()
 
@@ -48,13 +49,25 @@ def passing_host_command(host, arguments):
         return {"ok": True, "stdout": "active", "detail": ""}
     if arguments[:2] == ["systemctl", "is-enabled"]:
         return {"ok": True, "stdout": "enabled", "detail": ""}
+    if arguments[:3] == ["ss", "-H", "-ltn"]:
+        return {"ok": True, "stdout": "LISTEN 0 5 127.0.0.1:8088 0.0.0.0:*", "detail": ""}
+    if arguments == ["tailscale", "serve", "status", "--json"]:
+        return {
+            "ok": True,
+            "stdout": '{"TCP":{"8088":{"HTTPS":true}},"Web":{"pve-a2.example:8088":{"Handlers":{"/":{"Proxy":"http://localhost:8088"}}}}}',
+            "detail": "",
+        }
     return {"ok": True, "stdout": "", "detail": ""}
 
 globals_["host_command"] = passing_host_command
 checks = module["check_host"]("pve-a2")
 assert all(checks.values()), checks
 assert any(
-    arguments[-1] == "http://127.0.0.1:8088/health"
+    arguments == ["ss", "-H", "-ltn", "sport = :8088"]
+    for _, arguments in host_calls
+), host_calls
+assert any(
+    arguments == ["tailscale", "serve", "status", "--json"]
     for _, arguments in host_calls
 ), host_calls
 

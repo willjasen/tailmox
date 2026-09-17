@@ -275,7 +275,9 @@ shows the same cluster-wide history regardless of which host serves the page.
 
 Run `tailmox test observability` from a cluster host for a read-only end-to-end
 audit. It verifies that every configured node has active and enabled monitor
-and Influx exporter services, that port `8088` is reachable, that required
+and Influx exporter services, a localhost port `8088` backend, and an HTTPS
+port `8088` Tailscale Serve root proxy to `http://localhost:8088`. It also
+checks that required
 ICMP, TCP, Corosync cmap, and link-quality measurements are fresh in InfluxDB,
 and that every directed host-to-host link is represented. Any missing, stale,
 unexpected, disabled, or unreachable component makes the command return

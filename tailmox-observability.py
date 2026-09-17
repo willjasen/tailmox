@@ -2,6 +2,7 @@
 """Read-only cluster audit for Tailmox monitors and InfluxDB exports."""
 
 import importlib.util
+import json
 import os
 import pathlib
 import re
@@ -83,14 +84,26 @@ def check_host(host):
         enabled = host_command(host, ["systemctl", "is-enabled", service])
         checks[f"{label}_active"] = active["ok"] and active["stdout"] == "active"
         checks[f"{label}_enabled"] = enabled["ok"] and enabled["stdout"] == "enabled"
-    health = host_command(
-        host,
-        [
-            "curl", "--fail", "--silent", "--show-error", "--max-time", "4",
-            "http://127.0.0.1:8088/health",
-        ],
+    listener = host_command(host, ["ss", "-H", "-ltn", "sport = :8088"])
+    checks["monitor_port"] = (
+        listener["ok"] and "127.0.0.1:8088" in listener["stdout"]
     )
-    checks["monitor_port"] = health["ok"]
+    serve = host_command(host, ["tailscale", "serve", "status", "--json"])
+    checks["serve_https"] = False
+    if serve["ok"]:
+        try:
+            serve_config = json.loads(serve["stdout"])
+            https_enabled = serve_config.get("TCP", {}).get("8088", {}).get("HTTPS") is True
+            web_configs = serve_config.get("Web", {})
+            root_proxy = any(
+                name.endswith(":8088")
+                and config.get("Handlers", {}).get("/", {}).get("Proxy")
+                == "http://localhost:8088"
+                for name, config in web_configs.items()
+            )
+            checks["serve_https"] = https_enabled and root_proxy
+        except (AttributeError, json.JSONDecodeError):
+            pass
     return checks
 
 
@@ -155,7 +168,10 @@ def run_audit():
             failed = True
             print(f"FAIL {host}: {', '.join(missing)}")
         else:
-            print(f"PASS {host}: monitor and exporter active, enabled, and reachable")
+            print(
+                f"PASS {host}: monitor and exporter active and enabled; "
+                "localhost backend and HTTPS Serve route available"
+            )
 
     influx = audit_influx()
     for label in MEASUREMENTS:
