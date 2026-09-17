@@ -8,6 +8,9 @@ trap 'rm -rf "$TEST_LOG_DIR"' EXIT
 
 export TAILMOX_LIBRARY_MODE=true
 export TAILMOX_LOG_DIR="$TEST_LOG_DIR"
+export TAILMOX_AUTH_ENV_FILE="$TEST_LOG_DIR/tailscale.env"
+export TAILMOX_AUTH_PROMPT_INPUT="$TEST_LOG_DIR/prompt-input"
+export TAILMOX_AUTH_PROMPT_OUTPUT="$TEST_LOG_DIR/prompt-output"
 
 source "$TEST_ROOT/tailmox.sh"
 
@@ -106,16 +109,61 @@ fi
 MOCK_STATUS="$LOGGED_OUT_STATUS"
 MOCK_STATUS_AFTER_UP="$CONNECTED_STATUS"
 TAILSCALE_UP_CALLS=""
+rm -f "$TAILMOX_AUTH_ENV_FILE"
 if start_tailscale "tskey-test" >/dev/null 2>&1 &&
-    [[ "$TAILSCALE_UP_CALLS" == "up --auth-key=tskey-test" ]]; then
-    pass "logged-out device uses the supplied auth key"
+    [[ "$TAILSCALE_UP_CALLS" == "up --auth-key=tskey-test" ]] &&
+    [[ "$(cat "$TAILMOX_AUTH_ENV_FILE")" == "TAILMOX_AUTH_KEY=tskey-test" ]] &&
+    [[ "$(stat -c '%a' "$TAILMOX_AUTH_ENV_FILE" 2>/dev/null || stat -f '%Lp' "$TAILMOX_AUTH_ENV_FILE")" == "600" ]]; then
+    pass "logged-out device uses and securely saves the supplied auth key"
 else
-    fail "logged-out device uses the supplied auth key"
+    fail "logged-out device uses and securely saves the supplied auth key"
+fi
+
+MOCK_STATUS="$LOGGED_OUT_STATUS"
+MOCK_STATUS_AFTER_UP="$CONNECTED_STATUS"
+TAILSCALE_UP_CALLS=""
+if start_tailscale "" >/dev/null 2>&1 &&
+    [[ "$TAILSCALE_UP_CALLS" == "up --auth-key=tskey-test" ]]; then
+    pass "logged-out device reuses the saved auth key without interactive login"
+else
+    fail "logged-out device reuses the saved auth key without interactive login"
+fi
+
+chmod 0644 "$TAILMOX_AUTH_ENV_FILE"
+if ! load_saved_tailscale_auth_key >/dev/null 2>&1; then
+    pass "saved auth key is rejected when its file permissions are not private"
+else
+    fail "saved auth key is rejected when its file permissions are not private"
+fi
+chmod 0600 "$TAILMOX_AUTH_ENV_FILE"
+
+MOCK_STATUS="$LOGGED_OUT_STATUS"
+MOCK_STATUS_AFTER_UP="$CONNECTED_STATUS"
+TAILSCALE_UP_CALLS=""
+rm -f "$TAILMOX_AUTH_ENV_FILE"
+printf '%s\n' 'tskey-prompted' > "$TAILMOX_AUTH_PROMPT_INPUT"
+touch "$TAILMOX_AUTH_PROMPT_OUTPUT"
+if start_tailscale "" >/dev/null 2>&1 &&
+    [[ "$TAILSCALE_UP_CALLS" == "up --auth-key=tskey-prompted" ]] &&
+    [[ "$(cat "$TAILMOX_AUTH_ENV_FILE")" == "TAILMOX_AUTH_KEY=tskey-prompted" ]]; then
+    pass "logged-out device securely prompts for and saves an auth key"
+else
+    fail "logged-out device securely prompts for and saves an auth key"
+fi
+
+MOCK_STATUS="$LOGGED_OUT_STATUS"
+TAILSCALE_UP_CALLS=""
+rm -f "$TAILMOX_AUTH_ENV_FILE" "$TAILMOX_AUTH_PROMPT_INPUT"
+if ! start_tailscale "" >/dev/null 2>&1 && [[ -z "$TAILSCALE_UP_CALLS" ]]; then
+    pass "logged-out device never falls back to an interactive Tailscale login link"
+else
+    fail "logged-out device never falls back to an interactive Tailscale login link"
 fi
 
 MOCK_STATUS="$LOGGED_OUT_STATUS"
 MOCK_STATUS_AFTER_UP="$MISSING_TAG_STATUS"
 TAILSCALE_UP_CALLS=""
+rm -f "$TAILMOX_AUTH_ENV_FILE"
 if ! start_tailscale "tskey-test" >/dev/null 2>&1 &&
     [[ "$TAILSCALE_UP_CALLS" == "up --auth-key=tskey-test" ]]; then
     pass "auth key must result in a device carrying tag:tailmox"

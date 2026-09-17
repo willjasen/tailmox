@@ -13,7 +13,7 @@
 #
 # Options:
 #   --staging           Run in staging mode (setup Tailscale and certs only)
-#   --auth-key <key>    Use the provided Tailscale auth key for login
+#   --auth-key <key>    Use and securely save the Tailscale auth key for login
 #
 # Description:
 #   This script installs dependencies, sets up Tailscale, configures certificates,
@@ -34,6 +34,7 @@ LOG_DIR="${TAILMOX_LOG_DIR:-/var/log}"
 LOG_FILE="$LOG_DIR/tailmox.log"
 STATE_FILE="${TAILMOX_STATE_FILE:-${TAILMOX_CLUSTER_STATE_FILE:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/tailmox/state.json}}"
 TAILMOX_TAILSCALE_SERVICE_NAME="${TAILMOX_TAILSCALE_SERVICE_NAME:-tailmox}"
+TAILMOX_AUTH_ENV_FILE="${TAILMOX_AUTH_ENV_FILE:-/etc/tailmox/tailscale.env}"
 
 if [[ ! "$TAILMOX_TAILSCALE_SERVICE_NAME" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$ ]]; then
     printf 'TAILMOX_TAILSCALE_SERVICE_NAME must be a lowercase DNS label.\n' >&2
@@ -1170,8 +1171,87 @@ function verify_local_tailmox_tag() {
     ' <<< "$status_json" >/dev/null
 }
 
+function validate_tailscale_auth_key() {
+    local auth_key="$1"
+
+    [[ -n "$auth_key" && "$auth_key" =~ ^[[:alnum:]_.:-]+$ ]]
+}
+
+function load_saved_tailscale_auth_key() {
+    local auth_file="$TAILMOX_AUTH_ENV_FILE"
+    local auth_line
+    local auth_mode
+    local auth_owner
+
+    [[ -e "$auth_file" ]] || return 1
+    if [[ -L "$auth_file" || ! -f "$auth_file" ]]; then
+        log_echo "${RED}Refusing to read an unsafe Tailscale auth environment file: $auth_file${RESET}"
+        return 1
+    fi
+
+    auth_mode=$(stat -c '%a' "$auth_file" 2>/dev/null || stat -f '%Lp' "$auth_file" 2>/dev/null) || return 1
+    auth_owner=$(stat -c '%u' "$auth_file" 2>/dev/null || stat -f '%u' "$auth_file" 2>/dev/null) || return 1
+    if (( (8#$auth_mode & 8#077) != 0 )) || [[ "$auth_owner" -ne "$EUID" ]]; then
+        log_echo "${RED}Refusing to read $auth_file unless it is owned by the current user with mode 0600.${RESET}"
+        return 1
+    fi
+
+    IFS= read -r auth_line < "$auth_file" || return 1
+    [[ "$auth_line" == TAILMOX_AUTH_KEY=* ]] || return 1
+    auth_line=${auth_line#TAILMOX_AUTH_KEY=}
+    validate_tailscale_auth_key "$auth_line" || return 1
+    TAILMOX_RESOLVED_AUTH_KEY="$auth_line"
+}
+
+function save_tailscale_auth_key() {
+    local auth_key="$1"
+    local auth_file="$TAILMOX_AUTH_ENV_FILE"
+    local auth_dir
+    local temporary_file
+
+    validate_tailscale_auth_key "$auth_key" || return 1
+    auth_dir=$(dirname "$auth_file")
+    if [[ -L "$auth_file" || ( -e "$auth_file" && ! -f "$auth_file" ) ]]; then
+        log_echo "${RED}Refusing to replace an unsafe Tailscale auth environment file: $auth_file${RESET}"
+        return 1
+    fi
+    install -d -m 0755 "$auth_dir" || return 1
+    temporary_file=$(mktemp "${auth_file}.tmp.XXXXXX") || return 1
+    chmod 0600 "$temporary_file" || { rm -f "$temporary_file"; return 1; }
+    if ! printf 'TAILMOX_AUTH_KEY=%s\n' "$auth_key" > "$temporary_file" ||
+        ! mv "$temporary_file" "$auth_file"; then
+        rm -f "$temporary_file"
+        return 1
+    fi
+}
+
+function prompt_tailscale_auth_key() {
+    local prompt_input="${TAILMOX_AUTH_PROMPT_INPUT:-/dev/tty}"
+    local prompt_output="${TAILMOX_AUTH_PROMPT_OUTPUT:-/dev/tty}"
+    local auth_key
+
+    log_echo "${YELLOW}This device must join Tailscale with an auth key; interactive login links are not supported.${RESET}"
+    log_echo "${YELLOW}In the Tailscale admin interface, create a reusable auth key that applies tag:tailmox.${RESET}"
+    if [[ ! -r "$prompt_input" || ! -w "$prompt_output" ]]; then
+        log_echo "${RED}No interactive terminal is available. Re-run with --auth-key or TAILMOX_AUTH_KEY.${RESET}"
+        return 1
+    fi
+    printf 'Tailscale auth key (input hidden): ' > "$prompt_output"
+    if ! IFS= read -r -s auth_key < "$prompt_input"; then
+        printf '\n' > "$prompt_output"
+        return 1
+    fi
+    printf '\n' > "$prompt_output"
+    if ! validate_tailscale_auth_key "$auth_key"; then
+        log_echo "${RED}The Tailscale auth key is empty or contains invalid characters.${RESET}"
+        return 1
+    fi
+    TAILMOX_RESOLVED_AUTH_KEY="$auth_key"
+}
+
 function start_tailscale() {
     local auth_key="$1"
+    local saved_auth_key=false
     local status_json
     local backend_state
 
@@ -1190,22 +1270,39 @@ function start_tailscale() {
             return 1
         fi
     elif [[ "$backend_state" == "NeedsLogin" ]]; then
-        log_echo "${GREEN}Starting Tailscale...${RESET}"
-        if [[ -n "$auth_key" ]]; then
-            tailscale up --auth-key="$auth_key"
-        else
-            tailscale up
+        if [[ -z "$auth_key" ]]; then
+            if load_saved_tailscale_auth_key; then
+                auth_key="$TAILMOX_RESOLVED_AUTH_KEY"
+                saved_auth_key=true
+                log_echo "${GREEN}Using the saved Tailscale auth key.${RESET}"
+            elif ! prompt_tailscale_auth_key; then
+                return 1
+            else
+                auth_key="$TAILMOX_RESOLVED_AUTH_KEY"
+            fi
+        fi
+        if ! validate_tailscale_auth_key "$auth_key"; then
+            log_echo "${RED}A valid Tailscale auth key is required.${RESET}"
+            return 1
+        fi
+        log_echo "${GREEN}Starting Tailscale with an auth key...${RESET}"
+        if ! tailscale up --auth-key="$auth_key"; then
+            log_echo "${RED}Failed to start Tailscale. Confirm that the auth key is valid and reusable.${RESET}"
+            return 1
         fi
     else
         log_echo "${RED}Tailscale is in an unexpected state (${backend_state:-unknown}); refusing to change Tailscale connectivity.${RESET}"
         return 1
     fi
     
-    if [ $? -ne 0 ]; then
-        log_echo "${RED}Failed to start Tailscale.${RESET}"
-        return 1
-    fi
     verify_local_tailmox_tag || return 1
+    if [[ "$backend_state" == "NeedsLogin" && "$saved_auth_key" != true ]]; then
+        if ! save_tailscale_auth_key "$auth_key"; then
+            log_echo "${RED}Tailscale connected, but the auth key could not be saved securely to $TAILMOX_AUTH_ENV_FILE.${RESET}"
+            return 1
+        fi
+        log_echo "${GREEN}Saved the Tailscale auth key in the root-only $TAILMOX_AUTH_ENV_FILE file.${RESET}"
+    fi
 
     # Retrieve the assigned Tailscale IPv4 address
     local TAILSCALE_IP=""

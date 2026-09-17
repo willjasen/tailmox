@@ -136,8 +136,12 @@ starts and publishes the Tailmox monitor service. At the end it prints the
 node monitor link on HTTPS port `8088` and the shared service link on standard
 HTTPS without an explicit port.
 
-If the host is not signed in to Tailscale, the staging workflow prints a login
-link. An auth key can instead be supplied to the one-liner:
+If the host is not signed in to Tailscale, the staging workflow requires an
+auth key and never starts Tailscale's interactive login-link flow. Create a
+reusable auth key in the Tailscale admin interface and configure it to apply
+`tag:tailmox`; Tailmox rejects a joined device that does not carry that tag.
+The installer securely prompts for the key when it is omitted, or it can be
+supplied to the one-liner:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/willjasen/tailmox/dev/install.sh | bash -s -- --auth-key YOUR_KEY
@@ -148,7 +152,10 @@ create the post-quantum cluster identity on the first host, or to privately
 import that same identity on another host. Back up the identity shown by the
 first host from the root-only `/etc/tailmox/identity.txt` file; the installer
 shows only a shortened recipient and fingerprint in the terminal. Private
-identities and auth keys are not logged by the installer.
+identities and auth keys are not logged by the installer. After a successful
+tagged login, Tailmox saves the key in `/etc/tailmox/tailscale.env`, owned by
+root with mode `0600`, so it can be reused if the host must authenticate again.
+Set `TAILMOX_AUTH_ENV_FILE` to change this path for testing or custom layouts.
 If the Proxmox cluster security registry already contains a public age
 recipient, the installer displays that recipient and its fingerprint and only
 offers to import the matching private identity, preventing a conflicting
@@ -182,9 +189,11 @@ and review it locally first.
 
 ### 🖥️ Usage 🖥️
 
-`tailmox.sh` can be run without any parameters, but if the host is not logged into Tailscale, then when the script performs `tailscale up`, Tailscale will provide a link to use to login with.
-
-In order to make the Tailscale functions easier to handle, `tailmox.sh` accepts the "--auth-key" parameter, followed by a Tailscale auth key, which can be generated via their [Keys](https://login.tailscale.com/admin/settings/keys) page. It is recommended that the key generated is reusable.
+If the host is not logged into Tailscale, Tailmox prompts for an auth key instead
+of displaying an interactive login link. Create a reusable key in the Tailscale
+admin interface with `tag:tailmox`. The key is saved in the root-only
+`/etc/tailmox/tailscale.env` file after Tailscale confirms the required tag.
+The key can also be supplied with `--auth-key` or `TAILMOX_AUTH_KEY`.
 
 During the running of the script, if there are existing hosts within the tailmox cluster, it is likely to ask for the password of one of the remote hosts in order to properly join the Proxmox cluster.
 
