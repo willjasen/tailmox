@@ -1297,6 +1297,12 @@ function start_tailscale() {
     fi
     
     verify_local_tailmox_tag || return 1
+    if ! tailscale set --accept-dns=true; then
+        log_echo "${RED}Unable to enable Tailscale DNS. Tailmox requires MagicDNS name resolution.${RESET}"
+        return 1
+    fi
+    log_echo "${GREEN}Tailscale DNS is enabled.${RESET}"
+
     if [[ "$backend_state" == "NeedsLogin" && "$saved_auth_key" != true ]]; then
         if ! save_tailscale_auth_key "$auth_key"; then
             log_echo "${RED}Tailscale connected, but the auth key could not be saved securely to $TAILMOX_AUTH_ENV_FILE.${RESET}"

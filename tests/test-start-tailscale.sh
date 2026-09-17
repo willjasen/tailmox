@@ -44,6 +44,8 @@ MALFORMED_STATUS='{"BackendState": "Running", "Self":'
 MOCK_STATUS="$CONNECTED_STATUS"
 MOCK_STATUS_AFTER_UP="$CONNECTED_STATUS"
 TAILSCALE_UP_CALLS=""
+TAILSCALE_SET_CALLS=""
+MOCK_SET_FAILURE=false
 MOCK_STATUS_FAILURE=false
 
 function tailscale() {
@@ -59,6 +61,12 @@ function tailscale() {
         TAILSCALE_UP_CALLS="${*}"
         MOCK_STATUS="$MOCK_STATUS_AFTER_UP"
         return 0
+    fi
+
+    if [[ "${1:-}" == "set" ]]; then
+        TAILSCALE_SET_CALLS="${*}"
+        [[ "$MOCK_SET_FAILURE" != "true" ]]
+        return
     fi
 
     if [[ "${1:-}" == "ip" && "${2:-}" == "-4" ]]; then
@@ -84,10 +92,12 @@ function fail() {
 
 MOCK_STATUS="$CONNECTED_STATUS"
 TAILSCALE_UP_CALLS=""
-if start_tailscale "" >/dev/null 2>&1 && [[ -z "$TAILSCALE_UP_CALLS" ]]; then
-    pass "connected tagged device preserves its existing Tailscale login"
+TAILSCALE_SET_CALLS=""
+if start_tailscale "" >/dev/null 2>&1 && [[ -z "$TAILSCALE_UP_CALLS" ]] &&
+    [[ "$TAILSCALE_SET_CALLS" == "set --accept-dns=true" ]]; then
+    pass "connected tagged device preserves its login and enables Tailscale DNS"
 else
-    fail "connected tagged device preserves its existing Tailscale login"
+    fail "connected tagged device preserves its login and enables Tailscale DNS"
 fi
 
 MOCK_STATUS="$CONNECTED_OFFLINE_STATUS"
@@ -100,11 +110,25 @@ fi
 
 MOCK_STATUS="$MISSING_TAG_STATUS"
 TAILSCALE_UP_CALLS=""
-if ! start_tailscale "" >/dev/null 2>&1 && [[ -z "$TAILSCALE_UP_CALLS" ]]; then
+TAILSCALE_SET_CALLS=""
+if ! start_tailscale "" >/dev/null 2>&1 && [[ -z "$TAILSCALE_UP_CALLS" ]] &&
+    [[ -z "$TAILSCALE_SET_CALLS" ]]; then
     pass "connected device without tag:tailmox fails without logging in again"
 else
     fail "connected device without tag:tailmox fails without logging in again"
 fi
+
+MOCK_STATUS="$CONNECTED_STATUS"
+TAILSCALE_UP_CALLS=""
+TAILSCALE_SET_CALLS=""
+MOCK_SET_FAILURE=true
+if ! start_tailscale "" >/dev/null 2>&1 && [[ -z "$TAILSCALE_UP_CALLS" ]] &&
+    [[ "$TAILSCALE_SET_CALLS" == "set --accept-dns=true" ]]; then
+    pass "failure to enable Tailscale DNS stops setup"
+else
+    fail "failure to enable Tailscale DNS stops setup"
+fi
+MOCK_SET_FAILURE=false
 
 MOCK_STATUS="$LOGGED_OUT_STATUS"
 MOCK_STATUS_AFTER_UP="$CONNECTED_STATUS"
