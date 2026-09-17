@@ -122,8 +122,9 @@ if [[ ! -f "$IDENTITY_FILE" ]]; then
     if [[ -n "$CLUSTER_RECIPIENT" ]]; then
         RECIPIENT_FINGERPRINT=$(printf '%s' "$CLUSTER_RECIPIENT" |
             openssl dgst -sha256 | awk '{print substr($NF, 1, 16)}')
-        printf 'The Proxmox cluster already uses this public age recipient:\n%s\n' \
-            "$CLUSTER_RECIPIENT" >/dev/tty
+        RECIPIENT_PREVIEW="${CLUSTER_RECIPIENT:0:20}...${CLUSTER_RECIPIENT: -8}"
+        printf 'The Proxmox cluster already uses age recipient %s.\n' \
+            "$RECIPIENT_PREVIEW" >/dev/tty
         printf 'Recipient fingerprint: %s\n' "$RECIPIENT_FINGERPRINT" >/dev/tty
         printf 'Import the matching private identity to join this Tailmox cluster.\n' >/dev/tty
         IDENTITY_ACTION=import
@@ -134,11 +135,16 @@ if [[ ! -f "$IDENTITY_FILE" ]]; then
     case "${IDENTITY_ACTION:-create}" in
         create|c)
             printf '\nCreating a post-quantum Tailmox age identity...\n' >/dev/tty
-            IDENTITY_OUTPUT=$(cd "$INSTALL_DIR" && python3 -c \
-                'import tailmox_config; print(tailmox_config.create_identity()["identity"])') ||
+            IDENTITY_DETAILS=$(cd "$INSTALL_DIR" && python3 -c \
+                'import hashlib, tailmox_config; result=tailmox_config.create_identity(); recipient=result["recipient"]; print(recipient[:20] + "..." + recipient[-8:]); print(hashlib.sha256(recipient.encode()).hexdigest()[:16])') ||
                 fail 'the age identity could not be created.'
-            printf '\nBack up this private identity now; it will not be shown again:\n\n%s\n\n' \
-                "$IDENTITY_OUTPUT" >/dev/tty
+            CREATED_RECIPIENT=$(sed -n '1p' <<< "$IDENTITY_DETAILS")
+            CREATED_FINGERPRINT=$(sed -n '2p' <<< "$IDENTITY_DETAILS")
+            unset IDENTITY_DETAILS
+            printf 'Created age recipient: %s\n' "$CREATED_RECIPIENT" >/dev/tty
+            printf 'Recipient fingerprint: %s\n' "$CREATED_FINGERPRINT" >/dev/tty
+            printf 'The private identity is stored root-only at %s. Back up that file securely.\n\n' \
+                "$IDENTITY_FILE" >/dev/tty
             ;;
         import|i)
             printf 'Paste the private Tailmox age identity: ' >/dev/tty

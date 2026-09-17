@@ -143,7 +143,9 @@ curl -fsSL https://raw.githubusercontent.com/willjasen/tailmox/dev/install.sh | 
 The installer also requires each host to have an age identity. It prompts to
 create the post-quantum cluster identity on the first host, or to privately
 import that same identity on another host. Back up the identity shown by the
-first host; private identities and auth keys are not logged by the installer.
+first host from the root-only `/etc/tailmox/identity.txt` file; the installer
+shows only a shortened recipient and fingerprint in the terminal. Private
+identities and auth keys are not logged by the installer.
 If the Proxmox cluster security registry already contains a public age
 recipient, the installer displays that recipient and its fingerprint and only
 offers to import the matching private identity, preventing a conflicting
