@@ -1903,7 +1903,6 @@ function setup_monitoring_interface() {
     configure_tailscale_serve "--service=svc:${TAILMOX_TAILSCALE_SERVICE_NAME}" --bg --https=443 localhost:8088 || return 1
 
     verify_monitor_url "$node_monitor_url" || return 1
-    log_echo "${GREEN}verified tailmox web is available${RESET}"
 }
 
 # Create a new Proxmox cluster named "tailmox"
