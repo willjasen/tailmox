@@ -6,7 +6,7 @@ REPOSITORY="${TAILMOX_REPOSITORY:-willjasen/tailmox}"
 REF="${TAILMOX_INSTALL_REF:-dev}"
 INSTALL_DIR="${TAILMOX_INSTALL_DIR:-/opt/tailmox}"
 BIN_DIR="${TAILMOX_BIN_DIR:-/usr/local/bin}"
-ARCHIVE_URL="${TAILMOX_ARCHIVE_URL:-https://github.com/${REPOSITORY}/archive/refs/heads/${REF}.tar.gz}"
+REPOSITORY_URL="${TAILMOX_REPOSITORY_URL:-https://github.com/${REPOSITORY}.git}"
 IDENTITY_FILE="${TAILMOX_AGE_IDENTITY_FILE:-/etc/tailmox/identity.txt}"
 SECURITY_FILE="${TAILMOX_SECURITY_FILE:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/tailmox/security.json}"
 
@@ -50,7 +50,7 @@ if [[ "$EUID" -ne 0 && "${TAILMOX_ALLOW_NON_ROOT:-false}" != true ]]; then
     fail 'run this installer as root.'
 fi
 
-for command_name in curl tar pveversion; do
+for command_name in git pveversion; do
     command -v "$command_name" >/dev/null 2>&1 ||
         fail "required command not found: $command_name"
 done
@@ -68,46 +68,55 @@ if [[ -e "$COMMAND_PATH" || -L "$COMMAND_PATH" ]]; then
 fi
 
 UPDATING=false
+GIT_INSTALL=false
 if [[ -e "$INSTALL_DIR" || -L "$INSTALL_DIR" ]]; then
     if [[ ! -d "$INSTALL_DIR" || ! -f "$INSTALL_DIR/tailmox" ||
         ! -f "$INSTALL_DIR/tailmox.sh" ]]; then
         fail "$INSTALL_DIR is not a recognized Tailmox installation; it was left unchanged."
     fi
-    if [[ -d "$INSTALL_DIR/.git" ]] &&
-        [[ -n "$(git -C "$INSTALL_DIR" status --porcelain 2>/dev/null || printf 'unknown')" ]]; then
-        fail "$INSTALL_DIR has local changes; commit or move them before updating."
+    if [[ -d "$INSTALL_DIR/.git" ]]; then
+        GIT_INSTALL=true
+        [[ "$(git -C "$INSTALL_DIR" remote get-url origin 2>/dev/null || true)" == "$REPOSITORY_URL" ]] ||
+            fail "$INSTALL_DIR does not use the expected Tailmox Git remote; it was left unchanged."
+        [[ "$(git -C "$INSTALL_DIR" branch --show-current 2>/dev/null || true)" == "$REF" ]] ||
+            fail "$INSTALL_DIR is not on the $REF branch; it was left unchanged."
+        [[ -z "$(git -C "$INSTALL_DIR" status --porcelain 2>/dev/null || printf 'unknown')" ]] ||
+            fail "$INSTALL_DIR has local changes; commit or move them before updating."
     fi
     UPDATING=true
 fi
 
-WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/tailmox-install.XXXXXX") ||
-    fail 'could not create a temporary directory.'
-ARCHIVE="$WORK_DIR/tailmox.tar.gz"
-EXTRACT_DIR="$WORK_DIR/extracted"
-mkdir -p "$EXTRACT_DIR"
-
-printf '%bDownload%b  Tailmox branch %b%s%b\n' \
-    "$CYAN" "$RESET" "$PURPLE" "$REF" "$RESET"
-curl -fsSL --retry 3 --output "$ARCHIVE" "$ARCHIVE_URL" ||
-    fail 'download did not complete.'
-tar -xzf "$ARCHIVE" -C "$EXTRACT_DIR" || fail 'downloaded archive is invalid.'
-
-SOURCE_DIR=$(find "$EXTRACT_DIR" -mindepth 1 -maxdepth 1 -type d -print -quit)
-if [[ -z "$SOURCE_DIR" || ! -f "$SOURCE_DIR/tailmox" || ! -f "$SOURCE_DIR/tailmox.sh" ]]; then
-    fail 'downloaded archive does not contain a Tailmox release.'
-fi
-
 mkdir -p "$(dirname "$INSTALL_DIR")" "$BIN_DIR" ||
     fail 'could not create the installation directories.'
-if [[ "$UPDATING" == true ]]; then
-    BACKUP_DIR="$WORK_DIR/previous-install"
-    mv "$INSTALL_DIR" "$BACKUP_DIR" || fail 'could not stage the existing installation.'
-    if ! mv "$SOURCE_DIR" "$INSTALL_DIR"; then
-        mv "$BACKUP_DIR" "$INSTALL_DIR" || true
-        fail "could not update $INSTALL_DIR."
-    fi
+
+if [[ "$GIT_INSTALL" == true ]]; then
+    printf '%bUpdate%b    Tailmox branch %b%s%b\n' \
+        "$CYAN" "$RESET" "$PURPLE" "$REF" "$RESET"
+    git -C "$INSTALL_DIR" fetch --prune origin "$REF" ||
+        fail 'could not fetch the Tailmox repository.'
+    git -C "$INSTALL_DIR" merge --ff-only "origin/$REF" ||
+        fail 'the Tailmox update is not a fast-forward; the installation was left unchanged.'
 else
-    mv "$SOURCE_DIR" "$INSTALL_DIR" || fail "could not install into $INSTALL_DIR."
+    WORK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/tailmox-install.XXXXXX") ||
+        fail 'could not create a temporary directory.'
+    SOURCE_DIR="$WORK_DIR/tailmox"
+    printf '%bClone%b     Tailmox branch %b%s%b\n' \
+        "$CYAN" "$RESET" "$PURPLE" "$REF" "$RESET"
+    git clone --branch "$REF" --single-branch "$REPOSITORY_URL" "$SOURCE_DIR" ||
+        fail 'could not clone the Tailmox repository.'
+    if [[ ! -f "$SOURCE_DIR/tailmox" || ! -f "$SOURCE_DIR/tailmox.sh" ]]; then
+        fail 'cloned repository does not contain a Tailmox release.'
+    fi
+    if [[ "$UPDATING" == true ]]; then
+        BACKUP_DIR="$WORK_DIR/previous-install"
+        mv "$INSTALL_DIR" "$BACKUP_DIR" || fail 'could not stage the existing installation.'
+        if ! mv "$SOURCE_DIR" "$INSTALL_DIR"; then
+            mv "$BACKUP_DIR" "$INSTALL_DIR" || true
+            fail "could not update $INSTALL_DIR."
+        fi
+    else
+        mv "$SOURCE_DIR" "$INSTALL_DIR" || fail "could not install into $INSTALL_DIR."
+    fi
 fi
 chmod +x "$INSTALL_DIR/tailmox" "$INSTALL_DIR/tailmox.sh"
 

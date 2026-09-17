@@ -127,7 +127,7 @@ On each Proxmox VE 8 or 9 host, run as `root`:
 curl -fsSL https://raw.githubusercontent.com/willjasen/tailmox/dev/install.sh | bash
 ```
 
-The installer verifies the Proxmox version, downloads the current `dev` branch
+The installer verifies the Proxmox version, clones the current `dev` branch
 into `/opt/tailmox`, and adds the `tailmox` command at `/usr/local/bin/tailmox`.
 It then runs the staging workflow, which installs or connects Tailscale and
 starts and publishes the Tailmox monitor service. At the end it prints the
@@ -153,10 +153,11 @@ offers to import the matching private identity, preventing a conflicting
 identity from being created.
 
 Run the same one-liner again to update an existing Tailmox installation. The
-updater replaces only a recognized Tailmox install and refuses to proceed over
-local Git changes or an unrelated command or directory. Each run refreshes the
-Tailscale Serve and monitor staging configuration, but does not create or join
-a Proxmox cluster.
+updater performs a fast-forward Git update and refuses to proceed over local
+Git changes, a different branch or remote, or an unrelated command or directory.
+Older archive-based installations are migrated to a Git checkout. Each run
+refreshes the Tailscale Serve and monitor staging configuration, but does not
+create or join a Proxmox cluster.
 
 After every host is staged and has the same cluster identity, start clustering
 explicitly:
