@@ -50,6 +50,7 @@ require_positive_integer() {
 API_URL=""
 NODE=""
 TEMPLATE="tailmox-template"
+SNAPSHOT_NAME="ready-for-testing"
 COUNT="3"
 NAME_PREFIX="tailmox"
 STORAGE=""
@@ -329,6 +330,15 @@ for ((index = 1; index <= COUNT; index++)); do
       wait_for_task "$NODE" "$CONFIG_UPID"
     fi
   fi
+
+  SNAPSHOT_RESPONSE=$(
+    api_request POST "/nodes/$NODE/qemu/$VMID/snapshot" \
+      --data-urlencode "snapname=$SNAPSHOT_NAME" \
+      --data-urlencode "description=Initial Tailmox test state before first boot"
+  )
+  SNAPSHOT_UPID=$(jq -er '.data' <<<"$SNAPSHOT_RESPONSE") ||
+    die "Proxmox did not return a snapshot task ID for VM $VMID"
+  wait_for_task "$NODE" "$SNAPSHOT_UPID"
 
   if [[ "$START_VMS" == true ]]; then
     START_RESPONSE=$(api_request POST "/nodes/$NODE/qemu/$VMID/status/start")

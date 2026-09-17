@@ -83,6 +83,7 @@ CPU_TYPE="host"
 ONBOOT="0"
 CLONE_COUNT="0"
 CLONE_PREFIX="tailmox"
+SNAPSHOT_NAME="ready-for-testing"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -297,7 +298,9 @@ for ((index = 1; index <= CLONE_COUNT; index++)); do
   qm clone "$VMID" "$CLONE_VMID" \
     --name "$CLONE_NAME" \
     --full 0
-  echo "Created linked clone $CLONE_VMID ($CLONE_NAME)."
+  qm snapshot "$CLONE_VMID" "$SNAPSHOT_NAME" \
+    --description "Initial Tailmox test state before first boot"
+  echo "Created linked clone $CLONE_VMID ($CLONE_NAME) with snapshot $SNAPSHOT_NAME."
 done
 
 echo "Template and linked-clone deployment completed successfully."

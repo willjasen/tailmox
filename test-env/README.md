@@ -40,7 +40,7 @@ export PVE_API_TOKEN_SECRET='TOKEN_SECRET'
   --count 3
 ```
 
-The API helper prompts for any credentials that are not supplied through the environment. It creates stopped linked clones named `tailmox1`, `tailmox2`, and `tailmox3` by default. Linked clones inherit the template storage. Use `--full --storage NAME` to place full clones on another storage, `--start` to start the clones, or `--bridge` to override the inherited template network.
+The API helper prompts for any credentials that are not supplied through the environment. It creates stopped linked clones named `tailmox1`, `tailmox2`, and `tailmox3` by default. Every clone receives a `ready-for-testing` snapshot immediately after creation and before it can be started. Linked clones inherit the template storage. Use `--full --storage NAME` to place full clones on another storage, `--start` to start the clones after their snapshots exist, or `--bridge` to override the inherited template network.
 
 To ensure that the linked clones can get online, review the network adapter settings within each VM. The network adapter uses `vmbr0` with no VLAN by default, but your environment may be different.
 
@@ -52,7 +52,7 @@ Boot up each linked clone VM (the default credentials are "root" and "tailmox-te
  - edit `/etc/hostname` to a unique hostname within the Tailmox cluster (example: tailmox1)
  - edit `/etc/hosts` to reflect the new IP and hostname (example: "10.2.3.10 tailmox1.local tailmox1")
 
-Once you have verified online connectivity, shutdown the VM and create a snapshot named "ready-for-testing". This snapshot name is used by the `revert-test-vms.sh` script.
+The deployment helpers create the initial `ready-for-testing` snapshot automatically while each VM is stopped. This snapshot name is used by the `revert-test-vms.sh` script.
 
 You are now ready to run/test the main script: `cd /opt/tailmox; git switch main; git pull --quiet; /opt/tailmox/tailmox.sh;`
 

@@ -85,11 +85,17 @@ grep -q '^set 100 --scsi0 local-zfs:vm-100-disk-0$' "$TEST_STATE_DIR/qm-calls" |
   { echo "FAIL: imported disk was not discovered and attached" >&2; exit 1; }
 [[ "$(grep -c '^clone 100 ' "$TEST_STATE_DIR/qm-calls")" -eq 2 ]] ||
   { echo "FAIL: expected two linked clones" >&2; exit 1; }
+[[ "$(grep -c '^snapshot .* ready-for-testing ' "$TEST_STATE_DIR/qm-calls")" -eq 2 ]] ||
+  { echo "FAIL: expected a pre-boot snapshot for each linked clone" >&2; exit 1; }
 if grep -q '^clone 100 .* --storage ' "$TEST_STATE_DIR/qm-calls"; then
   echo "FAIL: linked clone incorrectly specified target storage" >&2
   exit 1
 fi
+FIRST_CLONE_LINE=$(grep -n '^clone 100 ' "$TEST_STATE_DIR/qm-calls" | head -n 1 | cut -d: -f1)
+FIRST_SNAPSHOT_LINE=$(grep -n '^snapshot .* ready-for-testing ' "$TEST_STATE_DIR/qm-calls" | head -n 1 | cut -d: -f1)
+[[ "$FIRST_SNAPSHOT_LINE" -gt "$FIRST_CLONE_LINE" ]] ||
+  { echo "FAIL: snapshot was not created after its linked clone" >&2; exit 1; }
 grep -q 'Template and linked-clone deployment completed successfully.' <<<"$OUTPUT" ||
   { echo "FAIL: success summary was not emitted" >&2; exit 1; }
 
-echo "PASS: local deployment validates resources, imports a disk, and creates clones"
+echo "PASS: local deployment creates stopped linked clones with initial snapshots"

@@ -39,8 +39,14 @@ curl() {
       printf '%s\n' "$arguments" >>"$TEST_STATE_DIR/config-calls"
       printf '%s\n' '{"data":null}'
       ;;
+    *"/snapshot"*)
+      printf '%s\n' "$arguments" >>"$TEST_STATE_DIR/snapshot-calls"
+      printf '%s\n' snapshot >>"$TEST_STATE_DIR/vm-events"
+      printf '%s\n' '{"data":"UPID:pve4:snapshot"}'
+      ;;
     *"/status/start"*)
       printf '%s\n' "$arguments" >>"$TEST_STATE_DIR/start-calls"
+      printf '%s\n' start >>"$TEST_STATE_DIR/vm-events"
       printf '%s\n' '{"data":"UPID:pve4:start"}'
       ;;
     *"/tasks/"*"/status"*)
@@ -76,10 +82,16 @@ OUTPUT=$(
   { echo "FAIL: expected two network configuration calls" >&2; exit 1; }
 [[ "$(grep -c '/status/start' "$TEST_STATE_DIR/start-calls")" -eq 2 ]] ||
   { echo "FAIL: expected two start calls" >&2; exit 1; }
+[[ "$(grep -c '/snapshot' "$TEST_STATE_DIR/snapshot-calls")" -eq 2 ]] ||
+  { echo "FAIL: expected two pre-boot snapshot calls" >&2; exit 1; }
+grep -Fq 'snapname=ready-for-testing' "$TEST_STATE_DIR/snapshot-calls" ||
+  { echo "FAIL: deployment used the wrong initial snapshot name" >&2; exit 1; }
+[[ "$(tr '\n' ' ' <"$TEST_STATE_DIR/vm-events")" == 'snapshot start snapshot start ' ]] ||
+  { echo "FAIL: a VM was started before its initial snapshot completed" >&2; exit 1; }
 grep -q 'Created 2 VM(s) successfully.' <<<"$OUTPUT" ||
   { echo "FAIL: success summary was not emitted" >&2; exit 1; }
 
-echo "PASS: API deployment validates resources, clones, configures, and starts VMs"
+echo "PASS: API deployment snapshots each clone before starting it"
 
 : >"$TEST_STATE_DIR/clone-calls"
 if MOCK_EXISTING_VM=true \
