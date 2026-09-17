@@ -68,4 +68,4 @@ tbody tr:last-child td{border-bottom:0}
 .tag.warn{color:#fcd34d;border-color:#f59e0b66;background:#78350f55}
 .tag.bad{color:#fca5a5;border-color:#ef444466;background:#7f1d1d55}
 @media(max-width:760px){main{padding:28px 0}header{align-items:flex-start;flex-direction:column}.grid{grid-template-columns:1fr 1fr}}
-@media(max-width:480px){.grid{grid-template-columns:1fr}.charts figure{padding:16px}.charts svg{min-height:160px}}
+@media(max-width:480px){.grid{grid-template-columns:1fr}.charts figure{padding:16px}.charts svg{min-height:160px}#link-topology{min-width:0;min-height:0}}

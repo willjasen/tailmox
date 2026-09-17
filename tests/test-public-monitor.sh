@@ -119,7 +119,7 @@ with tempfile.TemporaryDirectory() as directory:
     assert b'id="test-latency-chart"' in response["body"]
     assert b'<h1>tailmox</h1>' in response["body"]
     assert b'<h1>Tailmox Monitor</h1>' not in response["body"]
-    assert b'public-monitor.css?v=16' in response["body"]
+    assert b'public-monitor.css?v=17' in response["body"]
     assert b'public-monitor.js?v=16' in response["body"]
     assert b'id="link-quality-rows"' in response["body"]
     assert b'id="link-topology"' in response["body"]
@@ -129,6 +129,9 @@ with tempfile.TemporaryDirectory() as directory:
     assert b'This public view includes graph history and hostnames.' in response["body"]
     assert b'Tailscale IP addresses' not in response["body"]
     assert b"googletagmanager" not in response["body"]
+    stylesheet = request("GET", "/public-monitor.css")
+    assert stylesheet["status"] == 200
+    assert b"#link-topology{min-width:0;min-height:0}" in stylesheet["body"]
     assert request("GET", "/google-analytics.js")["status"] == 404
     assert response["headers"]["Strict-Transport-Security"] == "max-age=31536000"
     response = request("GET", "/snapshot.json")
