@@ -60,6 +60,9 @@ else:
 html = module["INDEX_HTML"]
 for label in ("Run tailmox stage", "Analytics", "Run tests", "Create backup"):
     assert label in html, label
+assert html.count('class="chart-loading-indicator"') == 6
+assert "Loading cmap Knet packet history..." not in html
+assert "Loading exported test history..." not in html
 PY
 
 printf 'monitor action tests passed\n'
