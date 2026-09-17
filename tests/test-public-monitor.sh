@@ -142,6 +142,11 @@ with tempfile.TemporaryDirectory() as directory:
     assert public["valid_series_name"]("node-a → node-b link 0", "Link") is True
     assert public["valid_series_name"]("node-a → 100.64.0.1 link 0", "Link") is False
     assert public["valid_series_name"]("node-a → node-b link unsafe", "Link") is False
+    assert public["valid_series_name"]("node-a → port 443", "Test") is True
+    assert public["valid_series_name"]("node-a → port 8006", "Test") is True
+    assert public["valid_series_name"]("node-a → port 0", "Test") is False
+    assert public["valid_series_name"]("node-a → port 65536", "Test") is False
+    assert public["valid_series_name"]("node-a → port unsafe", "Test") is False
     snapshot_path.write_text(json.dumps({**snapshot, "unexpected": "secret"}), encoding="utf-8")
     assert request("GET", "/snapshot.json")["status"] == 503
     snapshot_path.write_text(json.dumps(snapshot), encoding="utf-8")

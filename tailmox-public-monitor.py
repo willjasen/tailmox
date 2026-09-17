@@ -202,6 +202,10 @@ def valid_series_name(value, prefix):
     parts = value.split(" → ")
     if 1 <= len(parts) <= 2 and all(valid_public_hostname(part) for part in parts):
         return True
+    if prefix == "Test" and len(parts) == 2 and valid_public_hostname(parts[0]):
+        port_match = re.fullmatch(r"port ([1-9][0-9]{0,4})", parts[1])
+        if port_match and int(port_match.group(1)) <= 65535:
+            return True
     if prefix == "Link" and len(parts) == 2:
         peer, separator, link_number = parts[1].rpartition(" link ")
         return (
