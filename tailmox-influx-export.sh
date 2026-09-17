@@ -48,7 +48,10 @@ collect_once() {
     output_file=$(mktemp)
     payload_file=$(mktemp)
     trap 'rm -f "$output_file" "$payload_file"' RETURN
-    hostname=$(hostname -s)
+    # Match the hostname used by the monitor's other InfluxDB measurements.
+    # The history query also accepts the short name for samples written by
+    # older exporter versions.
+    hostname=$(hostname)
     timestamp=$(date +%s%N)
 
     if ! TAILMOX_MONITOR_PRINT_TEST_OUTPUT=true \

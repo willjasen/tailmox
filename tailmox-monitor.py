@@ -1035,10 +1035,17 @@ def collect_link_quality_history():
 
 def influx_test_history():
     config = influx_config()
+    hostname = socket.gethostname()
+    short_hostname = hostname.split(".", 1)[0]
+    host_filter = f'r.host == "{escape_string(hostname)}"'
+    if short_hostname != hostname:
+        host_filter = (
+            f'({host_filter} or r.host == "{escape_string(short_hostname)}")'
+        )
     rows = influx_query(f'''
 from(bucket: "{escape_string(config["bucket"])}")
   |> range(start: -24h)
-  |> filter(fn: (r) => (r._measurement == "tailmox_icmp" or r._measurement == "tailmox_tcp") and r.host == "{escape_string(socket.gethostname())}")
+  |> filter(fn: (r) => (r._measurement == "tailmox_icmp" or r._measurement == "tailmox_tcp") and {host_filter})
   |> filter(fn: (r) => r._field == "average_ms" or r._field == "maximum_ms" or r._field == "latency_ms" or r._field == "packets_received" or r._field == "packets_sent")
   |> sort(columns: ["_time"])
   |> limit(n: 2880)
