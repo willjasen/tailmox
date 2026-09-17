@@ -25,7 +25,7 @@ status = {
 graph_sources = {
     "mtu": {"series": [{"name": "secret-node", "host": "secret-node", "samples": [{"timestamp": status["generatedAt"], "displayMtu": 1280, "configuredMtu": 0, "automatic": True, "hostname": "secret-node"}]}]},
     "members": {"series": [{"name": "secret-node", "samples": [{"timestamp": status["generatedAt"], "memberCount": 1, "configuredNodeCount": 1, "quorate": True, "ip": "100.64.0.1"}]}]},
-    "linkQuality": {"series": [{"name": "secret-node to secret-peer", "peer": "secret-peer", "samples": [{"timestamp": status["generatedAt"], "avgMs": 1.2, "maxMs": 2.4, "jitterMs": 0.4, "packetLossPercent": 0, "hostname": "secret-peer"}]}]},
+    "linkQuality": {"series": [{"name": "secret-node to secret-peer", "host": "secret-node", "peer": "secret-peer", "samples": [{"timestamp": status["generatedAt"], "avgMs": 1.2, "maxMs": 2.4, "jitterMs": 0.4, "packetLossPercent": 0, "hostname": "secret-peer"}]}]},
     "cmapKnet": {"series": [{"name": "secret-node to secret-peer", "nodeid": "9", "samples": [{"timestamp": status["generatedAt"], "latencyAvg": 12, "jitter": 2, "txPacketDelta": 10, "rxPacketDelta": 9, "errorDelta": 0, "raw": "secret-raw"}]}]},
     "tests": {"series": [{"name": "secret-node to secret-target", "target": "secret-target", "kind": "tailmox_icmp", "samples": [{"timestamp": status["generatedAt"], "avgMs": 3.2, "maxMs": 4.8, "received": 3, "sent": 3}]}]},
 }
@@ -36,7 +36,8 @@ snapshot = private["public_snapshot"](status, {"links": [{
     "lastUpdatedAt": status["generatedAt"], "raw": "secret-raw-link",
 }]}, graph_sources)
 encoded = json.dumps(snapshot)
-assert snapshot["schemaVersion"] == 4
+assert snapshot["schemaVersion"] == 5
+assert snapshot["monitorHostname"] == "secret-node"
 assert snapshot["history"][-1] == {
     "timestamp": status["generatedAt"], "activeMembers": 1, "configuredMembers": 1,
     "healthyLinks": 1, "degradedLinks": 0, "offlineLinks": 0,
@@ -44,6 +45,14 @@ assert snapshot["history"][-1] == {
 }
 assert snapshot["graphs"]["mtu"]["series"][0]["name"] == "secret-node"
 assert snapshot["graphs"]["linkQuality"]["series"][0]["name"] == "secret-node to secret-peer"
+assert snapshot["graphs"]["linkQuality"]["series"][0]["host"] == "secret-node"
+assert snapshot["graphs"]["linkQuality"]["series"][0]["peer"] == "secret-peer"
+ip_labeled = private["public_graph_series"](
+    {"series": [{"name": "secret-node to 100.64.0.9", "host": "secret-node", "peer": "100.64.0.9", "samples": [{"timestamp": status["generatedAt"], "avgMs": 1.0}]}]},
+    "Link", ("avgMs",), hostname_fields=("host", "peer"),
+)
+assert ip_labeled[0]["host"] == "secret-node"
+assert "peer" not in ip_labeled[0]
 assert snapshot["graphs"]["tests"]["series"][0]["name"] == "secret-node to secret-target"
 assert snapshot["graphs"]["tests"]["series"][0]["kind"] == "tailmox_icmp"
 assert snapshot["linkQualityDetails"] == [{
@@ -94,9 +103,10 @@ with tempfile.TemporaryDirectory() as directory:
     assert b'id="test-latency-chart"' in response["body"]
     assert b'<h1>tailmox</h1>' in response["body"]
     assert b'<h1>Tailmox Monitor</h1>' not in response["body"]
-    assert b'public-monitor.css?v=9' in response["body"]
-    assert b'public-monitor.js?v=8' in response["body"]
+    assert b'public-monitor.css?v=11' in response["body"]
+    assert b'public-monitor.js?v=11' in response["body"]
     assert b'id="link-quality-rows"' in response["body"]
+    assert b'id="link-topology"' in response["body"]
     assert b'href="https://github.com/willjasen/tailmox"' in response["body"]
     assert b'aria-label="View tailmox on GitHub"' in response["body"]
     assert b'This public view includes graph history and hostnames.' in response["body"]

@@ -127,6 +127,103 @@ function renderGraphs(graphs = {}) {
   ], {zeroBased: false, format: value => `${value.toFixed(1)} ms`});
 }
 
+function topologyHealth(measurements) {
+  if (measurements.some(item => item.status === "offline" || item.quality === "offline")) return "bad";
+  const losses = measurements.map(item => item.packetLossPercent).filter(Number.isFinite);
+  const latencies = measurements.map(item => item.avgMs).filter(Number.isFinite);
+  const jitters = measurements.map(item => item.jitterMs).filter(Number.isFinite);
+  if (losses.some(value => value >= 1) || latencies.some(value => value >= 50)) return "bad";
+  if (losses.some(value => value > 0) || latencies.some(value => value >= 10) || jitters.some(value => value >= 10)) return "warn";
+  return latencies.length ? "good" : "unknown";
+}
+
+function renderLinkTopology(series, currentLinks, monitorHostname) {
+  const chart = byId("link-topology");
+  const edges = new Map();
+  const nodes = new Set();
+  const addMeasurement = (source, target, measurement) => {
+    if (!source || !target || source === target) return;
+    nodes.add(source);
+    nodes.add(target);
+    const pair = [source, target].sort((a, b) => a.localeCompare(b));
+    const key = pair.join("\u0000");
+    if (!edges.has(key)) edges.set(key, {nodes: pair, directions: new Map()});
+    edges.get(key).directions.set(`${source}\u0000${target}`, {source, target, ...measurement});
+  };
+
+  (Array.isArray(series) ? series : []).forEach(item => {
+    const samples = Array.isArray(item.samples) ? item.samples : [];
+    const latest = samples[samples.length - 1];
+    if (latest) addMeasurement(item.host, item.peer, latest);
+  });
+  (Array.isArray(currentLinks) ? currentLinks : []).forEach(link => {
+    addMeasurement(monitorHostname, link.hostname, link);
+  });
+
+  const description = svgNode("desc", {id: "link-topology-description"}, "Current host-to-host latency measurements.");
+  chart.replaceChildren(svgNode("title", {id: "link-topology-title"}, "Corosync link topology"), description);
+  const nodeNames = [...nodes].sort((a, b) => a.localeCompare(b));
+  if (nodeNames.length < 2) {
+    chart.append(svgNode("text", {x: 450, y: 250, class: "empty", "text-anchor": "middle"}, "Waiting for host-to-host measurements…"));
+    description.textContent = "No host-to-host latency measurements are available yet.";
+    return;
+  }
+  const measuredEdgeCount = edges.size;
+  for (let first = 0; first < nodeNames.length; first += 1) {
+    for (let second = first + 1; second < nodeNames.length; second += 1) {
+      const pair = [nodeNames[first], nodeNames[second]];
+      const key = pair.join("\u0000");
+      if (!edges.has(key)) edges.set(key, {nodes: pair, directions: new Map()});
+    }
+  }
+
+  const centerX = 450, centerY = 250, radiusX = 340, radiusY = 190;
+  const positions = new Map(nodeNames.map((name, index) => {
+    const angle = -Math.PI / 2 + (index / nodeNames.length) * Math.PI * 2;
+    return [name, {x: centerX + Math.cos(angle) * radiusX, y: centerY + Math.sin(angle) * radiusY}];
+  }));
+
+  [...edges.values()].forEach((edge, index) => {
+    const start = positions.get(edge.nodes[0]);
+    const end = positions.get(edge.nodes[1]);
+    if (!start || !end) return;
+    const measurements = [...edge.directions.values()];
+    const health = topologyHealth(measurements);
+    const dx = end.x - start.x, dy = end.y - start.y;
+    const distance = Math.max(1, Math.hypot(dx, dy));
+    const nodeRadius = 48;
+    const x1 = start.x + (dx / distance) * nodeRadius;
+    const y1 = start.y + (dy / distance) * nodeRadius;
+    const x2 = end.x - (dx / distance) * nodeRadius;
+    const y2 = end.y - (dy / distance) * nodeRadius;
+    const line = svgNode("line", {x1, y1, x2, y2, class: `topology-edge ${health}`});
+    const details = measurements.map(item => {
+      const latency = Number.isFinite(item.avgMs) ? `${item.avgMs.toFixed(1)} ms` : "unavailable";
+      const loss = Number.isFinite(item.packetLossPercent) ? `, ${item.packetLossPercent.toFixed(1)}% loss` : "";
+      return `${item.source} → ${item.target}: ${latency}${loss}`;
+    }).join("\n");
+    line.append(svgNode("title", {}, details));
+    chart.append(line);
+    const latencies = measurements.map(item => item.avgMs).filter(Number.isFinite);
+    const label = latencies.length ? `${Math.max(...latencies).toFixed(1)} ms` : (health === "bad" ? "offline" : "—");
+    const offset = [-28, -14, 0, 14, 28][index % 5];
+    const labelX = (start.x + end.x) / 2 + (-dy / distance) * offset;
+    const labelY = (start.y + end.y) / 2 + (dx / distance) * offset;
+    chart.append(svgNode("text", {x: labelX, y: labelY, class: "topology-latency", dy: "0.35em"}, label));
+  });
+
+  nodeNames.forEach(name => {
+    const position = positions.get(name);
+    const group = svgNode("g", {"aria-label": `Host ${name}`});
+    group.append(
+      svgNode("circle", {cx: position.x, cy: position.y, r: 44, class: "topology-node"}),
+      svgNode("text", {x: position.x, y: position.y, class: "topology-node-label"}, name),
+    );
+    chart.append(group);
+  });
+  description.textContent = `${nodeNames.length} hosts, ${measuredEdgeCount} measured Corosync links, and ${edges.size - measuredEdgeCount} links without a recent measurement. Edge labels show the higher directional average latency.`;
+}
+
 function linkTone(value) {
   if (value === "good" || value === "healthy" || value === "joined") return "good";
   if (value === "loss" || value === "jittery" || value === "slow") return "warn";
@@ -197,6 +294,7 @@ async function refresh() {
     setStatus("web", `${data.web.online} / ${data.web.total}`, data.web.online === data.web.total ? "good" : "warn");
     setStatus("tailscale", state(data.services.tailscale), data.services.tailscale ? "good" : "bad");
     renderGraphs(data.graphs);
+    renderLinkTopology(data.graphs?.linkQuality?.series, data.linkQualityDetails, data.monitorHostname);
     renderLinkQualityDetails(data.linkQualityDetails);
   } catch (error) {
     const overall = byId("overall");

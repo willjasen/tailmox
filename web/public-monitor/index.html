@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>tailmox</title>
-  <link rel="stylesheet" href="/public-monitor.css?v=9">
-  <script src="/public-monitor.js?v=8" defer></script>
+  <link rel="stylesheet" href="/public-monitor.css?v=11">
+  <script src="/public-monitor.js?v=11" defer></script>
   <!-- __GOOGLE_ANALYTICS__ -->
 </head>
 <body>
@@ -63,6 +63,13 @@
     </section>
     <section class="link-quality-panel" aria-labelledby="link-quality-heading">
       <h2 id="link-quality-heading">Corosync Link Quality</h2>
+      <div class="topology-scroll">
+        <svg id="link-topology" viewBox="0 0 900 500" role="img" aria-labelledby="link-topology-title link-topology-description">
+          <title id="link-topology-title">Corosync link topology</title>
+          <desc id="link-topology-description">Loading host-to-host latency measurements.</desc>
+        </svg>
+      </div>
+      <div class="topology-legend" aria-label="Link health legend"><span><i class="good"></i>Healthy</span><span><i class="warn"></i>Degraded</span><span><i class="bad"></i>Offline or poor</span><span><i class="unknown"></i>No measurement</span></div>
       <div class="table-scroll">
         <table>
           <thead><tr><th>Hostname</th><th>Status</th><th>Loss</th><th>Avg</th><th>Max</th><th>Jitter</th><th>Quality</th><th>Last updated</th></tr></thead>

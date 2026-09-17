@@ -11,6 +11,7 @@ import csv
 import concurrent.futures
 import datetime as dt
 import io
+import ipaddress
 import json
 import math
 import os
@@ -1423,7 +1424,21 @@ def collect_status():
     return status
 
 
-def public_graph_series(source, prefix, sample_fields, extra_fields=None):
+def public_hostname(value):
+    """Return a bounded hostname label, rejecting IP address literals."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    label = value.strip().rstrip(".")
+    try:
+        ipaddress.ip_address(label)
+        return None
+    except ValueError:
+        return label[:160]
+
+
+def public_graph_series(
+    source, prefix, sample_fields, extra_fields=None, hostname_fields=(),
+):
     """Return bounded graph series with labels and allowlisted measurements."""
     extra_fields = extra_fields or {}
     sanitized = []
@@ -1455,6 +1470,10 @@ def public_graph_series(source, prefix, sample_fields, extra_fields=None):
             value = item.get(destination)
             if value in allowed_values:
                 public_item[destination] = value
+        for field in hostname_fields:
+            value = public_hostname(item.get(field))
+            if value:
+                public_item[field] = value
         sanitized.append(public_item)
     return sanitized
 
@@ -1488,6 +1507,7 @@ def public_graphs(graph_sources):
                 graph_sources.get("linkQuality", {}),
                 "Link",
                 ("avgMs", "maxMs", "jitterMs", "packetLossPercent"),
+                hostname_fields=("host", "peer"),
             )
         },
         "cmapKnet": {
@@ -1576,8 +1596,9 @@ def public_snapshot(status, link_quality, graph_sources=None):
         del PUBLIC_SNAPSHOT_HISTORY[:-PUBLIC_SNAPSHOT_HISTORY_LIMIT]
 
     return {
-        "schemaVersion": 4,
+        "schemaVersion": 5,
         "generatedAt": status.get("generatedAt"),
+        "monitorHostname": public_hostname(status.get("hostname")),
         "overall": status.get("overall") if status.get("overall") in ("healthy", "attention") else "unknown",
         "services": {
             "corosync": bool(status.get("services", {}).get("corosync", {}).get("active")),

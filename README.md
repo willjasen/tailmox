@@ -286,6 +286,12 @@ by the private graphs. Cluster names, logs, configuration, credentials, and raw
 command output never enter the public snapshot. Point Cloudflare Tunnel at
 `http://localhost:8089`, never `8088`.
 
+The public Corosync link-quality section includes a hostname-only topology. It
+combines both measured directions into one host-pair edge, labels the edge with
+the higher current average latency, colors degraded and offline paths, and
+shows missing measurements as neutral links. Its detail table preserves the
+directional values without publishing peer IP addresses.
+
 The public service's systemd unit applies a capability-free sandbox and permits
 only loopback network traffic. Create its system account with a non-login shell,
 install the unit after replacing `@TAILMOX_DIR@` with the installation path,
