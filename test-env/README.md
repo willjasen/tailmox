@@ -50,11 +50,25 @@ The local template helper uses the `host` CPU type so nested virtualization is a
 
 Both deployment helpers add Proxmox Notes automatically. Imported templates are identified as stopped development sources, and linked clones record their source template and `ready-for-testing` recovery point.
 
-Boot up each linked clone VM (the default credentials are "root" and "tailmox-test"), then make the following changes:
+Boot a new linked clone (the default credentials are `root` and
+`tailmox-test`), copy `prepare-linked-clone.sh` into it, and run:
 
- - edit the IP address of the host to one that works within your environment (it is "192.168.123.90" by default)
- - edit `/etc/hostname` to a unique hostname within the Tailmox cluster (example: tailmox1)
- - edit `/etc/hosts` to reflect the new IP and hostname (example: "10.2.3.10 tailmox1.local tailmox1")
+```bash
+./prepare-linked-clone.sh --hostname tailmox1
+reboot
+```
+
+The preparation helper converts the image's static `192.168.123.90` network
+configuration to DHCP, installs the DHCP client when necessary, removes the
+stale image hostname from `/etc/hosts`, and deploys the latest `dev` branch to
+`/opt/tailmox`. It also sets the shared Tailscale service label to
+`dev-tailmox` and initializes `/usr/local/bin/tailmox`. It is safe to rerun on
+an already-prepared clone, but refuses to update a dirty Git checkout or an
+unrecognized network configuration. It does not authenticate Tailscale or
+create or join a Proxmox cluster.
+
+The guest bridge remains named `vmbr0` inside the nested Proxmox installation.
+Its virtual NIC should be attached to the Proxmox host bridge `vlan3`.
 
 The deployment helpers create the initial `ready-for-testing` snapshot automatically while each VM is stopped. This snapshot name is used by the `revert-test-vms.sh` script.
 
@@ -69,6 +83,8 @@ Be sure to include the "--auth-key" parameter as well.
 `test-env/create-vm-template.sh` - creates a VM template from the downloaded image and can create local linked clones
 
 `test-env/setup-vm-image.sh` - stages and runs the template builder on `pve-a2` (or another selected Proxmox host) from a local checkout
+
+`test-env/prepare-linked-clone.sh` - prepares a newly booted clone with DHCP, a unique hostname, and the latest Tailmox development branch
 
 `test-env/download-template.sh` - used to download the disk image of a previously configured Proxmox host that is ready for testing with Tailmox
 
