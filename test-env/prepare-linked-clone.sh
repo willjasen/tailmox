@@ -12,6 +12,7 @@ Options:
   --ref REF             Git branch or ref to deploy (default: dev)
   --repo URL            Git repository URL (default: Tailmox GitHub repository)
   --service-name NAME   Shared Tailscale service label (default: dev-tailmox)
+  --root-password PASS  Alphanumeric root password (default: generate one)
   --help                Show this help
 
 The script installs the DHCP client, changes the guest network to DHCP,
@@ -34,6 +35,7 @@ HOST_NAME=""
 GIT_REF="dev"
 REPO_URL="https://github.com/willjasen/tailmox.git"
 SERVICE_NAME="dev-tailmox"
+ROOT_PASSWORD=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -57,6 +59,11 @@ while [[ $# -gt 0 ]]; do
       SERVICE_NAME="$2"
       shift 2
       ;;
+    --root-password)
+      [[ $# -ge 2 ]] || die "--root-password requires a value"
+      ROOT_PASSWORD="$2"
+      shift 2
+      ;;
     --help|-h)
       usage
       exit 0
@@ -75,6 +82,13 @@ done
 [[ "$SERVICE_NAME" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] ||
   die "--service-name must be a lowercase DNS label"
 [[ -n "$REPO_URL" ]] || die "--repo cannot be empty"
+if [[ -n "$ROOT_PASSWORD" && ! "$ROOT_PASSWORD" =~ ^[A-Za-z0-9]{12,24}$ ]]; then
+  die "--root-password must be 12-24 alphanumeric characters"
+fi
+if [[ -z "$ROOT_PASSWORD" ]]; then
+  require_command openssl
+  ROOT_PASSWORD=$(openssl rand -hex 8)
+fi
 
 ETC_DIR="${TAILMOX_ETC_DIR:-/etc}"
 INSTALL_DIR="${TAILMOX_INSTALL_DIR:-/opt/tailmox}"
@@ -93,6 +107,7 @@ require_command hostname
 require_command hostnamectl
 require_command install
 require_command awk
+require_command chpasswd
 
 [[ -f "$INTERFACES_FILE" ]] || die "Missing network configuration: $INTERFACES_FILE"
 [[ -f "$HOSTS_FILE" ]] || die "Missing hosts file: $HOSTS_FILE"
@@ -149,6 +164,8 @@ rm -f "$HOSTS_TEMP"
 printf '%s\n' "$HOST_NAME" >"$HOSTNAME_FILE"
 hostnamectl set-hostname "$HOST_NAME"
 
+printf 'root:%s\n' "$ROOT_PASSWORD" | chpasswd
+
 mkdir -p "$PROFILE_DIR"
 ENV_TEMP=$(mktemp "$ENVIRONMENT_FILE.XXXXXX")
 if [[ -f "$ENVIRONMENT_FILE" ]]; then
@@ -186,4 +203,5 @@ printf '  Hostname: %s\n' "$HOST_NAME"
 printf '  Network: DHCP on guest bridge vmbr0 (Proxmox NIC should use vlan3)\n'
 printf '  Tailmox: %s at %s\n' "$GIT_REF" "$(git -C "$INSTALL_DIR" rev-parse --short HEAD)"
 printf '  Service label: %s\n' "$SERVICE_NAME"
+printf '  Root password: %s\n' "$ROOT_PASSWORD"
 printf 'Reboot this guest before using it.\n'

@@ -58,6 +58,11 @@ Boot a new linked clone (the default credentials are `root` and
 reboot
 ```
 
+The helper generates and reports a unique 16-character alphanumeric root
+password for that clone. Pass `--root-password VALUE` to choose a 12–24
+character alphanumeric password instead. Store reported passwords securely;
+they are not written to the image, repository, or Proxmox notes.
+
 The preparation helper converts the image's static `192.168.123.90` network
 configuration to DHCP, installs the DHCP client when necessary, removes the
 stale image hostname from `/etc/hosts`, and deploys the latest `dev` branch to

@@ -29,6 +29,7 @@ id() { [[ "${1:-}" == -u ]] && printf '0\n'; }
 hostname() { printf 'tailmox-image\n'; }
 hostnamectl() { printf '%s\n' "$*" >>"$TEST_STATE_DIR/hostnamectl-calls"; }
 apt-get() { printf '%s\n' "$*" >>"$TEST_STATE_DIR/apt-calls"; }
+chpasswd() { cat >/dev/null; touch "$TEST_STATE_DIR/password-updated"; }
 git() {
   printf '%s\n' "$*" >>"$TEST_STATE_DIR/git-calls"
   case "$*" in
@@ -38,7 +39,7 @@ git() {
     *'rev-parse --short HEAD') printf 'abcdef0\n' ;;
   esac
 }
-export -f id hostname hostnamectl apt-get git
+export -f id hostname hostnamectl apt-get chpasswd git
 export TEST_STATE_DIR
 
 cat >"$TEST_STATE_DIR/opt/tailmox/tailmox" <<'EOF'
@@ -74,6 +75,8 @@ grep -Fq -- '-C '"$TEST_STATE_DIR/opt/tailmox"' merge --ff-only origin/dev' \
   { printf 'FAIL: checkout was not updated with a fast-forward-only merge\n' >&2; exit 1; }
 [[ -L "$TEST_STATE_DIR/usr-bin/tailmox" ]] ||
   { printf 'FAIL: tailmox command was not initialized\n' >&2; exit 1; }
+[[ -e "$TEST_STATE_DIR/password-updated" ]] ||
+  { printf 'FAIL: root password was not updated\n' >&2; exit 1; }
 [[ ! -e "$TEST_STATE_DIR/apt-calls" ]] ||
   { printf 'FAIL: DHCP client was reinstalled unnecessarily\n' >&2; exit 1; }
 

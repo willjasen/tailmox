@@ -49,6 +49,9 @@ next image should eliminate that bootstrap step.
   Proxmox cluster in the image.
 - Do not bake `dev-tailmox` into a generally reusable image. The preparation
   helper should set the service label for the deployment being created.
+- Set a per-clone root password during preparation. Generated passwords are
+  reported once to the operator but must not be written to the image,
+  repository, logs, or Proxmox notes.
 
 ### Clone identity and cleanup
 
