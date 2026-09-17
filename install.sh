@@ -10,8 +10,29 @@ ARCHIVE_URL="${TAILMOX_ARCHIVE_URL:-https://github.com/${REPOSITORY}/archive/ref
 IDENTITY_FILE="${TAILMOX_AGE_IDENTITY_FILE:-/etc/tailmox/identity.txt}"
 SECURITY_FILE="${TAILMOX_SECURITY_FILE:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/tailmox/security.json}"
 
+if [[ "${TAILMOX_FORCE_COLOR:-false}" == true ]] ||
+    { [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]] && [[ "${TERM:-}" != dumb ]]; }; then
+    BOLD='\033[1m'
+    RED='\033[1;31m'
+    GREEN='\033[1;32m'
+    YELLOW='\033[1;33m'
+    CYAN='\033[1;36m'
+    BLUE='\033[1;34m'
+    PURPLE='\033[1;35m'
+    RESET='\033[0m'
+else
+    BOLD=''
+    RED=''
+    GREEN=''
+    YELLOW=''
+    CYAN=''
+    BLUE=''
+    PURPLE=''
+    RESET=''
+fi
+
 fail() {
-    printf 'Tailmox installation failed: %s\n' "$*" >&2
+    printf '%bTailmox installation failed:%b %s\n' "$RED" "$RESET" "$*" >&2
     exit 1
 }
 
@@ -22,7 +43,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-printf '\n  Tailmox installer\n\n'
+printf '\n%b%bTAILMOX INSTALLER%b\n' "$CYAN" "$BOLD" "$RESET"
+printf '%b────────────────────────────────────────%b\n\n' "$CYAN" "$RESET"
 
 if [[ "$EUID" -ne 0 && "${TAILMOX_ALLOW_NON_ROOT:-false}" != true ]]; then
     fail 'run this installer as root.'
@@ -64,7 +86,8 @@ ARCHIVE="$WORK_DIR/tailmox.tar.gz"
 EXTRACT_DIR="$WORK_DIR/extracted"
 mkdir -p "$EXTRACT_DIR"
 
-printf 'Downloading Tailmox (%s)...\n' "$REF"
+printf '%bDownload%b  Tailmox branch %b%s%b\n' \
+    "$CYAN" "$RESET" "$PURPLE" "$REF" "$RESET"
 curl -fsSL --retry 3 --output "$ARCHIVE" "$ARCHIVE_URL" ||
     fail 'download did not complete.'
 tar -xzf "$ARCHIVE" -C "$EXTRACT_DIR" || fail 'downloaded archive is invalid.'
@@ -97,12 +120,15 @@ if [[ ! -L "$COMMAND_PATH" ]] && ! ln -s "$INSTALL_DIR/tailmox" "$COMMAND_PATH";
 fi
 
 if [[ "$UPDATING" == true ]]; then
-    printf '\nTailmox is updated from the %s branch.\n' "$REF"
+    printf '\n%b✓ Updated%b Tailmox from the %b%s%b branch.\n' \
+        "$GREEN" "$RESET" "$PURPLE" "$REF" "$RESET"
 else
-    printf '\nTailmox is installed from the %s branch.\n' "$REF"
+    printf '\n%b✓ Installed%b Tailmox from the %b%s%b branch.\n' \
+        "$GREEN" "$RESET" "$PURPLE" "$REF" "$RESET"
 fi
 
-printf '\nStaging this Proxmox host with Tailscale and the Tailmox monitor...\n\n'
+printf '\n%bSTAGE%b  Configure Tailscale and the Tailmox monitor\n\n' \
+    "$CYAN" "$RESET"
 if ! "$INSTALL_DIR/tailmox" stage "$@"; then
     fail 'Tailmox was installed, but staging did not complete.'
 fi
@@ -118,15 +144,18 @@ if [[ ! -f "$IDENTITY_FILE" ]]; then
             "$SECURITY_FILE" 2>/dev/null) ||
             fail "the cluster security registry is invalid: $SECURITY_FILE"
     fi
-    printf '\nNo Tailmox age identity is installed on this host.\n' >/dev/tty
+    printf '\n%bIDENTITY%b  No Tailmox age identity is installed on this host.\n' \
+        "$YELLOW" "$RESET" >/dev/tty
     if [[ -n "$CLUSTER_RECIPIENT" ]]; then
         RECIPIENT_FINGERPRINT=$(printf '%s' "$CLUSTER_RECIPIENT" |
             openssl dgst -sha256 | awk '{print substr($NF, 1, 16)}')
         RECIPIENT_PREVIEW="${CLUSTER_RECIPIENT:0:20}...${CLUSTER_RECIPIENT: -8}"
-        printf 'The Proxmox cluster already uses age recipient %s.\n' \
-            "$RECIPIENT_PREVIEW" >/dev/tty
-        printf 'Recipient fingerprint: %s\n' "$RECIPIENT_FINGERPRINT" >/dev/tty
-        printf 'Import the matching private identity to join this Tailmox cluster.\n' >/dev/tty
+        printf 'Cluster recipient: %b%s%b\n' \
+            "$PURPLE" "$RECIPIENT_PREVIEW" "$RESET" >/dev/tty
+        printf 'Fingerprint:       %b%s%b\n' \
+            "$PURPLE" "$RECIPIENT_FINGERPRINT" "$RESET" >/dev/tty
+        printf '%bImport the matching private identity to join this Tailmox cluster.%b\n' \
+            "$YELLOW" "$RESET" >/dev/tty
         IDENTITY_ACTION=import
     else
         printf 'Create a new identity or import the cluster identity? [create/import]: ' >/dev/tty
@@ -141,8 +170,11 @@ if [[ ! -f "$IDENTITY_FILE" ]]; then
             CREATED_RECIPIENT=$(sed -n '1p' <<< "$IDENTITY_DETAILS")
             CREATED_FINGERPRINT=$(sed -n '2p' <<< "$IDENTITY_DETAILS")
             unset IDENTITY_DETAILS
-            printf 'Created age recipient: %s\n' "$CREATED_RECIPIENT" >/dev/tty
-            printf 'Recipient fingerprint: %s\n' "$CREATED_FINGERPRINT" >/dev/tty
+            printf '%b✓ Identity created%b\n' "$GREEN" "$RESET" >/dev/tty
+            printf 'Recipient:   %b%s%b\n' \
+                "$PURPLE" "$CREATED_RECIPIENT" "$RESET" >/dev/tty
+            printf 'Fingerprint: %b%s%b\n' \
+                "$PURPLE" "$CREATED_FINGERPRINT" "$RESET" >/dev/tty
             printf 'The private identity is stored root-only at %s. Back up that file securely.\n\n' \
                 "$IDENTITY_FILE" >/dev/tty
             ;;
@@ -156,25 +188,32 @@ if [[ ! -f "$IDENTITY_FILE" ]]; then
                 fail 'the age identity could not be imported.'
             fi
             unset IMPORTED_IDENTITY
-            printf 'The Tailmox age identity was imported.\n' >/dev/tty
+            printf '%b✓ Tailmox age identity imported.%b\n' "$GREEN" "$RESET" >/dev/tty
             ;;
         *)
             fail 'identity setup must be either create or import.'
             ;;
     esac
 else
-    printf 'The existing Tailmox age identity was preserved.\n'
+    printf '%b✓ Identity%b Existing Tailmox age identity preserved.\n' \
+        "$GREEN" "$RESET"
 fi
 
 TAILSCALE_DNS_NAME=$(tailscale status --json 2>/dev/null |
     jq -r '.Self.DNSName // empty' 2>/dev/null | sed 's/\.$//' || true)
 if [[ -n "$TAILSCALE_DNS_NAME" ]]; then
     MAGICDNS_DOMAIN=${TAILSCALE_DNS_NAME#*.}
-    printf '\nMonitor: https://%s:8088/monitor/\n' "$TAILSCALE_DNS_NAME"
+    printf '\n%bREADY%b\n' "$GREEN" "$RESET"
+    printf 'Node monitor     %bhttps://%s:8088/monitor/%b\n' \
+        "$BLUE" "$TAILSCALE_DNS_NAME" "$RESET"
     if [[ -n "$MAGICDNS_DOMAIN" && "$MAGICDNS_DOMAIN" != "$TAILSCALE_DNS_NAME" ]]; then
-        printf 'Service monitor: https://tailmox.%s/monitor/\n' "$MAGICDNS_DOMAIN"
+        printf 'Service monitor  %bhttps://tailmox.%s/monitor/%b\n' \
+            "$BLUE" "$MAGICDNS_DOMAIN" "$RESET"
     fi
 else
-    printf '\nMonitor: http://127.0.0.1:8088/monitor/\n'
+    printf '\n%bREADY%b\n' "$GREEN" "$RESET"
+    printf 'Local monitor    %bhttp://127.0.0.1:8088/monitor/%b\n' \
+        "$BLUE" "$RESET"
 fi
-printf 'Staging is complete. Run tailmox cluster when every host is ready.\n\n'
+printf '\n%bNext:%b Run %btailmox cluster%b when every host is ready.\n\n' \
+    "$YELLOW" "$RESET" "$BOLD" "$RESET"

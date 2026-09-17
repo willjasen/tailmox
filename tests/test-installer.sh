@@ -38,21 +38,24 @@ STAGE_CALLS="$TEST_DIR/stage-calls"
 printf 'existing identity\n' > "$IDENTITY_FILE"
 export TAILMOX_STAGE_CALLS="$STAGE_CALLS"
 OUTPUT=$(PATH="$TEST_DIR/bin:$PATH" \
+    TAILMOX_FORCE_COLOR=true \
     TAILMOX_ALLOW_NON_ROOT=true \
     TAILMOX_ARCHIVE_URL="file://$TEST_DIR/tailmox.tar.gz" \
     TAILMOX_INSTALL_DIR="$INSTALL_DIR" \
     TAILMOX_BIN_DIR="$COMMAND_DIR" \
     TAILMOX_AGE_IDENTITY_FILE="$IDENTITY_FILE" \
     bash "$ROOT_DIR/install.sh")
+PLAIN_OUTPUT=$(printf '%s' "$OUTPUT" | sed $'s/\e\\[[0-9;]*m//g')
 
 [[ -x "$INSTALL_DIR/tailmox" ]]
 [[ -x "$INSTALL_DIR/tailmox.sh" ]]
 [[ -L "$COMMAND_DIR/tailmox" ]]
 [[ "$(readlink "$COMMAND_DIR/tailmox")" == "$INSTALL_DIR/tailmox" ]]
-grep -Fq 'Run tailmox cluster when every host is ready.' <<< "$OUTPUT"
-grep -Fq 'Monitor: https://pve1.example.ts.net:8088/monitor/' <<< "$OUTPUT"
-grep -Fq 'Service monitor: https://tailmox.example.ts.net/monitor/' <<< "$OUTPUT"
-if grep -Fq 'tailmox.example.ts.net:8088' <<< "$OUTPUT"; then
+grep -Fq $'\033[1;36m' <<< "$OUTPUT"
+grep -Fq 'Run tailmox cluster when every host is ready.' <<< "$PLAIN_OUTPUT"
+grep -Fq 'Node monitor     https://pve1.example.ts.net:8088/monitor/' <<< "$PLAIN_OUTPUT"
+grep -Fq 'Service monitor  https://tailmox.example.ts.net/monitor/' <<< "$PLAIN_OUTPUT"
+if grep -Fq 'tailmox.example.ts.net:8088' <<< "$PLAIN_OUTPUT"; then
     printf 'FAIL: shared service monitor URL includes the node monitor port\n'
     exit 1
 fi
@@ -67,7 +70,7 @@ UPDATE_OUTPUT=$(PATH="$TEST_DIR/bin:$PATH" \
     TAILMOX_AGE_IDENTITY_FILE="$IDENTITY_FILE" \
     bash "$ROOT_DIR/install.sh")
 [[ ! -e "$INSTALL_DIR/old-release" ]]
-grep -Fq 'Tailmox is updated from the dev branch.' <<< "$UPDATE_OUTPUT"
+grep -Fq 'Updated Tailmox from the dev branch.' <<< "$UPDATE_OUTPUT"
 
 [[ "$(wc -l < "$STAGE_CALLS")" -eq 2 ]]
 printf 'PASS: one-line installer deploys, updates, stages, and preserves identity\n'

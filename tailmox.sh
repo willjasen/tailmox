@@ -1772,7 +1772,7 @@ fi
 
 if [ "${1:-}" != "info" ] && [ "${1:-}" != "--backups-list" ] &&
     [ "${1:-}" != "--test" ]; then
-    log_echo "${GREEN}--- TAILMOX SCRIPT RUNNING ---${RESET}"
+    log_echo "${CYAN}━━━ TAILMOX SETUP ━━━${RESET}"
 fi
 
 # Parse the script parameters
