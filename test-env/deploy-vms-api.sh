@@ -320,15 +320,19 @@ for ((index = 1; index <= COUNT; index++)); do
     die "Proxmox did not return a task ID for VM $VMID"
   wait_for_task "$TEMPLATE_NODE" "$CLONE_UPID"
 
+  CLONE_DESCRIPTION=$(printf '%s\n\n- **Name:** `%s`\n- **Source template:** `%s`\n- **Target node:** `%s`\n- **Network bridge:** `%s`\n- **Recovery snapshot:** `%s`' \
+    "## Tailmox Development Node $index" "$VM_NAME" "$TEMPLATE_VMID" "$NODE" \
+    "${BRIDGE:-inherited from template}" "$SNAPSHOT_NAME")
+  CONFIG_ARGS=(--data-urlencode "description=$CLONE_DESCRIPTION")
   if [[ -n "$BRIDGE" ]]; then
-    CONFIG_RESPONSE=$(
-      api_request PUT "/nodes/$NODE/qemu/$VMID/config" \
-        --data-urlencode "net0=virtio,bridge=$BRIDGE"
-    )
-    CONFIG_UPID=$(jq -r '.data // empty' <<<"$CONFIG_RESPONSE")
-    if [[ -n "$CONFIG_UPID" ]]; then
-      wait_for_task "$NODE" "$CONFIG_UPID"
-    fi
+    CONFIG_ARGS+=(--data-urlencode "net0=virtio,bridge=$BRIDGE")
+  fi
+  CONFIG_RESPONSE=$(
+    api_request PUT "/nodes/$NODE/qemu/$VMID/config" "${CONFIG_ARGS[@]}"
+  )
+  CONFIG_UPID=$(jq -r '.data // empty' <<<"$CONFIG_RESPONSE")
+  if [[ -n "$CONFIG_UPID" ]]; then
+    wait_for_task "$NODE" "$CONFIG_UPID"
   fi
 
   SNAPSHOT_RESPONSE=$(

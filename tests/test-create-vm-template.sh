@@ -81,6 +81,9 @@ OUTPUT=$(
 
 grep -q '^create 50000 ' "$TEST_STATE_DIR/qm-calls" ||
   { echo "FAIL: template VM was not created" >&2; exit 1; }
+grep -q '^create 50000 .* --description ## Tailmox Development Template$' \
+  "$TEST_STATE_DIR/qm-calls" ||
+  { echo "FAIL: template VM did not receive a useful note" >&2; exit 1; }
 grep -q '^importdisk 50000 .* local-zfs$' "$TEST_STATE_DIR/qm-calls" ||
   { echo "FAIL: disk was not imported into the selected storage" >&2; exit 1; }
 grep -q '^set 50000 --scsi0 local-zfs:vm-100-disk-0$' "$TEST_STATE_DIR/qm-calls" ||
@@ -90,6 +93,8 @@ grep -q '^clone 50000 50001 ' "$TEST_STATE_DIR/qm-calls" &&
   { echo "FAIL: expected two linked clones" >&2; exit 1; }
 [[ "$(grep -c '^snapshot .* ready-for-testing ' "$TEST_STATE_DIR/qm-calls")" -eq 2 ]] ||
   { echo "FAIL: expected a pre-boot snapshot for each linked clone" >&2; exit 1; }
+[[ "$(grep -c '^set 5000[12] --description ## Tailmox Development Node ' "$TEST_STATE_DIR/qm-calls")" -eq 2 ]] ||
+  { echo "FAIL: expected a useful note for each linked clone" >&2; exit 1; }
 if grep -q '^clone 50000 .* --storage ' "$TEST_STATE_DIR/qm-calls"; then
   echo "FAIL: linked clone incorrectly specified target storage" >&2
   exit 1

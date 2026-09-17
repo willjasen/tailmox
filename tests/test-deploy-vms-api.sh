@@ -80,6 +80,8 @@ OUTPUT=$(
   { echo "FAIL: expected two clone calls" >&2; exit 1; }
 [[ "$(grep -c '/config' "$TEST_STATE_DIR/config-calls")" -eq 2 ]] ||
   { echo "FAIL: expected two network configuration calls" >&2; exit 1; }
+[[ "$(grep -c 'description=## Tailmox Development Node ' "$TEST_STATE_DIR/config-calls")" -eq 2 ]] ||
+  { echo "FAIL: expected a useful note for each API-created clone" >&2; exit 1; }
 [[ "$(grep -c '/status/start' "$TEST_STATE_DIR/start-calls")" -eq 2 ]] ||
   { echo "FAIL: expected two start calls" >&2; exit 1; }
 [[ "$(grep -c '/snapshot' "$TEST_STATE_DIR/snapshot-calls")" -eq 2 ]] ||

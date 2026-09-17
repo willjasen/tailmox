@@ -48,6 +48,8 @@ To ensure that the linked clones can get online, review the network adapter sett
 
 The local template helper uses the `host` CPU type so nested virtualization is available and disables VM autostart by default. Use `--cpu TYPE` or `--onboot 1` to override those settings.
 
+Both deployment helpers add Proxmox Notes automatically. Imported templates are identified as stopped development sources, and linked clones record their source template and `ready-for-testing` recovery point.
+
 Boot up each linked clone VM (the default credentials are "root" and "tailmox-test"), then make the following changes:
 
  - edit the IP address of the host to one that works within your environment (it is "192.168.123.90" by default)
