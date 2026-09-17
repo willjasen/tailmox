@@ -21,6 +21,7 @@ grep -Fq 'identity.signingKeyConfigured ? "Dedicated Ed25519 key loaded"' "$MONI
 grep -Fq 'id="identitySigningPublicKey"' "$MONITOR"
 grep -Fq 'identity.signingPublicKey || "Unavailable"' "$MONITOR"
 grep -Fq '"memberCount": sum(1 for member in corosync_members if member.get("active"))' "$MONITOR"
+grep -Fq 'const liveSample = latestStatus?.corosync?.memberCount' "$MONITOR"
 grep -Fq 'document.getElementById("identitySetup").hidden = Boolean(identity.configured)' "$MONITOR"
 grep -Fq 'recipient.slice(0, 18)}…${recipient.slice(-10)' "$MONITOR"
 grep -Fq 'id="identityBackup" hidden' "$MONITOR"

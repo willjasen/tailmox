@@ -2114,9 +2114,11 @@ INDEX_HTML = """<!doctype html>
     };
     document.querySelectorAll(".workflow-button").forEach(button => button.addEventListener("click", () => runAction(button.dataset.action)));
 
+    let latestStatus = null;
     async function refreshStatus() {
       const response = await fetch(`${apiPrefix}/api/status`, { cache: "no-store" });
       const data = await response.json();
+      latestStatus = data;
       document.getElementById("subtitle").textContent = `${data.hostname} refreshed ${new Date(data.generatedAt * 1000).toLocaleString()}`;
       const overall = document.getElementById("overall");
       const statusLabel = data.overall === "healthy" ? "Healthy" : "Needs attention";
@@ -2181,6 +2183,14 @@ INDEX_HTML = """<!doctype html>
     async function refreshMemberCountHistory() {
       const response = await fetch(`${apiPrefix}/api/member-count-history`, { cache: "no-store" });
       const data = await response.json();
+      const liveSample = latestStatus?.corosync?.memberCount;
+      if (liveSample && Number.isFinite(liveSample.memberCount)) {
+        const history = [...(data.history || [])];
+        const last = history[history.length - 1];
+        if (!last || liveSample.timestamp > last.timestamp) history.push(liveSample);
+        data.current = { ...(data.current || {}), ...liveSample };
+        data.history = history;
+      }
       renderMemberCount(data);
     }
     async function refreshCmapKnetHistory() {
