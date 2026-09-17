@@ -14,7 +14,11 @@ input:focus { outline: 2px solid rgba(56,189,248,0.34); border-color: var(--acce
 button, .button { display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(56,189,248,0.42); border-radius: 8px; padding: 10px 14px; color: #e0f2fe; background: rgba(14,116,144,0.32); font: inherit; font-weight: 800; text-decoration: none; cursor: pointer; }
 .actions { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
 .page-picker { display: grid; gap: 4px; color: var(--muted); font-size: 12px; font-weight: 700; }
-.page-picker select { min-width: 132px; border: 1px solid rgba(148,163,184,0.34); border-radius: 8px; padding: 9px 30px 9px 10px; color: var(--text); background: rgba(2,6,23,0.42); font: inherit; cursor: pointer; }
+.page-picker select { min-width: 132px; border: 1px solid rgba(56,189,248,0.42); border-radius: 8px; padding: 9px 30px 9px 10px; color: #f8fafc; background: #0f172a; font: inherit; cursor: pointer; box-shadow: 0 4px 14px rgba(2,6,23,0.24); }
+.page-picker select:hover { border-color: rgba(56,189,248,0.72); background: #172033; }
+.page-picker select:focus { outline: 2px solid rgba(56,189,248,0.34); outline-offset: 2px; border-color: var(--accent); }
+.page-picker select option { color: #f8fafc; background: #0f172a; font-weight: 600; }
+.page-picker select option:checked { color: #ecfeff; background: #155e75; }
 .pill { display: inline-flex; align-items: center; gap: 7px; border: 1px solid rgba(148,163,184,0.32); border-radius: 999px; padding: 7px 12px; font-size: 13px; font-weight: 700; background: rgba(15,23,42,0.72); }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 18px var(--bad); }
 .ok { border-color: rgba(34,197,94,0.45); color: #bbf7d0; background: rgba(20,83,45,0.34); }

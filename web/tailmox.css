@@ -147,14 +147,37 @@ button {
 .section-picker select {
     min-width: 130px;
     padding: 8px 34px 8px 11px;
-    border: 1px solid var(--border-bright);
+    border: 1px solid rgba(56, 189, 248, 0.42);
     border-radius: 9px;
     color: var(--text);
-    background: var(--surface-raised);
+    background: #0f172a;
     font: inherit;
     font-size: 0.78rem;
     letter-spacing: normal;
     text-transform: none;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(2, 6, 23, 0.24);
+}
+
+.section-picker select:hover {
+    border-color: rgba(56, 189, 248, 0.72);
+    background: #172033;
+}
+
+.section-picker select:focus {
+    outline: 2px solid rgba(56, 189, 248, 0.34);
+    outline-offset: 2px;
+}
+
+.section-picker select option {
+    color: #f8fafc;
+    background: #0f172a;
+    font-weight: 600;
+}
+
+.section-picker select option:checked {
+    color: #ecfeff;
+    background: #155e75;
 }
 
 .app-main {
