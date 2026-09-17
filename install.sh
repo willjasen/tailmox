@@ -172,7 +172,7 @@ if [[ -n "$TAILSCALE_DNS_NAME" ]]; then
     MAGICDNS_DOMAIN=${TAILSCALE_DNS_NAME#*.}
     printf '\nMonitor: https://%s:8088/monitor/\n' "$TAILSCALE_DNS_NAME"
     if [[ -n "$MAGICDNS_DOMAIN" && "$MAGICDNS_DOMAIN" != "$TAILSCALE_DNS_NAME" ]]; then
-        printf 'Service monitor: https://tailmox.%s:8088/monitor/\n' "$MAGICDNS_DOMAIN"
+        printf 'Service monitor: https://tailmox.%s/monitor/\n' "$MAGICDNS_DOMAIN"
     fi
 else
     printf '\nMonitor: http://127.0.0.1:8088/monitor/\n'

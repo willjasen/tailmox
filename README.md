@@ -131,7 +131,8 @@ The installer verifies the Proxmox version, downloads the current `dev` branch
 into `/opt/tailmox`, and adds the `tailmox` command at `/usr/local/bin/tailmox`.
 It then runs the staging workflow, which installs or connects Tailscale and
 starts and publishes the Tailmox monitor service. At the end it prints the
-monitor links on HTTPS port `8088`.
+node monitor link on HTTPS port `8088` and the shared service link on standard
+HTTPS without an explicit port.
 
 If the host is not signed in to Tailscale, the staging workflow prints a login
 link. An auth key can instead be supplied to the one-liner:

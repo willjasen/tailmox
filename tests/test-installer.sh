@@ -51,6 +51,11 @@ OUTPUT=$(PATH="$TEST_DIR/bin:$PATH" \
 [[ "$(readlink "$COMMAND_DIR/tailmox")" == "$INSTALL_DIR/tailmox" ]]
 grep -Fq 'Run tailmox cluster when every host is ready.' <<< "$OUTPUT"
 grep -Fq 'Monitor: https://pve1.example.ts.net:8088/monitor/' <<< "$OUTPUT"
+grep -Fq 'Service monitor: https://tailmox.example.ts.net/monitor/' <<< "$OUTPUT"
+if grep -Fq 'tailmox.example.ts.net:8088' <<< "$OUTPUT"; then
+    printf 'FAIL: shared service monitor URL includes the node monitor port\n'
+    exit 1
+fi
 grep -Fxq 'stage' "$STAGE_CALLS"
 
 printf 'old release marker\n' > "$INSTALL_DIR/old-release"
