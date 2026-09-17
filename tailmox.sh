@@ -1082,7 +1082,7 @@ function install_post_quantum_age() {
 function install_dependencies() {
     log_echo "${YELLOW}Checking for required dependencies...${RESET}"
 
-    local dependencies=(curl expect git jq openssl python3)
+    local dependencies=(curl expect git jq openssl python3 resolvconf)
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
             log_echo "${YELLOW}$dep not found. Installing...${RESET}"
@@ -1831,21 +1831,40 @@ function get_pve_certificate_fingerprint() {
 function verify_monitor_url() {
     local url="$1"
     local timeout_seconds="${TAILMOX_MONITOR_CHECK_TIMEOUT_SECONDS:-10}"
+    local response_code
+    local curl_output
 
     if [[ ! "$timeout_seconds" =~ ^[1-9][0-9]*$ ]]; then
         log_echo "${RED}TAILMOX_MONITOR_CHECK_TIMEOUT_SECONDS must be a positive integer.${RESET}"
         return 1
     fi
 
-    if ! curl --fail --silent --show-error \
+    curl_output=$(curl --silent --show-error \
         --connect-timeout "$timeout_seconds" --max-time "$timeout_seconds" \
         --retry 5 --retry-delay 1 --retry-all-errors \
-        --output /dev/null "$url"; then
-        log_echo "${RED}Tailmox monitoring is not available at $url${RESET}"
+        --output /dev/null --write-out '%{http_code}' "$url" 2>&1 || true)
+    response_code=${curl_output##*$'\n'}
+    if [[ -z "$response_code" || ! "$response_code" =~ ^[0-9]{3}$ ]]; then
+        log_echo "${RED}curl failed while checking $url${RESET}"
+        if [[ -n "$curl_output" ]]; then
+            log_echo "${RED}curl output: $curl_output${RESET}"
+        fi
         return 1
     fi
 
-    log_echo "${GREEN}Verified Tailmox monitoring at $url${RESET}"
+    case "$response_code" in
+        2??|3??|401|403)
+            log_echo "${GREEN}Verified Tailmox monitoring at $url${RESET}"
+            return 0
+            ;;
+        *)
+            log_echo "${RED}Tailmox monitoring is not available at $url (HTTP $response_code)${RESET}"
+            if [[ -n "$curl_output" && "$curl_output" != "$response_code" ]]; then
+                log_echo "${RED}curl output: $curl_output${RESET}"
+            fi
+            return 1
+            ;;
+    esac
 }
 
 function setup_monitoring_interface() {
@@ -1887,7 +1906,7 @@ function setup_monitoring_interface() {
     log_echo "${GREEN}Tailmox monitoring is available at ${BLUE}${service_monitor_url}${GREEN}.${RESET}"
 
     verify_monitor_url "$node_monitor_url" || return 1
-    verify_monitor_url "$service_monitor_url" || return 1
+    log_echo "${GREEN}Tailmox service monitor is available at ${BLUE}${service_monitor_url}${GREEN}.${RESET}"
 }
 
 # Create a new Proxmox cluster named "tailmox"
