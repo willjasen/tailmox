@@ -65,6 +65,9 @@ WEBSERVER_PORT = 8088
 WEBSERVER_CHECK_TIMEOUT_SECONDS = float(
     os.environ.get("TAILMOX_WEBSERVER_CHECK_TIMEOUT_SECONDS", "1")
 )
+INFLUX_HEALTH_TIMEOUT_SECONDS = float(
+    os.environ.get("TAILMOX_INFLUX_HEALTH_TIMEOUT_SECONDS", "3")
+)
 CMAP_STATS_INTERVAL_SECONDS = int(os.environ.get("TAILMOX_CMAP_STATS_INTERVAL_SECONDS", "5"))
 CMAP_STATS_THREAD_STARTED = False
 MAX_HTTP_THREADS = max(1, int(os.environ.get("TAILMOX_MONITOR_MAX_HTTP_THREADS", "32")))
@@ -345,6 +348,37 @@ def request_identity(headers):
 def influx_enabled():
     config = influx_config()
     return all(config.values())
+
+
+def collect_influx_health():
+    config = influx_config()
+    configured = all(config.values())
+    health = {
+        "enabled": configured,
+        "online": None,
+        "detail": "not configured",
+        "lastWriteAt": INFLUX_STATE["lastWriteAt"],
+        "lastError": INFLUX_STATE["lastError"],
+    }
+    if not configured:
+        return health
+
+    request = urllib.request.Request(
+        f"{config['url']}/health",
+        headers={"Accept": "application/json"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=INFLUX_HEALTH_TIMEOUT_SECONDS) as response:
+            health["online"] = response.status < 300
+            health["detail"] = f"HTTP {response.status}"
+    except urllib.error.HTTPError as error:
+        health["online"] = False
+        health["detail"] = f"HTTP {error.code}"
+    except (urllib.error.URLError, TimeoutError, OSError) as error:
+        health["online"] = False
+        health["detail"] = str(error)
+    return health
 
 
 def collect_tailmox_state(configured_nodes):
@@ -1281,6 +1315,7 @@ def collect_status():
     member_health = corosync_member_health(configured_nodes, corosync_members, quorum_nodes)
     tailmox_state = collect_tailmox_state(configured_nodes)
     webservers = collect_webserver_health(configured_nodes)
+    influx = collect_influx_health()
 
     tailscale_data = {}
     if tailscale["stdout"]:
@@ -1301,6 +1336,7 @@ def collect_status():
         and quorate == "Yes"
         and not offline_members
         and not webservers["offlineHosts"]
+        and (not influx["enabled"] or influx["online"])
     )
     member_count_sample = {
         "timestamp": int(time.time()),
@@ -1363,11 +1399,7 @@ def collect_status():
             "self": tailscale_data.get("Self", {}),
             "backendState": tailscale_data.get("BackendState"),
         },
-        "influxdb": {
-            "enabled": influx_enabled(),
-            "lastWriteAt": INFLUX_STATE["lastWriteAt"],
-            "lastError": INFLUX_STATE["lastError"],
-        },
+        "influxdb": influx,
     }
     export_status(status)
     return status
@@ -1540,7 +1572,7 @@ HEALTH_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><met
 :root{color-scheme:dark;--line:#334155;--text:#e5e7eb;--muted:#9ca3af}body{margin:0;min-height:100vh;color:var(--text);font:16px system-ui,sans-serif;background:linear-gradient(135deg,#0b1020,#14213d)}main{max-width:760px;margin:auto;padding:clamp(24px,7vw,64px) 20px}header{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:28px}h1{margin:0 0 6px;font-size:32px}p{color:var(--muted);margin:0}.pill{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-weight:700;white-space:nowrap}.good{color:#bbf7d0;border-color:#347b51;background:#14532d55}.warn{color:#fde68a;border-color:#8a641f;background:#78350f55}.bad{color:#fecdd3;border-color:#8f3042;background:#7f1d1d55}.issues{display:grid;gap:10px}.issue,.clear{padding:17px 18px;border:1px solid var(--line);border-radius:10px;background:#111827dd}.issue{border-left:4px solid #f59e0b}.issue.bad{border-left-color:#ef4444}.issue strong{display:block;margin-bottom:4px}.clear{text-align:center;color:#bbf7d0;border-color:#347b51;background:#14532d33}a{color:#7dd3fc;display:inline-block;margin-top:24px}label{color:var(--muted);font-size:13px}select{margin-left:4px;padding:7px;border:1px solid #38bdf86b;border-radius:7px;color:#f8fafc;background:#0f172a;cursor:pointer;box-shadow:0 4px 14px #0206173d}select:hover{border-color:#38bdf8b8;background:#172033}select:focus{outline:2px solid #38bdf857;outline-offset:2px;border-color:#38bdf8}select option{color:#f8fafc;background:#0f172a;font-weight:600}select option:checked{color:#ecfeff;background:#155e75}@media(max-width:540px){header{display:block}.pill{display:inline-block;margin-top:15px}}
 </style></head><body><main><header><div><h1>Tailmox Monitor</h1><p>Cluster health at a glance</p></div><div><label>Page <select id="page"><option value="health">Health</option><option value="monitor">Monitor</option><option value="settings">Settings</option><option value="id">ID</option><option value="disable">Disable Tailmox</option></select></label><div class="pill" id="overall">Checking…</div></div></header><section><h2>Cluster health</h2><p id="updated">Checking current status…</p></section><section class="issues" id="issues"><div class="issue">Loading health checks…</div></section><a href="/">Open detailed monitor</a></main><script>
 const apiPrefix=(window.location.pathname==="/monitor/health"||window.location.pathname.startsWith("/monitor/"))?"/monitor":"";document.querySelector("a").href=`${apiPrefix}/`;document.getElementById("page").addEventListener("change",event=>{const target=event.target.value;window.location.href=target==="health"?`${apiPrefix}/health`:target==="monitor"?`${apiPrefix}/`:`${apiPrefix}/${target}`});const issues=document.getElementById("issues"),overall=document.getElementById("overall"),add=(title,detail,bad=false)=>{const item=document.createElement("div");item.className=`issue ${bad?"bad":""}`;item.innerHTML=`<strong>${title}</strong><span>${detail}</span>`;issues.append(item)};
-async function load(){try{const [sr,lr]=await Promise.all([fetch(`${apiPrefix}/api/status`,{cache:"no-store"}),fetch(`${apiPrefix}/api/link-quality`,{cache:"no-store"})]),data=await sr.json(),links=await lr.json();if(!sr.ok)throw Error(data.error||"Unable to read cluster status.");issues.replaceChildren();if(!data.services?.corosync?.active)add("Corosync is offline","The cluster communication service is not active.",true);if(!data.services?.pveCluster?.active)add("Proxmox cluster service is offline","The pve-cluster service is not active.",true);const offline=data.corosync?.offlineMembers||[];if(offline.length)add(`${offline.length} host${offline.length===1?" is":"s are"} offline`,offline.map(m=>m.name||m.ip||`node ${m.nodeid}`).join(", "),data.cluster?.quorate!=="Yes");const missingWebservers=data.webservers?.offlineHosts||[];if(missingWebservers.length)add(`${missingWebservers.length} host${missingWebservers.length===1?" is":"s are"} not running the port ${data.webservers?.port||8088} webserver`,missingWebservers.map(host=>host.name||host.host||`node ${host.nodeid}`).join(", "),true);if(data.cluster?.quorate!=="Yes")add("Cluster has no quorum","Cluster operations may be unsafe until quorum is restored.",true);for(const link of(links.links||[])){const peer=link.hostname||link.ip||"peer";if(link.quality==="loss")add(`Packet loss to ${peer}`,`${link.packetLossPercent??"unknown"}% packet loss.`);else if(link.quality==="jittery")add(`High jitter to ${peer}`,`${(link.jitterMs??0).toFixed(1)} ms jitter.`);else if(link.quality==="slow")add(`High latency to ${peer}`,`${(link.avgMs??0).toFixed(1)} ms average latency.`);else if(link.quality==="unknown")add(`Link quality unavailable for ${peer}`,"The peer could not be measured.",true)}if(!issues.children.length){const item=document.createElement("div");item.className="clear";item.textContent="No problems detected";issues.append(item)}const attention=issues.querySelector(".issue");overall.textContent=attention?"Needs attention":"Healthy";overall.className=`pill ${attention?(attention.classList.contains("bad")?"bad":"warn"):"good"}`;document.getElementById("updated").textContent=`${data.hostname||"Host"} · updated ${new Date(data.generatedAt*1000).toLocaleString()}`}catch(error){issues.replaceChildren();add("Health check unavailable",error.message,true);overall.textContent="Unavailable";overall.className="pill bad"}}load();setInterval(load,30000);
+async function load(){try{const [sr,lr]=await Promise.all([fetch(`${apiPrefix}/api/status`,{cache:"no-store"}),fetch(`${apiPrefix}/api/link-quality`,{cache:"no-store"})]),data=await sr.json(),links=await lr.json();if(!sr.ok)throw Error(data.error||"Unable to read cluster status.");issues.replaceChildren();if(!data.services?.corosync?.active)add("Corosync is offline","The cluster communication service is not active.",true);if(!data.services?.pveCluster?.active)add("Proxmox cluster service is offline","The pve-cluster service is not active.",true);if(data.influxdb?.enabled&&!data.influxdb?.online)add("InfluxDB is offline",data.influxdb.detail||"The configured InfluxDB health endpoint did not respond.",true);const offline=data.corosync?.offlineMembers||[];if(offline.length)add(`${offline.length} host${offline.length===1?" is":"s are"} offline`,offline.map(m=>m.name||m.ip||`node ${m.nodeid}`).join(", "),data.cluster?.quorate!=="Yes");const missingWebservers=data.webservers?.offlineHosts||[];if(missingWebservers.length)add(`${missingWebservers.length} host${missingWebservers.length===1?" is":"s are"} not running the port ${data.webservers?.port||8088} webserver`,missingWebservers.map(host=>host.name||host.host||`node ${host.nodeid}`).join(", "),true);if(data.cluster?.quorate!=="Yes")add("Cluster has no quorum","Cluster operations may be unsafe until quorum is restored.",true);for(const link of(links.links||[])){const peer=link.hostname||link.ip||"peer";if(link.quality==="loss")add(`Packet loss to ${peer}`,`${link.packetLossPercent??"unknown"}% packet loss.`);else if(link.quality==="jittery")add(`High jitter to ${peer}`,`${(link.jitterMs??0).toFixed(1)} ms jitter.`);else if(link.quality==="slow")add(`High latency to ${peer}`,`${(link.avgMs??0).toFixed(1)} ms average latency.`);else if(link.quality==="unknown")add(`Link quality unavailable for ${peer}`,"The peer could not be measured.",true)}if(!issues.children.length){const item=document.createElement("div");item.className="clear";item.textContent="No problems detected";issues.append(item)}const attention=issues.querySelector(".issue");overall.textContent=attention?"Needs attention":"Healthy";overall.className=`pill ${attention?(attention.classList.contains("bad")?"bad":"warn"):"good"}`;document.getElementById("updated").textContent=`${data.hostname||"Host"} · updated ${new Date(data.generatedAt*1000).toLocaleString()}`}catch(error){issues.replaceChildren();add("Health check unavailable",error.message,true);overall.textContent="Unavailable";overall.className="pill bad"}}load();setInterval(load,30000);
 </script></body></html>
 """
 
@@ -2217,15 +2249,15 @@ INDEX_HTML = """<!doctype html>
       text("transport", `transport: ${data.cluster.transport || "unknown"}`);
       text("tailscaleState", data.tailscale.backendState || "unknown");
       text("tailscaleName", data.tailscale.self.DNSName || data.tailscale.self.HostName || "");
-      text("influxState", data.influxdb.enabled ? "enabled" : "off");
-      text("influxDetail", data.influxdb.lastError ? `error: ${data.influxdb.lastError}` : (data.influxdb.lastWriteAt ? `last write: ${new Date(data.influxdb.lastWriteAt * 1000).toLocaleTimeString()}` : "not configured"));
+      text("influxState", data.influxdb.enabled ? (data.influxdb.online ? "online" : "offline") : "off");
+      text("influxDetail", data.influxdb.enabled ? (data.influxdb.detail || "health unknown") : "not configured");
       const offlineCount = (data.corosync.offlineMembers || []).length;
       setPanelStatus("tailmoxPanel", data.tailmox.status === "active" ? "good" : (data.tailmox.active ? "warn" : "bad"));
       setPanelStatus("corosyncPanel", data.services.corosync.active ? (offlineCount ? "warn" : "good") : "bad");
       setPanelStatus("quorumPanel", data.cluster.quorate === "Yes" ? (offlineCount ? "warn" : "good") : "bad");
       setPanelStatus("clusterPanel", data.cluster.name ? (offlineCount ? "warn" : "good") : "bad");
       setPanelStatus("tailscalePanel", data.tailscale.backendState === "Running" ? "good" : "bad");
-      setPanelStatus("influxPanel", data.influxdb.enabled ? (data.influxdb.lastError ? "bad" : "good") : "warn");
+      setPanelStatus("influxPanel", data.influxdb.enabled ? (data.influxdb.online ? "good" : "bad") : "warn");
       document.getElementById("members").innerHTML = (data.corosync.members || []).map(member => `<tr><td>${member.name || ""}${member.local ? " (local)" : ""}</td><td>${member.ip || ""}</td><td>${member.nodeid || ""}</td><td>${number(member.votes)}</td><td><span class="tag ${member.active ? "joined" : "offline"}">${member.active ? "active" : "offline"}</span></td></tr>`).join("") || "<tr><td colspan='5'>No member data available</td></tr>";
       document.getElementById("quorumNodes").innerHTML = (data.corosync.quorumNodes || []).map(node => `<tr><td>${node.name || ""}</td><td>${node.nodeid || ""}</td><td>${node.votes || ""}</td><td>${node.local ? "yes" : ""}</td></tr>`).join("") || "<tr><td colspan='4'>No quorum node data available</td></tr>";
       renderLogs(data.corosync.recentLogs);

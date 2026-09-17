@@ -254,7 +254,7 @@ Tailmox installs a lightweight monitoring interface as `tailmox-monitor.service`
 - `https://HOSTNAME.MAGICDNS_NAME.ts.net:8088/monitor/`
 - `https://tailmox.MAGICDNS_NAME.ts.net:8088/monitor/`
 
-The monitor includes corosync-specific details: whether the `corosync` service is active and enabled, whether the cluster is quorate, expected and current votes, corosync transport, configured and active member information from `corosync-cmapctl`, quorum node details from `corosync-quorumtool`, cluster member count over time, link-quality history for each peer, and recent `corosync` journal entries. Configured cluster members that are not active in corosync are shown as offline. The Health page also lists configured hosts whose Tailmox webserver is not accepting connections on port `8088`.
+The monitor includes corosync-specific details: whether the `corosync` service is active and enabled, whether the cluster is quorate, expected and current votes, corosync transport, configured and active member information from `corosync-cmapctl`, quorum node details from `corosync-quorumtool`, cluster member count over time, link-quality history for each peer, and recent `corosync` journal entries. Configured cluster members that are not active in corosync are shown as offline. The Health page also lists configured hosts whose Tailmox webserver is not accepting connections on port `8088` and reports a configured InfluxDB instance as offline when its `/health` endpoint cannot be reached.
 
 The same page is also the Tailmox control console. A signed-in Tailscale user
 can run `tailmox stage`, install, restart, or uninstall `tailmox analytics`, run
