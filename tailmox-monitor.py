@@ -1244,7 +1244,7 @@ def collect_status():
     healthy = corosync_active and pve_cluster_active and quorate == "Yes" and not offline_members
     member_count_sample = {
         "timestamp": int(time.time()),
-        "memberCount": len(corosync_members),
+        "memberCount": sum(1 for member in corosync_members if member.get("active")),
         "quorumNodeCount": len(quorum_nodes),
         "configuredNodeCount": len(configured_nodes),
         "offlineNodeCount": len(offline_members),
