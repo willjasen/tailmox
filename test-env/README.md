@@ -126,9 +126,12 @@ as root:
 ```
 
 It runs `apt-get update`, installs `qemu-guest-agent`, `git`, `jq`, and
-`expect`, then enables and starts `qemu-guest-agent.service` and
-`serial-getty@ttyS0.service`. Both helpers are idempotent and stop before
-template conversion; run `qm template <VMID>` only after verifying the guest.
+`expect` plus `isc-dhcp-client` and `resolvconf`. It configures the nested
+`vmbr0` bridge for DHCP, delegates `/etc/resolv.conf` to `resolvconf` so DNS
+also comes from DHCP, then enables and starts `qemu-guest-agent.service`,
+`serial-getty@ttyS0.service`, and `resolvconf.service`. Both helpers are
+idempotent and stop before template conversion; run `qm template <VMID>` only
+after verifying the guest.
 
 Both deployment helpers add Proxmox Notes automatically. Imported templates are identified as stopped development sources, and linked clones record their source template and `ready-for-testing` recovery point.
 

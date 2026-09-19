@@ -36,6 +36,8 @@ next image should eliminate that bootstrap step.
 - Install `isc-dhcp-client` and retain it in the image.
 - Configure `ens18` as a port of guest bridge `vmbr0` and configure `vmbr0`
   with DHCP. Do not ship a static IPv4 address or gateway.
+- Install `resolvconf`, make `/etc/resolv.conf` resolve through its generated
+  file, and verify that DHCP supplies the guest DNS server.
 - Keep the guest bridge named `vmbr0`. `vlan3` is the bridge on the outer
   Proxmox host and must not be written into the nested guest configuration.
 - Use a neutral hostname such as `tailmox-image` and map it through

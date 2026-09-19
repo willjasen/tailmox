@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PACKAGES=(qemu-guest-agent git jq expect)
+PACKAGES=(isc-dhcp-client resolvconf qemu-guest-agent git jq expect)
+ETC_DIR="${TAILMOX_ETC_DIR:-/etc}"
 
 die() {
   printf 'Error: %s\n' "$*" >&2
@@ -14,6 +15,9 @@ require_command() {
 
 require_command apt-get
 require_command systemctl
+require_command mkdir
+require_command ln
+require_command rm
 
 if [[ "$(id -u)" -ne 0 ]]; then
   die "Run this script as root"
@@ -24,8 +28,30 @@ apt-get update
 printf 'Installing Tailmox test dependencies...\n'
 DEBIAN_FRONTEND=noninteractive apt-get install -y "${PACKAGES[@]}"
 
+printf 'Configuring DHCP networking and DNS...\n'
+mkdir -p "$ETC_DIR/network"
+cat >"$ETC_DIR/network/interfaces" <<'EOF'
+auto lo
+iface lo inet loopback
+
+iface ens18 inet manual
+
+auto vmbr0
+iface vmbr0 inet dhcp
+	bridge-ports ens18
+	bridge-stp off
+	bridge-fd 0
+
+source /etc/network/interfaces.d/*
+EOF
+rm -f "$ETC_DIR/resolv.conf"
+ln -s /run/resolvconf/resolv.conf "$ETC_DIR/resolv.conf"
+systemctl restart networking.service
+
 systemctl enable --now qemu-guest-agent.service
 systemctl enable --now serial-getty@ttyS0.service
+systemctl enable --now resolvconf.service
+resolvconf -u
 
 printf 'Nested Proxmox guest preparation completed.\n'
-printf 'Enabled services: qemu-guest-agent.service, serial-getty@ttyS0.service\n'
+printf 'Enabled services: qemu-guest-agent.service, serial-getty@ttyS0.service, resolvconf.service\n'
