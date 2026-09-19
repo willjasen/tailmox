@@ -16,6 +16,7 @@ Required:
 Options:
   --template VALUE    Source template VM ID or name (default: tailmox-template)
   --count N           Number of VMs to create (default: 3)
+  --vmid-start ID     First linked clone VM ID (default: 50001)
   --name-prefix P     VM name prefix (default: tailmox)
   --storage NAME      Target image storage (default: template storage)
   --bridge NAME       Replace net0 with a VirtIO adapter on this bridge
@@ -52,6 +53,7 @@ NODE=""
 TEMPLATE="tailmox-template"
 SNAPSHOT_NAME="ready-for-testing"
 COUNT="3"
+VMID_START="50001"
 NAME_PREFIX="tailmox"
 STORAGE=""
 BRIDGE=""
@@ -80,6 +82,11 @@ while [[ $# -gt 0 ]]; do
     --count)
       [[ $# -ge 2 ]] || die "--count requires a value"
       COUNT="$2"
+      shift 2
+      ;;
+    --vmid-start)
+      [[ $# -ge 2 ]] || die "--vmid-start requires a value"
+      VMID_START="$2"
       shift 2
       ;;
     --name-prefix)
@@ -146,6 +153,7 @@ if [[ -n "$BRIDGE" && ! "$BRIDGE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
   die "--bridge contains unsupported characters"
 fi
 require_positive_integer "--count" "$COUNT"
+require_positive_integer "--vmid-start" "$VMID_START"
 require_positive_integer "--task-timeout" "$TASK_TIMEOUT"
 
 PVE_API_TOKEN_ID="${PVE_API_TOKEN_ID:-}"
@@ -296,11 +304,16 @@ for ((index = 1; index <= COUNT; index++)); do
 done
 
 for ((index = 1; index <= COUNT; index++)); do
-  VM_NAME="${NAME_PREFIX}${index}"
+  VMID=$((VMID_START + index - 1))
+  if jq -e --argjson vmid "$VMID" '.data[] | select(.type == "qemu" and .vmid == $vmid)' \
+    <<<"$RESOURCES_RESPONSE" >/dev/null; then
+    die "VM ID $VMID already exists"
+  fi
+done
 
-  NEXT_ID_RESPONSE=$(api_request GET "/cluster/nextid")
-  VMID=$(jq -er '.data | tonumber' <<<"$NEXT_ID_RESPONSE") ||
-    die "Proxmox did not return a valid next VM ID"
+for ((index = 1; index <= COUNT; index++)); do
+  VM_NAME="${NAME_PREFIX}${index}"
+  VMID=$((VMID_START + index - 1))
 
   echo "Cloning template $TEMPLATE_VMID to VM $VMID ($VM_NAME)..."
   CLONE_ARGS=(

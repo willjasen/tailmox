@@ -78,6 +78,9 @@ OUTPUT=$(
 
 [[ "$(grep -c '/clone' "$TEST_STATE_DIR/clone-calls")" -eq 2 ]] ||
   { echo "FAIL: expected two clone calls" >&2; exit 1; }
+grep -Fq 'newid=50001' "$TEST_STATE_DIR/clone-calls" &&
+  grep -Fq 'newid=50002' "$TEST_STATE_DIR/clone-calls" ||
+  { echo "FAIL: expected the standard linked-clone VM IDs" >&2; exit 1; }
 [[ "$(grep -c '/config' "$TEST_STATE_DIR/config-calls")" -eq 2 ]] ||
   { echo "FAIL: expected two network configuration calls" >&2; exit 1; }
 [[ "$(grep -c 'description=## Tailmox Development Node ' "$TEST_STATE_DIR/config-calls")" -eq 2 ]] ||
@@ -111,6 +114,22 @@ fi
   { echo "FAIL: deployment wrote to Proxmox before validating all VM names" >&2; exit 1; }
 
 echo "PASS: API deployment validates every planned VM name before cloning"
+
+if MOCK_EXISTING_VM=false \
+  PVE_API_TOKEN_ID='root@pam!tailmox' \
+  PVE_API_TOKEN_SECRET='test-secret' \
+    "$TEST_ROOT/test-env/deploy-vms-api.sh" \
+      --api-url https://pve4.example.ts.net \
+      --node pve4 \
+      --vmid-start 100 >/dev/null 2>&1; then
+  echo "FAIL: an existing planned VM ID did not stop deployment" >&2
+  exit 1
+fi
+
+[[ ! -s "$TEST_STATE_DIR/clone-calls" ]] ||
+  { echo "FAIL: deployment wrote to Proxmox before validating all planned VM IDs" >&2; exit 1; }
+
+echo "PASS: API deployment validates every planned VM ID before cloning"
 
 if PVE_API_TOKEN_ID='root@pam!tailmox' \
   PVE_API_TOKEN_SECRET='test-secret' \

@@ -12,7 +12,7 @@ usage() {
 Usage: $0 [OPTIONS]
 
 Options:
-  --vmid ID          Template VM ID (default: next available ID)
+  --vmid ID          Template VM ID (default: 50000)
   --name NAME        Template name (default: tailmox-template)
   --template FILE    Source qcow2 file (default: value from template.json)
   --storage NAME     Proxmox image storage (default: first active image storage)
@@ -23,7 +23,7 @@ Options:
   --onboot 0|1       Start clones when the host boots (default: 0)
   --clone-count N    Create N linked clones after the template (default: 0)
   --clone-prefix P   Clone name prefix (default: tailmox)
-  --clone-vmid-start ID  First clone VM ID (default: next available ID)
+  --clone-vmid-start ID  First clone VM ID (default: 50001)
   --help              Show this help
 
 Examples:
@@ -72,7 +72,7 @@ vm_name_exists() {
     jq -e --arg name "$name" '.[] | select(.name == $name)' >/dev/null
 }
 
-VMID=""
+VMID="50000"
 NAME="tailmox-template"
 TEMPLATE=""
 MANAGED_TEMPLATE=false
@@ -84,7 +84,7 @@ CPU_TYPE="host"
 ONBOOT="0"
 CLONE_COUNT="0"
 CLONE_PREFIX="tailmox"
-CLONE_VMID_START=""
+CLONE_VMID_START="50001"
 SNAPSHOT_NAME="ready-for-testing"
 
 while [[ $# -gt 0 ]]; do

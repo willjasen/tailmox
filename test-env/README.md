@@ -12,12 +12,19 @@ The `create-vm-template.sh` script downloads the preconfigured image from an IPF
 
 ```bash
 ./create-vm-template.sh \
+  --vmid 50000 \
   --storage local-zfs \
   --bridge vmbr0 \
-  --clone-count 3
+  --clone-count 3 \
+  --clone-vmid-start 50001
 ```
 
 Run this command as root on a Proxmox node. If `--storage` is omitted, the script chooses the first enabled, active storage that supports VM images. It validates the selected storage and bridge before creating anything.
+
+The standard test allocation is VM `50000` for `tailmox-template` and VMs
+`50001`, `50002`, and `50003` for `tailmox1`, `tailmox2`, and `tailmox3`.
+The helper checks that every requested VM ID and name is available before it
+creates the template or any clone.
 
 From a local Tailmox checkout, set up the image on `pve-a2` with:
 
@@ -39,10 +46,15 @@ export PVE_API_TOKEN_SECRET='TOKEN_SECRET'
   --api-url https://pve4.example.ts.net \
   --node pve4 \
   --template tailmox-template \
-  --count 3
+  --count 3 \
+  --vmid-start 50001
 ```
 
 The API helper prompts for any credentials that are not supplied through the environment. It creates stopped linked clones named `tailmox1`, `tailmox2`, and `tailmox3` by default. Every clone receives a `ready-for-testing` snapshot immediately after creation and before it can be started. Linked clones inherit the template storage. Use `--full --storage NAME` to place full clones on another storage, `--start` to start the clones after their snapshots exist, or `--bridge` to override the inherited template network.
+
+The API helper defaults to clone IDs `50001` through `50003` when
+`--count 3` is used. It checks all requested IDs and names before creating any
+clone; use `--vmid-start` to choose a different contiguous range.
 
 To ensure that the linked clones can get online, review the network adapter settings within each VM. The network adapter uses `vmbr0` with no VLAN by default, but your environment may be different.
 
