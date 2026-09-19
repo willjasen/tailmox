@@ -54,7 +54,24 @@ The API helper prompts for any credentials that are not supplied through the env
 
 The API helper defaults to clone IDs `50001` through `50003` when
 `--count 3` is used. It checks all requested IDs and names before creating any
-clone; use `--vmid-start` to choose a different contiguous range.
+clone; use `--vmid-start` to choose a different contiguous range. For multiple
+isolated test environments, allocate another contiguous range and use
+`--name-by-vmid` so the VM IDs and Tailmox hostnames remain identical, for
+example:
+
+```bash
+./deploy-vms-api.sh \
+  --api-url https://pve4.example.ts.net \
+  --node pve4 \
+  --template tailmox-template \
+  --count 3 \
+  --vmid-start 50011 \
+  --name-by-vmid
+```
+
+This creates VMs `50011`, `50012`, and `50013` named `tailmox50011`,
+`tailmox50012`, and `tailmox50013`. Always check the full requested ID and
+name range before deployment; the helper refuses any collision.
 
 To ensure that the linked clones can get online, review the network adapter settings within each VM. The network adapter uses `vmbr0` with no VLAN by default, but your environment may be different.
 

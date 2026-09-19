@@ -18,6 +18,7 @@ Options:
   --count N           Number of VMs to create (default: 3)
   --vmid-start ID     First linked clone VM ID (default: 50001)
   --name-prefix P     VM name prefix (default: tailmox)
+  --name-by-vmid      Name each VM as <name-prefix><VMID>
   --storage NAME      Target image storage (default: template storage)
   --bridge NAME       Replace net0 with a VirtIO adapter on this bridge
   --full              Create full clones instead of linked clones
@@ -55,6 +56,7 @@ SNAPSHOT_NAME="ready-for-testing"
 COUNT="3"
 VMID_START="50001"
 NAME_PREFIX="tailmox"
+NAME_BY_VMID=false
 STORAGE=""
 BRIDGE=""
 FULL_CLONE="0"
@@ -93,6 +95,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || die "--name-prefix requires a value"
       NAME_PREFIX="$2"
       shift 2
+      ;;
+    --name-by-vmid)
+      NAME_BY_VMID=true
+      shift
       ;;
     --storage)
       [[ $# -ge 2 ]] || die "--storage requires a value"
@@ -296,7 +302,12 @@ if [[ -n "$BRIDGE" ]]; then
 fi
 
 for ((index = 1; index <= COUNT; index++)); do
-  VM_NAME="${NAME_PREFIX}${index}"
+  VMID=$((VMID_START + index - 1))
+  if [[ "$NAME_BY_VMID" == true ]]; then
+    VM_NAME="${NAME_PREFIX}${VMID}"
+  else
+    VM_NAME="${NAME_PREFIX}${index}"
+  fi
   if jq -e --arg name "$VM_NAME" '.data[] | select(.name == $name)' \
     <<<"$RESOURCES_RESPONSE" >/dev/null; then
     die "A VM named '$VM_NAME' already exists"
@@ -312,8 +323,12 @@ for ((index = 1; index <= COUNT; index++)); do
 done
 
 for ((index = 1; index <= COUNT; index++)); do
-  VM_NAME="${NAME_PREFIX}${index}"
   VMID=$((VMID_START + index - 1))
+  if [[ "$NAME_BY_VMID" == true ]]; then
+    VM_NAME="${NAME_PREFIX}${VMID}"
+  else
+    VM_NAME="${NAME_PREFIX}${index}"
+  fi
 
   echo "Cloning template $TEMPLATE_VMID to VM $VMID ($VM_NAME)..."
   CLONE_ARGS=(

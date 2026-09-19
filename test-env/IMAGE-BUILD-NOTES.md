@@ -168,7 +168,8 @@ accept an exact release, allowing an older immutable image to be redeployed.
 
 The three release-0 clones required these post-image changes:
 
-- unique hostnames `tailmox1`, `tailmox2`, and `tailmox3`
+- unique hostnames derived from the VM IDs when deploying additional
+  isolated test environments (for example `tailmox50011` for VM `50011`)
 - DHCP on guest `vmbr0`, with their outer NICs attached to `vlan3`
 - installation of `isc-dhcp-client`
 - correction of the image's static hostname entry in `/etc/hosts`
