@@ -82,6 +82,9 @@ To ensure that the linked clones can get online, review the network adapter sett
 
 The local template helper uses the `host` CPU type so nested virtualization is available and disables VM autostart by default. Use `--cpu TYPE` or `--onboot 1` to override those settings.
 
+The default template resources are 2 vCPUs and 2048 MiB (2 GiB) of RAM;
+linked clones inherit these settings.
+
 Both deployment helpers add Proxmox Notes automatically. Imported templates are identified as stopped development sources, and linked clones record their source template and `ready-for-testing` recovery point.
 
 Boot a new linked clone (the default credentials are `root` and

@@ -17,8 +17,8 @@ Options:
   --template FILE    Source qcow2 file (default: value from template.json)
   --storage NAME     Proxmox image storage (default: first active image storage)
   --bridge NAME      Proxmox network bridge (default: vlan3)
-  --memory MIB       Template memory in MiB (default: 1024)
-  --cores COUNT      Template CPU core count (default: 1)
+  --memory MIB       Template memory in MiB (default: 2048)
+  --cores COUNT      Template CPU core count (default: 2)
   --cpu TYPE         Template CPU type (default: host)
   --onboot 0|1       Start clones when the host boots (default: 0)
   --clone-count N    Create N linked clones after the template (default: 0)
@@ -78,8 +78,8 @@ TEMPLATE=""
 MANAGED_TEMPLATE=false
 STORAGE=""
 BRIDGE="vlan3"
-MEMORY="1024"
-CORES="1"
+MEMORY="2048"
+CORES="2"
 CPU_TYPE="host"
 ONBOOT="0"
 CLONE_COUNT="0"
