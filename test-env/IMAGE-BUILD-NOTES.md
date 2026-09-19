@@ -29,7 +29,7 @@ Identifying values:
   filesystem/image-build timestamp)
 
 `test-env/template.json` is the artifact manifest for this image. Its
-`template.image` values and the Image 1 row below must match: release `0`,
+`template.image` values and the Image 0 row below must match: release `0`,
 preparation API `0`, and hostname `tailmox-image`. Its
 `template.versions` values must match the filenames, hashes, sizes, and IPFS
 CIDs listed above. The download and deployment helpers read the manifest, so
@@ -46,8 +46,8 @@ does not need to be stored in a Proxmox VM note.
 
 | Image | Guest hostname | Source image CID | Status |
 | --- | --- | --- | --- |
-| 1 | `tailmox-image` | `bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy` | Original source image before Proxmox updates; observed in VM `50051` |
-| 2 | *Record after update and reboot* | *New CID will be added after upload* | In preparation |
+| 0 | `tailmox-image` | `bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy` | Original source image before Proxmox updates; observed in VM `50051` |
+| 1 | *Record after update and reboot* | *New CID will be added after upload* | In preparation |
 
 The legacy image does not contain a DHCP client. Its clones therefore need a
 temporary route to install one before they can adopt the preferred DHCP
