@@ -42,6 +42,10 @@ cat >"$TEST_STATE_DIR/bin/curl" <<'EOF'
 printf '%s\n' "$*" >>"$TEST_STATE_DIR/curl-calls"
 cat >/dev/null
 EOF
+cat >"$TEST_STATE_DIR/bin/tailscale" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$TEST_STATE_DIR/tailscale-calls"
+EOF
 chmod +x "$TEST_STATE_DIR/bin/"*
 
 PATH="$TEST_STATE_DIR/bin:$PATH" \
@@ -61,8 +65,8 @@ grep -Fqx 'update' "$TEST_STATE_DIR/apt-calls" ||
   { printf 'FAIL: guest helper did not update package metadata\n' >&2; exit 1; }
 grep -Fq -- 'install -y ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect' "$TEST_STATE_DIR/apt-calls" ||
   { printf 'FAIL: guest helper did not install required packages\n' >&2; exit 1; }
-grep -Fq 'https://tailscale.com/install.sh' "$TEST_STATE_DIR/curl-calls" ||
-  { printf 'FAIL: guest helper did not install Tailscale\n' >&2; exit 1; }
+grep -Fqx 'update --yes' "$TEST_STATE_DIR/tailscale-calls" ||
+  { printf 'FAIL: guest helper did not update installed Tailscale\n' >&2; exit 1; }
 grep -Fq -- 'install -y --only-upgrade ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect' "$TEST_STATE_DIR/apt-calls" ||
   { printf 'FAIL: guest helper did not update installed dependencies\n' >&2; exit 1; }
 grep -Fqx 'enable --now qemu-guest-agent.service' "$TEST_STATE_DIR/systemctl-calls" ||

@@ -33,7 +33,7 @@ if ! command -v tailscale >/dev/null 2>&1; then
   curl -fsSL https://tailscale.com/install.sh | sh
 else
   printf 'Updating Tailscale...\n'
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade tailscale
+  tailscale update --yes
 fi
 printf 'Updating installed Tailmox test dependencies...\n'
 DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade "${PACKAGES[@]}"
