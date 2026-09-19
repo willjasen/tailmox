@@ -27,16 +27,22 @@ Identifying values:
   (`ctime=1789668719`; this is the clone creation time, not a confirmed
   filesystem/image-build timestamp)
 
+`test-env/template.json` is the artifact manifest for this image: it records
+the downloadable filenames, hashes, sizes, and IPFS CIDs used by the template
+download and deployment helpers. It does not define the guest hostname. The
+hostname recorded for Image 1 is the hostname that was present in the source
+image itself.
+
 ## Image identity log
 
-Image hostnames are generated as `tailmox-i####`, using a random lowercase
-four-character hexadecimal suffix. Record the exact generated hostname here
-when staging an image so the project repository remains the durable reference;
+Published source images may have a fixed hostname, while temporary image
+preparation VMs can receive generated `tailmox-i####` hostnames. Record the
+actual hostname here so the project repository remains the durable reference;
 the hostname does not need to be stored in a Proxmox VM note.
 
 | Image | Guest hostname | Source image CID | Status |
 | --- | --- | --- | --- |
-| 1 | `tailmox-i055b` | `bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy` | Original image before Proxmox updates; observed in VM `50051` |
+| 1 | `tailmox-image` | `bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy` | Original source image before Proxmox updates; observed in VM `50051` |
 | 2 | *Record after update and reboot* | *New CID will be added after upload* | In preparation |
 
 The legacy image does not contain a DHCP client. Its clones therefore need a
