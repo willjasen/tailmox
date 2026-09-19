@@ -24,6 +24,18 @@ Identifying values:
 - Initial network: static `192.168.123.90/24` on guest bridge `vmbr0`
 - Initial Tailmox checkout: `main` at `e8cf73d827b8ae45d5a098541d6545e35b331ea7`
 
+## Image identity log
+
+Image hostnames are generated as `tailmox-i####`, using a random lowercase
+four-character hexadecimal suffix. Record the exact generated hostname here
+when staging an image so the project repository remains the durable reference;
+the hostname does not need to be stored in a Proxmox VM note.
+
+| Image | Guest hostname | Source image CID | Status |
+|---|---|---|---|
+| 1 | `tailmox-i055b` | `bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy` | Original image before Proxmox updates |
+| 2 | _Record after update and reboot_ | _New CID will be added after upload_ | In preparation |
+
 The legacy image does not contain a DHCP client. Its clones therefore need a
 temporary route to install one before they can adopt the preferred DHCP
 configuration. `prepare-linked-clone.sh` supports this legacy layout, but the
