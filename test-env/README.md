@@ -266,6 +266,48 @@ You are now ready to run/test the main script: `cd /opt/tailmox; git switch main
 
 Be sure to include the "--auth-key" parameter as well.
 
+### Fresh ISO test VM conventions
+
+These are the working conventions used for the fresh-ISO test VMs on the
+`pve-a2`/`pve4` cluster (VMIDs `50060`+). Follow them for future test
+deployments on any host in this cluster:
+
+- **Naming:** name and hostname both use the `tailmox-i####` pattern (a
+  4-character random hex suffix), matching the `stage-template.sh`
+  generated-hostname convention above — even for a fresh-ISO VM created
+  directly with `install-proxmox-test-vm.sh` rather than staged from a
+  template. Generate the suffix with `openssl rand -hex 2`.
+- **VMIDs are cluster-wide:** all hosts in this cluster (for example
+  `pve-a2` and `pve4`) share the same Proxmox VMID namespace, so pick a
+  distinct VMID per host even for otherwise-identical test VMs.
+- **Always pass `--storage` explicitly.** `install-proxmox-test-vm.sh` falls
+  back to "first active image storage" when `--storage` is omitted, which can
+  silently land the disk on the wrong storage (for example a Ceph pool
+  instead of `local-zfs`).
+- **`proxmox-iso.json` may only contain placeholders** on a given host. Check
+  it first; if empty, pass `--iso-url` and `--iso-sha256` explicitly using the
+  official Proxmox ISO URL and its `SHA256SUMS` entry.
+- **Redeploy fast:** when asked to redeploy, start the new VM's ISO
+  download/install immediately and destroy the previous VM in parallel (or
+  right beforehand), rather than waiting for teardown to finish first.
+- **Boot order:** keep the installed disk first with
+  `boot: order=scsi0;ide2` so a completed install does not reboot back into
+  the installer (see the boot-order requirement above).
+- **Root password retrieval:** each host keeps its VM root password at
+  `/tmp/tailmox-root-password` (created with
+  `openssl rand -base64 18 > /tmp/tailmox-root-password && chmod 600 /tmp/tailmox-root-password`
+  if it doesn't already exist); read it with
+  `ssh root@<host> 'cat /tmp/tailmox-root-password'`.
+- **Enterprise apt repos:** `prepare-proxmox-test-guest.sh` disables every
+  `*.list`/`*.sources` file under `/etc/apt/sources.list.d` that references
+  `enterprise.proxmox.com` (not just fixed filenames like
+  `pve-enterprise.sources`, since Proxmox 9 ships the enterprise Ceph repo
+  under its own `ceph.sources`). DEB822 `.sources` files use a boolean
+  `Enabled: true/false` key (not the legacy `.list` `yes`/`no`), and the key
+  may be entirely absent (which defaults to enabled) — the helper sets or
+  appends `Enabled: false` accordingly instead of only rewriting an existing
+  `yes` value.
+
 ---
 
 ### 🤓 The Scripts 🤓
