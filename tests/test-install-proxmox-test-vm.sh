@@ -8,6 +8,7 @@ export TEST_STATE_DIR
 
 printf 'password\n' >"$TEST_STATE_DIR/password"
 printf 'iso\n' >"$TEST_STATE_DIR/source.iso"
+chmod +x "$TEST_ROOT"/tests/{mkfs.vfat,mount,umount}
 
 id() { [[ "${1:-}" == "-u" ]] && echo 0; }
 curl() { cp "$TEST_STATE_DIR/source.iso" "$TEST_STATE_DIR/downloaded.iso"; }
@@ -65,6 +66,9 @@ grep -q -- '--serial0 socket' "$TEST_STATE_DIR/qm-calls" ||
   { echo "FAIL: serial console was not configured" >&2; exit 1; }
 grep -q -- '--agent 1' "$TEST_STATE_DIR/qm-calls" ||
   { echo "FAIL: guest agent was not configured" >&2; exit 1; }
+grep -q '^importdisk 50051 ' "$TEST_STATE_DIR/qm-calls" &&
+  grep -q '^set 50051 --scsi1 local-zfs:vm-50051-disk-1$' "$TEST_STATE_DIR/qm-calls" ||
+  { echo "FAIL: answer disk was not attached separately" >&2; exit 1; }
 grep -q 'curl -fsSL https://tailscale.com/install.sh | sh' \
   "$TEST_STATE_DIR/work/tailmox-first-boot.sh" ||
   { echo "FAIL: first-boot hook does not install Tailscale" >&2; exit 1; }

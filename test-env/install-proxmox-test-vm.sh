@@ -139,6 +139,9 @@ require_command ip
 require_command proxmox-auto-install-assistant
 require_command openssl
 require_command perl
+require_command mkfs.vfat
+require_command mount
+require_command umount
 [[ "$(id -u)" -eq 0 ]] || die "Run this script as root on an outer Proxmox node"
 [[ -f "$MANIFEST" ]] || die "Missing ISO manifest: $MANIFEST"
 
@@ -212,6 +215,8 @@ ISO_NAME="$(basename "${ISO_URL%%\?*}")"
 SOURCE_ISO="$WORK_DIR/$ISO_NAME"
 PREPARED_ISO="$WORK_DIR/prepared-$ISO_NAME"
 ANSWER_FILE="$WORK_DIR/answer.toml"
+ANSWER_DISK_IMAGE="$WORK_DIR/proxmox-ais.img"
+ANSWER_DISK_MOUNT="$WORK_DIR/proxmox-ais-mount"
 FIRST_BOOT="$WORK_DIR/tailmox-first-boot.sh"
 
 printf 'Downloading Proxmox ISO to %s...\n' "$SOURCE_ISO"
@@ -288,8 +293,8 @@ TAILMOX_INSTALL_HOSTNAME="$HOSTNAME" perl -0pi \
 chmod 0755 "$FIRST_BOOT"
 
 proxmox-auto-install-assistant prepare-iso "$SOURCE_ISO" \
-  --fetch-from iso \
-  --answer-file "$ANSWER_FILE" \
+  --fetch-from partition \
+  --partition-label proxmox-ais \
   --on-first-boot "$FIRST_BOOT" \
   --output "$PREPARED_ISO"
 [[ -s "$PREPARED_ISO" ]] ||
@@ -298,6 +303,13 @@ proxmox-auto-install-assistant prepare-iso "$SOURCE_ISO" \
 ISO_TARGET="$(pvesm path "$ISO_STORAGE:iso/$ISO_NAME")"
 mkdir -p "$(dirname "$ISO_TARGET")"
 install -m 0644 "$PREPARED_ISO" "$ISO_TARGET"
+truncate -s 16M "$ANSWER_DISK_IMAGE"
+mkfs.vfat -n proxmox-ais "$ANSWER_DISK_IMAGE" >/dev/null
+mkdir -p "$ANSWER_DISK_MOUNT"
+mount -o loop "$ANSWER_DISK_IMAGE" "$ANSWER_DISK_MOUNT"
+cp "$ANSWER_FILE" "$ANSWER_DISK_MOUNT/answer.toml"
+sync
+umount "$ANSWER_DISK_MOUNT"
 
 DESCRIPTION="$(printf '%s\n\n- **Purpose:** Fresh Proxmox test image installed from a verified ISO\n- **ISO URL:** `%s`\n- **ISO SHA-256:** `%s`\n- **Guest hostname:** `%s`\n- **Network:** VirtIO on `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Guest agent:** enabled\n- **State:** Installer media attached; boot only with `--start`' \
   '## Tailmox ISO-installed Development Image' "$ISO_URL" "$ISO_SHA256" "$HOSTNAME" "$BRIDGE")"
@@ -320,6 +332,8 @@ qm create "$VMID" \
   --onboot 0 \
   --tablet 0 \
   --tags tailmox
+qm importdisk "$VMID" "$ANSWER_DISK_IMAGE" "$STORAGE" --format raw >/dev/null
+qm set "$VMID" --scsi1 "$STORAGE:vm-${VMID}-disk-1" >/dev/null
 
 printf 'VM %s (%s) created with unattended installer media.\n' "$VMID" "$NAME"
 if [[ "$START" == true ]]; then

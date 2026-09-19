@@ -163,6 +163,9 @@ if [[ "$IS_TEMPLATE" != true ]]; then
   if grep -q '^ide2:' <<<"$CONFIG"; then
     qm set "$VMID" --delete ide2
   fi
+  if grep -q '^scsi1:' <<<"$CONFIG"; then
+    qm set "$VMID" --delete scsi1
+  fi
   TEMPLATE_NOTE="$(printf '%s\n\n- **State:** Prepared source VM converted to reusable template\n- **ISO SHA-256:** `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Guest agent:** enabled\n- **Linked clones:** `%s`' \
     '## Tailmox Development Template' "$ISO_SHA256" "$CLONE_COUNT")"
   qm set "$VMID" --name "$NAME" --description "$TEMPLATE_NOTE"
