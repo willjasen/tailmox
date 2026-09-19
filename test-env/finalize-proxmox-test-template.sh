@@ -12,6 +12,7 @@ CLONE_PREFIX="tailmox-t"
 SNAPSHOT_NAME="ready-for-testing"
 ISO_SHA256=""
 VERIFY_REBOOT=false
+ROOT_PASSWORD_FILE=""
 
 usage() {
   cat <<EOF
@@ -26,6 +27,8 @@ Options:
   --snapshot NAME        Initial clone snapshot name (default: ready-for-testing)
   --iso-sha256 HASH      ISO hash to include in template and clone notes
   --verify-reboot        Reboot and verify the guest agent before conversion
+  --root-password-file FILE
+                         Root password file for the serial-console package check
   --help                 Show this help
 EOF
 }
@@ -58,6 +61,7 @@ while [[ $# -gt 0 ]]; do
     --snapshot) [[ $# -ge 2 ]] || die "--snapshot requires a value"; SNAPSHOT_NAME="$2"; shift 2 ;;
     --iso-sha256) [[ $# -ge 2 ]] || die "--iso-sha256 requires a value"; ISO_SHA256="$2"; shift 2 ;;
     --verify-reboot) VERIFY_REBOOT=true; shift ;;
+    --root-password-file) [[ $# -ge 2 ]] || die "--root-password-file requires a value"; ROOT_PASSWORD_FILE="$2"; shift 2 ;;
     --help|-h) usage; exit 0 ;;
     *) die "Unknown argument: $1" ;;
   esac
@@ -68,6 +72,7 @@ require_command qm
 require_command pvesh
 require_command jq
 require_command openssl
+require_command expect
 [[ "$(id -u)" -eq 0 ]] || die "Run this script as root on an outer Proxmox node"
 [[ -n "$VMID" ]] || die "--vmid is required"
 require_positive_integer "--vmid" "$VMID"
@@ -77,6 +82,25 @@ require_positive_integer "--clone-vmid-start" "$CLONE_VMID_START"
 [[ "$SNAPSHOT_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "Invalid snapshot name"
 [[ -z "$ISO_SHA256" || "$ISO_SHA256" =~ ^[[:xdigit:]]{64}$ ]] ||
   die "ISO SHA-256 must be exactly 64 hexadecimal characters"
+[[ -n "$ROOT_PASSWORD_FILE" ]] || ROOT_PASSWORD_FILE="${TAILMOX_ROOT_PASSWORD_FILE:-}"
+[[ -f "$ROOT_PASSWORD_FILE" ]] || die "A root password file is required for the serial-console package check"
+
+check_packages_over_terminal() {
+  local password="$1"
+  TAILMOX_ROOT_PASSWORD="$password" expect <<'EXPECT'
+set timeout 1800
+spawn qm terminal $env(VMID)
+expect {
+  -re "(?i)(login|username):" { send "root\r"; exp_continue }
+  -re "(?i)password:" { send "$env(TAILMOX_ROOT_PASSWORD)\r" }
+}
+expect -re {[#\$] $}
+send -- "export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect; apt-get install -y --only-upgrade ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect; systemctl enable --now qemu-guest-agent.service serial-getty@ttyS0.service; if command -v tailscale >/dev/null 2>&1; then tailscale update --yes; else curl -fsSL https://tailscale.com/install.sh | sh; fi; printf '__TAILMOX_PACKAGES_OK__\\n'\r"
+expect "__TAILMOX_PACKAGES_OK__"
+send -- "exit\r"
+expect eof
+EXPECT
+}
 
 qm status "$VMID" >/dev/null 2>&1 || die "VM $VMID does not exist"
 [[ "$(qm status "$VMID" | awk -F': ' '/^status:/ {print $2}')" == "stopped" ]] ||
@@ -103,6 +127,29 @@ if [[ "$VERIFY_REBOOT" == true && "$IS_TEMPLATE" != true ]]; then
   for attempt in $(seq 1 24); do
     [[ "$(qm status "$VMID" | awk -F': ' '/^status:/ {print $2}')" == "stopped" ]] && break
     [[ "$attempt" -eq 24 ]] && die "VM $VMID did not stop after verification"
+    sleep 5
+  done
+  CONFIG="$(qm config "$VMID")"
+fi
+if [[ "$IS_TEMPLATE" != true ]]; then
+  ROOT_PASSWORD="$(head -n 1 "$ROOT_PASSWORD_FILE")"
+  [[ -n "$ROOT_PASSWORD" ]] || die "Root password file is empty"
+  qm start "$VMID"
+  for attempt in $(seq 1 60); do
+    qm agent "$VMID" ping >/dev/null 2>&1 && break
+    [[ "$attempt" -eq 60 ]] && die "QEMU guest agent did not become ready for package check"
+    sleep 5
+  done
+  VMID="$VMID" check_packages_over_terminal "$ROOT_PASSWORD" ||
+    die "Serial-console package check failed"
+  qm agent "$VMID" ping >/dev/null 2>&1 ||
+    die "QEMU guest agent did not respond after package installation"
+  unset ROOT_PASSWORD
+  qm shutdown "$VMID" --timeout 120 >/dev/null 2>&1 ||
+    die "Could not shut down VM $VMID after package check"
+  for attempt in $(seq 1 24); do
+    [[ "$(qm status "$VMID" | awk -F': ' '/^status:/ {print $2}')" == "stopped" ]] && break
+    [[ "$attempt" -eq 24 ]] && die "VM $VMID did not stop after package check"
     sleep 5
   done
   CONFIG="$(qm config "$VMID")"

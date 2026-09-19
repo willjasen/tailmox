@@ -7,6 +7,7 @@ trap 'rm -rf "$TEST_STATE_DIR"' EXIT
 export TEST_STATE_DIR
 
 id() { [[ "${1:-}" == "-u" ]] && echo 0; }
+printf 'tailmox-test\n' >"$TEST_STATE_DIR/password"
 pvesh() {
   [[ "$*" == "get /cluster/resources --type vm --output-format json" ]] && {
     echo '[]'
@@ -39,13 +40,18 @@ openssl() {
   printf '%s\n' "$count" >"$TEST_STATE_DIR/random-count"
   printf '0%03x\n' "$count"
 }
-export -f id pvesh qm openssl
+expect() {
+  cat >"$TEST_STATE_DIR/expect-script"
+  return 0
+}
+export -f id pvesh qm openssl expect
 
 OUTPUT=$(
   "$TEST_ROOT/test-env/finalize-proxmox-test-template.sh" \
     --vmid 50051 \
     --clone-count 2 \
     --clone-vmid-start 50052 \
+    --root-password-file "$TEST_STATE_DIR/password" \
     --iso-sha256 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 )
 
@@ -60,5 +66,9 @@ grep -q '^clone 50051 50052 ' "$TEST_STATE_DIR/qm-calls" &&
   { echo "FAIL: linked-clone recovery snapshots were not created" >&2; exit 1; }
 grep -q 'and 2 linked clone(s) are ready' <<<"$OUTPUT" ||
   { echo "FAIL: finalization summary was not emitted" >&2; exit 1; }
+grep -q 'qemu-guest-agent.service serial-getty@ttyS0.service' "$TEST_STATE_DIR/expect-script" ||
+  { echo "FAIL: package check does not enable the guest agent and ttyS0" >&2; exit 1; }
+grep -q 'apt-get install -y --only-upgrade' "$TEST_STATE_DIR/expect-script" ||
+  { echo "FAIL: package check performs an unrestricted package upgrade" >&2; exit 1; }
 
 echo "PASS: installed VM converts to template with linked clones"

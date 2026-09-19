@@ -187,8 +187,12 @@ the linked clones with the separate finalization helper:
 The helper refuses to convert a running VM, preserves the serial/VGA and guest
 agent settings already applied by the installer, adds a `ready-for-testing`
 snapshot to every stopped linked clone, and records the ISO hash in the
-template and clone notes. It does not start any VM; use `stage-clone.sh` only
-after reviewing the clones.
+template and clone notes. Before conversion it boots the guest, verifies a
+reboot and `qm terminal` access, then uses that serial console to install or
+update the required packages (`qemu-guest-agent`, `git`, `jq`, `expect`,
+network/DNS dependencies, and Tailscale). Pass the same root-password file
+used for ISO installation with `--root-password-file`. It does not start any
+clone; use `stage-clone.sh` only after reviewing them.
 
 To configure the outer Proxmox VM before starting a fresh guest, run:
 
