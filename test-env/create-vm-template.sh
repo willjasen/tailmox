@@ -277,7 +277,7 @@ cleanup_failed_template() {
 trap cleanup_failed_template EXIT
 
 echo "Creating VM $VMID ($NAME)..."
-TEMPLATE_DESCRIPTION=$(printf '%s\n\n- **Name:** `%s`\n- **Purpose:** Source for linked Tailmox development VMs\n- **Storage:** `%s`\n- **Default bridge:** `%s`\n- **Power policy:** Keep stopped; clone before use' \
+TEMPLATE_DESCRIPTION=$(printf '%s\n\n- **Name:** `%s`\n- **Purpose:** Source for linked Tailmox development VMs\n- **Storage:** `%s`\n- **Default bridge:** `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Power policy:** Keep stopped; clone before use' \
   '## Tailmox Development Template' "$NAME" "$STORAGE" "$BRIDGE")
 qm create "$VMID" \
   --name "$NAME" \
@@ -331,7 +331,7 @@ for ((index = 1; index <= CLONE_COUNT; index++)); do
   qm clone "$VMID" "$CLONE_VMID" \
     --name "$CLONE_NAME" \
     --full 0
-  CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **Proxmox node:** `%s`\n- **Network:** VirtIO on `%s`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
+  CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **Proxmox node:** `%s`\n- **Network:** VirtIO on `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
     "## Tailmox Development Node $index" "$CLONE_VMID" "$CLONE_NAME" "$VMID" "$NAME" \
     "$(hostname)" "$BRIDGE" "$SNAPSHOT_NAME")
   qm set "$CLONE_VMID" \

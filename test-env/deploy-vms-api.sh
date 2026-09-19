@@ -346,7 +346,7 @@ for ((index = 1; index <= COUNT; index++)); do
     die "Proxmox did not return a task ID for VM $VMID"
   wait_for_task "$TEMPLATE_NODE" "$CLONE_UPID"
 
-  CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **Proxmox node:** `%s`\n- **Network:** VirtIO on `%s`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
+  CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **Proxmox node:** `%s`\n- **Network:** VirtIO on `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
     "## Tailmox Development Node $index" "$VMID" "$VM_NAME" "$TEMPLATE_VMID" "$TEMPLATE" \
     "$NODE" "$NETWORK_BRIDGE" "$SNAPSHOT_NAME")
   CONFIG_ARGS=(
