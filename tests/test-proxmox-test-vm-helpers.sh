@@ -60,8 +60,24 @@ grep -Fq -- 'set 50051 --serial0 socket --vga std --agent 1 --net0 virtio,bridge
 grep -Fqx 'start 50051' "$TEST_STATE_DIR/qm-calls" ||
   { printf 'FAIL: host helper did not start the requested VM\n' >&2; exit 1; }
 
-mkdir -p "$TEST_STATE_DIR/etc"
+mkdir -p "$TEST_STATE_DIR/etc/apt/sources.list.d"
 : >"$TEST_STATE_DIR/etc/hosts"
+cat >"$TEST_STATE_DIR/etc/apt/sources.list.d/pve-enterprise.sources" <<'EOF'
+Types: deb
+URIs: https://enterprise.proxmox.com/debian/pve
+Suites: trixie
+Components: pve-enterprise
+Enabled: yes
+EOF
+# Proxmox ships the enterprise ceph repo under its own file name (not
+# pve-enterprise.*), which previously was not disabled.
+cat >"$TEST_STATE_DIR/etc/apt/sources.list.d/ceph.sources" <<'EOF'
+Types: deb
+URIs: https://enterprise.proxmox.com/debian/ceph-squid
+Suites: trixie
+Components: enterprise
+Enabled: yes
+EOF
 PATH="$TEST_STATE_DIR/bin:$PATH" \
   PATH="$TEST_STATE_DIR/bin:/usr/bin:/bin" \
   TAILMOX_ETC_DIR="$TEST_STATE_DIR/etc" \
@@ -69,6 +85,12 @@ PATH="$TEST_STATE_DIR/bin:$PATH" \
   "$TEST_ROOT/test-env/prepare-proxmox-test-guest.sh"
 grep -Fqx 'update' "$TEST_STATE_DIR/apt-calls" ||
   { printf 'FAIL: guest helper did not update package metadata\n' >&2; exit 1; }
+grep -Fqx 'Enabled: no' "$TEST_STATE_DIR/etc/apt/sources.list.d/pve-enterprise.sources" ||
+  { printf 'FAIL: guest helper did not disable the pve enterprise repository\n' >&2; exit 1; }
+grep -Fqx 'Enabled: no' "$TEST_STATE_DIR/etc/apt/sources.list.d/ceph.sources" ||
+  { printf 'FAIL: guest helper did not disable the ceph enterprise repository\n' >&2; exit 1; }
+grep -Fq 'pve-no-subscription' "$TEST_STATE_DIR/etc/apt/sources.list.d/pve-no-subscription.list" ||
+  { printf 'FAIL: guest helper did not enable the no-subscription repository\n' >&2; exit 1; }
 grep -Fq -- 'install -y ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect' "$TEST_STATE_DIR/apt-calls" ||
   { printf 'FAIL: guest helper did not install required packages\n' >&2; exit 1; }
 grep -Fqx 'update --yes' "$TEST_STATE_DIR/tailscale-calls" ||

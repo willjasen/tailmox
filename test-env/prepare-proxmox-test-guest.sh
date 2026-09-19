@@ -38,13 +38,19 @@ fi
 
 printf 'Refreshing package metadata...\n'
 PROXMOX_CODENAME="$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")"
-for source_file in /etc/apt/sources.list.d/pve-enterprise.list \
-  /etc/apt/sources.list.d/pve-enterprise.sources; do
-  if [[ -f "$source_file" ]]; then
+APT_SOURCES_DIR="$ETC_DIR/apt/sources.list.d"
+# Disable every enterprise repository file (for example pve-enterprise.sources
+# and ceph.sources), not just a fixed set of filenames, since Proxmox ships
+# the enterprise ceph repo under its own file name.
+shopt -s nullglob
+for source_file in "$APT_SOURCES_DIR"/*.list "$APT_SOURCES_DIR"/*.sources; do
+  if grep -q 'enterprise\.proxmox\.com' "$source_file"; then
     sed -i -E 's/^Enabled:[[:space:]]*yes/Enabled: no/; s|^deb |# deb |' "$source_file"
   fi
 done
-cat > /etc/apt/sources.list.d/pve-no-subscription.list <<EOF
+shopt -u nullglob
+mkdir -p "$APT_SOURCES_DIR"
+cat > "$APT_SOURCES_DIR/pve-no-subscription.list" <<EOF
 deb http://download.proxmox.com/debian/pve ${PROXMOX_CODENAME} pve-no-subscription
 EOF
 apt-get update
