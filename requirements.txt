@@ -1,0 +1,2 @@
+# Tailmox uses only Python's standard library.
+# Keep this file so dependency scanners can evaluate the Python dependency set.
