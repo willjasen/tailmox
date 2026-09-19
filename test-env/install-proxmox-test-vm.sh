@@ -25,7 +25,7 @@ INSECURE_DOWNLOAD=false
 ROOT_PASSWORD_FILE="${TAILMOX_PVE_ROOT_PASSWORD_FILE:-}"
 ROOT_PASSWORD_HASH="${TAILMOX_PVE_ROOT_PASSWORD_HASH:-}"
 HOSTNAME=""
-FIRST_BOOT_URL="https://raw.githubusercontent.com/willjasen/tailmox/willjasen-issue-28/test-env/prepare-proxmox-test-guest.sh"
+FIRST_BOOT_URL="https://raw.githubusercontent.com/willjasen/tailmox/dev/test-env/prepare-proxmox-test-guest.sh"
 
 usage() {
   cat <<EOF

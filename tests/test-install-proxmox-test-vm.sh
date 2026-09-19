@@ -71,7 +71,7 @@ grep -q '^importdisk 50051 ' "$TEST_STATE_DIR/qm-calls" &&
   { echo "FAIL: answer disk was not attached separately" >&2; exit 1; }
 grep -q 'source = "from-url"' "$TEST_STATE_DIR/work/answer.toml" &&
   grep -q 'ordering = "network-online"' "$TEST_STATE_DIR/work/answer.toml" &&
-  grep -q 'https://raw.githubusercontent.com/willjasen/tailmox/willjasen-issue-28/test-env/prepare-proxmox-test-guest.sh' \
+  grep -q 'https://raw.githubusercontent.com/willjasen/tailmox/dev/test-env/prepare-proxmox-test-guest.sh' \
     "$TEST_STATE_DIR/work/answer.toml" ||
   { echo "FAIL: answer file does not configure the branch-pinned first-boot URL" >&2; exit 1; }
 grep -q 'unattended installer media' <<<"$OUTPUT" ||
