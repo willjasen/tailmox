@@ -81,5 +81,7 @@ grep -q 'pve-enterprise.sources' "$TEST_STATE_DIR/work/tailmox-first-boot.sh" &&
   { echo "FAIL: first-boot hook does not configure Proxmox repositories" >&2; exit 1; }
 grep -q 'unattended installer media' <<<"$OUTPUT" ||
   { echo "FAIL: installer summary was not emitted" >&2; exit 1; }
+grep -q 'qm sendkey "\$VMID" ret' "$TEST_ROOT/test-env/install-proxmox-test-vm.sh" ||
+  { echo "FAIL: installer boot menu advance was not implemented" >&2; exit 1; }
 
 echo "PASS: ISO installer prepares and creates a guest-agent-enabled VM"

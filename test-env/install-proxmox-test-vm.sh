@@ -322,6 +322,11 @@ qm create "$VMID" \
 printf 'VM %s (%s) created with unattended installer media.\n' "$VMID" "$NAME"
 if [[ "$START" == true ]]; then
   qm start "$VMID"
+  # The prepared ISO normally selects its automated entry after 10 seconds.
+  # Proxmox virtual firmware can leave that menu focused, so confirm the
+  # default entry once after the documented timeout.
+  sleep 12
+  qm sendkey "$VMID" ret >/dev/null 2>&1 || true
   printf 'VM %s started. The first-boot hook installs guest dependencies and enables qm terminal access.\n' "$VMID"
   [[ "$WAIT_FOR_AGENT" == true ]] && wait_for_agent
 else
