@@ -247,18 +247,21 @@ set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect
+curl -fsSL https://tailscale.com/install.sh | sh
 hostnamectl set-hostname "__TAILMOX_HOSTNAME__"
 if grep -qE '^iface vmbr0 inet ' /etc/network/interfaces; then
   sed -i -E 's/^iface vmbr0 inet .*/iface vmbr0 inet dhcp/' /etc/network/interfaces
 fi
 mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
-systemctl enable qemu-guest-agent.service serial-getty@ttyS0.service resolvconf.service
+systemctl enable --now qemu-guest-agent.service serial-getty@ttyS0.service resolvconf.service
+systemctl enable --now tailscaled.service
+tailscale version >/var/log/tailmox-first-boot-tailscale-version
 cat >/etc/tailmox-image-release <<'RELEASE'
 TAILMOX_IMAGE_RELEASE=0
 TAILMOX_PREPARE_API=0
 RELEASE
 chmod 0644 /etc/tailmox-image-release
-systemctl restart qemu-guest-agent.service || true
+touch /etc/tailmox-first-boot-complete
 EOF
 TAILMOX_INSTALL_HOSTNAME="$HOSTNAME" perl -0pi \
   -e 's/__TAILMOX_HOSTNAME__/$ENV{TAILMOX_INSTALL_HOSTNAME}/g' \

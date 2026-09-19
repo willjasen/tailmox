@@ -65,6 +65,15 @@ grep -q -- '--serial0 socket' "$TEST_STATE_DIR/qm-calls" ||
   { echo "FAIL: serial console was not configured" >&2; exit 1; }
 grep -q -- '--agent 1' "$TEST_STATE_DIR/qm-calls" ||
   { echo "FAIL: guest agent was not configured" >&2; exit 1; }
+grep -q 'curl -fsSL https://tailscale.com/install.sh | sh' \
+  "$TEST_STATE_DIR/work/tailmox-first-boot.sh" ||
+  { echo "FAIL: first-boot hook does not install Tailscale" >&2; exit 1; }
+grep -q 'systemctl enable --now qemu-guest-agent.service serial-getty@ttyS0.service' \
+  "$TEST_STATE_DIR/work/tailmox-first-boot.sh" ||
+  { echo "FAIL: first-boot hook does not enable guest agent and ttyS0" >&2; exit 1; }
+grep -q 'systemctl enable --now tailscaled.service' \
+  "$TEST_STATE_DIR/work/tailmox-first-boot.sh" ||
+  { echo "FAIL: first-boot hook does not enable Tailscale" >&2; exit 1; }
 grep -q 'unattended installer media' <<<"$OUTPUT" ||
   { echo "FAIL: installer summary was not emitted" >&2; exit 1; }
 
