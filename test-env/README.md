@@ -10,6 +10,25 @@ To faciliate in quick testing, I have developed a way to create a testing enviro
 
 The `create-vm-template.sh` script downloads the preconfigured image from an IPFS gateway, verifies it, and sets it up as a template named `tailmox-template` in Proxmox. It can also create linked clones of the template:
 
+> **Important: current Tailmox test image source**
+>
+> The compressed image used by the default test template is permanently
+> identified by this IPFS CID:
+>
+> ```text
+> bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy
+> ```
+>
+> The uncompressed image CID is:
+>
+> ```text
+> bafybeidxzo6vw73phymnsvqeb7ltulw3xj6yvrp4etd4vwcr7wweb6foya
+> ```
+>
+> These values are also recorded in `template.json` and must not be changed
+> for an existing image release. Record new CIDs as a new image release when
+> publishing a replacement image.
+
 ```bash
 ./create-vm-template.sh \
   --vmid 50000 \
