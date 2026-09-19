@@ -54,7 +54,7 @@ function fail() {
 : > "$TAILMOX_TEST_CALLS"
 TAILMOX_TEST_SERVE_MODE=success
 export TAILMOX_TEST_SERVE_MODE
-if configure_tailscale_serve --bg https+insecure://localhost:8006 >/dev/null 2>&1 &&
+if configure_tailscale_serve https+insecure://localhost:8006 >/dev/null 2>&1 &&
     grep -Fqx 'serve --yes --bg https+insecure://localhost:8006' "$TAILMOX_TEST_CALLS"; then
     pass "Serve runs in the background without interactive prompts"
 else

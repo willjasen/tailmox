@@ -1171,6 +1171,9 @@ function configure_tailscale_serve() {
     local timeout_seconds="${TAILMOX_TAILSCALE_SERVE_TIMEOUT_SECONDS:-30}"
     local output
     local status
+    local args=("$@")
+    local has_background=false
+    local arg
 
     if [[ ! "$timeout_seconds" =~ ^[1-9][0-9]*$ ]]; then
         log_echo "${RED}TAILMOX_TAILSCALE_SERVE_TIMEOUT_SECONDS must be a positive integer.${RESET}"
@@ -1181,14 +1184,24 @@ function configure_tailscale_serve() {
         return 1
     fi
 
+    for arg in "${args[@]}"; do
+        if [[ "$arg" == "--bg" || "$arg" == "-bg" ]]; then
+            has_background=true
+            break
+        fi
+    done
+    if [[ "$has_background" == "false" ]]; then
+        args=(--bg "${args[@]}")
+    fi
+
     output=$(timeout --foreground "${timeout_seconds}s" \
-        tailscale serve --yes "$@" 2>&1)
+        tailscale serve --yes "${args[@]}" 2>&1)
     status=$?
     if [[ "$status" -eq 0 ]]; then
         return 0
     fi
-    if [[ "$status" -eq 124 ]]; then
-        log_echo "${RED}Tailscale Serve did not respond within ${timeout_seconds} seconds.${RESET}"
+    if [[ "$status" -eq 124 || "$status" -eq 130 || "$status" -eq 143 ]]; then
+        log_echo "${RED}Tailscale Serve did not respond within ${timeout_seconds} seconds or was interrupted.${RESET}"
     else
         log_echo "${RED}Unable to configure Tailscale Serve.${RESET}"
     fi
