@@ -323,8 +323,9 @@ for ((index = 1; index <= CLONE_COUNT; index++)); do
   qm clone "$VMID" "$CLONE_VMID" \
     --name "$CLONE_NAME" \
     --full 0
-  CLONE_DESCRIPTION=$(printf '%s\n\n- **Name:** `%s`\n- **Source template:** `%s` (`%s`)\n- **Network bridge:** `%s`\n- **Recovery snapshot:** `%s`' \
-    "## Tailmox Development Node $index" "$CLONE_NAME" "$VMID" "$NAME" "$BRIDGE" "$SNAPSHOT_NAME")
+  CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **Network:** DHCP on `%s`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
+    "## Tailmox Development Node $index" "$CLONE_VMID" "$CLONE_NAME" "$VMID" "$NAME" \
+    "$BRIDGE" "$SNAPSHOT_NAME")
   qm set "$CLONE_VMID" \
     --description "$CLONE_DESCRIPTION"
   qm snapshot "$CLONE_VMID" "$SNAPSHOT_NAME" \

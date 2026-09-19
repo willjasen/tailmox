@@ -73,6 +73,10 @@ This creates VMs `50011`, `50012`, and `50013` named `tailmox50011`,
 `tailmox50012`, and `tailmox50013`. Always check the full requested ID and
 name range before deployment; the helper refuses any collision.
 
+Each linked clone receives a Proxmox note describing its VM ID, hostname,
+source template, DHCP network on `vlan3`, `/opt/tailmox` `dev` checkout,
+`dev-tailmox` service label, and `ready-for-testing` recovery snapshot.
+
 To ensure that the linked clones can get online, review the network adapter settings within each VM. The network adapter uses `vmbr0` with no VLAN by default, but your environment may be different.
 
 The local template helper uses the `host` CPU type so nested virtualization is available and disables VM autostart by default. Use `--cpu TYPE` or `--onboot 1` to override those settings.
@@ -120,6 +124,12 @@ Be sure to include the "--auth-key" parameter as well.
 `test-env/setup-vm-image.sh` - stages and runs the template builder on `pve-a2` (or another selected Proxmox host) from a local checkout
 
 `test-env/prepare-linked-clone.sh` - prepares a newly booted clone with DHCP, a unique hostname, and the latest Tailmox development branch
+
+`test-env/prepare-linked-clone-agent.sh` - applies the same DHCP, hostname,
+and branch preparation through the Proxmox guest agent when a clone still has
+the image's static `192.168.123.90` address and cannot yet be reached by SSH.
+For VM-ID-based environments, run it on the Proxmox host with
+`--vmid 50011`; it defaults the guest hostname to `tailmox50011`.
 
 `test-env/IMAGE-BUILD-NOTES.md` - records the next-image checklist and the image/preparation-helper versioning contract
 
