@@ -23,6 +23,9 @@ curl() {
     *"/cluster/nextid"*)
       printf '%s\n' '{"data":"200"}'
       ;;
+    *"/nodes/pve4/qemu/100/config"*)
+      printf '%s\n' '{"data":{"net0":"virtio,bridge=vmbr0"}}'
+      ;;
     *"/nodes/pve4/storage"*)
       printf '%s\n' \
         '{"data":[{"storage":"local-zfs","active":1,"content":"images,rootdir"}]}'

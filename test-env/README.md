@@ -74,8 +74,9 @@ This creates VMs `50011`, `50012`, and `50013` named `tailmox50011`,
 name range before deployment; the helper refuses any collision.
 
 Each linked clone receives a Proxmox note describing its VM ID, hostname,
-source template, DHCP network on `vlan3`, `/opt/tailmox` `dev` checkout,
-`dev-tailmox` service label, and `ready-for-testing` recovery snapshot.
+source template, Proxmox node, actual VirtIO bridge, `/opt/tailmox` `dev`
+checkout, `dev-tailmox` service label, and `ready-for-testing` recovery
+snapshot.
 
 To ensure that the linked clones can get online, review the network adapter settings within each VM. The network adapter uses `vmbr0` with no VLAN by default, but your environment may be different.
 

@@ -279,6 +279,12 @@ fi
 TEMPLATE_DETAILS=$(jq -ec '.[0]' <<<"$TEMPLATE_MATCHES")
 TEMPLATE_VMID=$(jq -er '.vmid' <<<"$TEMPLATE_DETAILS")
 TEMPLATE_NODE=$(jq -er '.node' <<<"$TEMPLATE_DETAILS")
+TEMPLATE_CONFIG_RESPONSE=$(api_request GET "/nodes/$TEMPLATE_NODE/qemu/$TEMPLATE_VMID/config")
+TEMPLATE_NET0=$(jq -r '.data.net0 // empty' <<<"$TEMPLATE_CONFIG_RESPONSE")
+TEMPLATE_BRIDGE=$(sed -n 's/.*bridge=\([^,]*\).*/\1/p' <<<"$TEMPLATE_NET0")
+[[ -n "$TEMPLATE_BRIDGE" ]] ||
+  die "Template '$TEMPLATE' does not have a bridge configured in net0"
+NETWORK_BRIDGE="${BRIDGE:-$TEMPLATE_BRIDGE}"
 
 if [[ -n "$STORAGE" ]]; then
   STORAGES_RESPONSE=$(api_request GET "/nodes/$NODE/storage")
@@ -348,9 +354,9 @@ for ((index = 1; index <= COUNT; index++)); do
     die "Proxmox did not return a task ID for VM $VMID"
   wait_for_task "$TEMPLATE_NODE" "$CLONE_UPID"
 
-  CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **Network:** DHCP on `%s`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
+  CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **Proxmox node:** `%s`\n- **Network:** VirtIO on `%s`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
     "## Tailmox Development Node $index" "$VMID" "$VM_NAME" "$TEMPLATE_VMID" "$TEMPLATE" \
-    "${BRIDGE:-vlan3}" "$SNAPSHOT_NAME")
+    "$NODE" "$NETWORK_BRIDGE" "$SNAPSHOT_NAME")
   CONFIG_ARGS=(--data-urlencode "description=$CLONE_DESCRIPTION")
   if [[ -n "$BRIDGE" ]]; then
     CONFIG_ARGS+=(--data-urlencode "net0=virtio,bridge=$BRIDGE")
