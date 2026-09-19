@@ -313,7 +313,7 @@ qm create "$VMID" \
   --serial0 socket \
   --vga std \
   --agent 1 \
-  --boot 'order=ide2;scsi0' \
+  --boot 'order=scsi0;ide2' \
   --ostype l26 \
   --onboot 0 \
   --tablet 0 \
