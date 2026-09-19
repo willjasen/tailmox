@@ -239,17 +239,17 @@ timezone = "America/New_York"
 root-password-hashed = "$ROOT_PASSWORD_HASH"
 reboot-mode = "reboot"
 
-[first-boot]
-source = "from-url"
-ordering = "network-online"
-url = "$FIRST_BOOT_URL"
-
 [network]
 source = "from-dhcp"
 
 [disk-setup]
 filesystem = "ext4"
 disk-list = ["sda"]
+
+[first-boot]
+source = "from-url"
+ordering = "network-online"
+url = "$FIRST_BOOT_URL"
 EOF
 
 proxmox-auto-install-assistant prepare-iso "$SOURCE_ISO" \
