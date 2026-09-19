@@ -65,6 +65,8 @@ grep -q -- '--serial0 socket' "$TEST_STATE_DIR/qm-calls" ||
   { echo "FAIL: serial console was not configured" >&2; exit 1; }
 grep -q -- '--agent 1' "$TEST_STATE_DIR/qm-calls" ||
   { echo "FAIL: guest agent was not configured" >&2; exit 1; }
+grep -q -- '--boot order=ide2;scsi0' "$TEST_STATE_DIR/qm-calls" ||
+  { echo "FAIL: installer ISO was not first in the initial boot order" >&2; exit 1; }
 grep -q 'curl -fsSL https://tailscale.com/install.sh | sh' \
   "$TEST_STATE_DIR/work/tailmox-first-boot.sh" ||
   { echo "FAIL: first-boot hook does not install Tailscale" >&2; exit 1; }

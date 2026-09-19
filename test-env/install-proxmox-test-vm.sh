@@ -93,6 +93,8 @@ wait_for_agent() {
   while ((attempts < 60)); do
     if qm agent "$VMID" ping >/dev/null 2>&1; then
       printf 'QEMU guest agent is available for VM %s.\n' "$VMID"
+      qm set "$VMID" --boot 'order=scsi0;ide2' >/dev/null
+      printf 'VM %s boot order changed to installed disk first.\n' "$VMID"
       return 0
     fi
     sleep 5
@@ -311,7 +313,7 @@ qm create "$VMID" \
   --serial0 socket \
   --vga std \
   --agent 1 \
-  --boot 'order=scsi0;ide2' \
+  --boot 'order=ide2;scsi0' \
   --ostype l26 \
   --onboot 0 \
   --tablet 0 \
