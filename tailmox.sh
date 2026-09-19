@@ -1083,7 +1083,7 @@ function install_post_quantum_age() {
 function install_dependencies() {
     log_echo "${YELLOW}Checking for required dependencies...${RESET}"
 
-    local dependencies=(curl expect git jq openssl python3 resolvconf)
+    local dependencies=(curl expect git jq openssl python3)
     for dep in "${dependencies[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
             log_echo "${YELLOW}$dep not found. Installing...${RESET}"
@@ -1296,6 +1296,7 @@ function start_tailscale() {
     local saved_auth_key=false
     local status_json
     local backend_state
+    local dns_name
 
     if ! status_json=$(tailscale status --json 2>/dev/null) ||
         ! jq empty <<< "$status_json" >/dev/null 2>&1; then
@@ -1344,6 +1345,13 @@ function start_tailscale() {
     fi
     log_echo "${GREEN}Tailscale DNS is enabled.${RESET}"
 
+    dns_name=$(tailscale status --json | jq -r '.Self.DNSName // ""' | sed 's/\.$//')
+    if [[ -z "$dns_name" ]] || ! getent hosts "$dns_name" >/dev/null 2>&1; then
+        log_echo "${RED}Tailscale DNS is enabled, but the local MagicDNS name does not resolve: ${dns_name:-unknown}.${RESET}"
+        return 1
+    fi
+    log_echo "${GREEN}Verified local MagicDNS resolution for $dns_name.${RESET}"
+
     if [[ "$backend_state" == "NeedsLogin" && "$saved_auth_key" != true ]]; then
         if ! save_tailscale_auth_key "$auth_key"; then
             log_echo "${RED}Tailscale connected, but the auth key could not be saved securely to $TAILMOX_AUTH_ENV_FILE.${RESET}"
@@ -1360,7 +1368,7 @@ function start_tailscale() {
         TAILSCALE_IP=$(tailscale ip -4)
     done
 
-    TAILSCALE_DNS_NAME=$(tailscale status --json | jq -r '.Self.DNSName' | sed 's/\.$//')
+    TAILSCALE_DNS_NAME="$dns_name"
     log_echo "${GREEN}This host's Tailscale IPv4 address: $TAILSCALE_IP ${RESET}"
     log_echo "${GREEN}This host's Tailscale MagicDNS name: $TAILSCALE_DNS_NAME ${RESET}"
 }

@@ -64,9 +64,10 @@ character alphanumeric password instead. Store reported passwords securely;
 they are not written to the image, repository, or Proxmox notes.
 
 The preparation helper converts the image's static `192.168.123.90` network
-configuration to DHCP, installs the DHCP client when necessary, removes the
-stale image hostname from `/etc/hosts`, and deploys the latest `dev` branch to
-`/opt/tailmox`. It also sets the shared Tailscale service label to
+configuration to DHCP, installs the DHCP client and `resolvconf` when
+necessary, delegates `/etc/resolv.conf` to the DHCP-managed resolver, removes
+the stale image hostname from `/etc/hosts`, and deploys the latest `dev` branch
+to `/opt/tailmox`. It also sets the shared Tailscale service label to
 `dev-tailmox` and initializes `/usr/local/bin/tailmox`. It is safe to rerun on
 an already-prepared clone, but refuses to update a dirty Git checkout or an
 unrecognized network configuration. It does not authenticate Tailscale or
