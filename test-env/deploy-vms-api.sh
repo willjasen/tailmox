@@ -15,6 +15,7 @@ Required:
 
 Options:
   --template VALUE    Source template VM ID or name (default: tailmox-template)
+  --template-cid CID  Compressed image IPFS CID for VM notes
   --count N           Number of VMs to create (default: 3)
   --vmid-start ID     First linked clone VM ID (default: 50001)
   --name-prefix P     VM name prefix (default: tailmox-t)
@@ -52,6 +53,7 @@ API_URL=""
 NODE=""
 TEMPLATE="tailmox-template"
 SNAPSHOT_NAME="ready-for-testing"
+TEMPLATE_CID="bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy"
 COUNT="3"
 VMID_START="50001"
 NAME_PREFIX="tailmox-t"
@@ -77,6 +79,11 @@ while [[ $# -gt 0 ]]; do
     --template)
       [[ $# -ge 2 ]] || die "--template requires a value"
       TEMPLATE="$2"
+      shift 2
+      ;;
+    --template-cid)
+      [[ $# -ge 2 ]] || die "--template-cid requires a value"
+      TEMPLATE_CID="$2"
       shift 2
       ;;
     --count)
@@ -346,9 +353,9 @@ for ((index = 1; index <= COUNT; index++)); do
     die "Proxmox did not return a task ID for VM $VMID"
   wait_for_task "$TEMPLATE_NODE" "$CLONE_UPID"
 
-  CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **Proxmox node:** `%s`\n- **Network:** VirtIO on `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
+  CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **IPFS CID:** `%s`\n- **Proxmox node:** `%s`\n- **Network:** VirtIO on `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
     "## Tailmox Development Node $index" "$VMID" "$VM_NAME" "$TEMPLATE_VMID" "$TEMPLATE" \
-    "$NODE" "$NETWORK_BRIDGE" "$SNAPSHOT_NAME")
+    "$TEMPLATE_CID" "$NODE" "$NETWORK_BRIDGE" "$SNAPSHOT_NAME")
   CONFIG_ARGS=(
     --data-urlencode "description=$CLONE_DESCRIPTION"
     --data-urlencode "serial0=socket"

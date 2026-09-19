@@ -73,9 +73,11 @@ hostnames. Always check the full requested ID and name range before
 deployment; the helper refuses any collision.
 
 Each linked clone receives a Proxmox note describing its VM ID, hostname,
-source template, Proxmox node, actual VirtIO bridge, `/opt/tailmox` `dev`
-checkout, `dev-tailmox` service label, and `ready-for-testing` recovery
-snapshot.
+source template, source image IPFS CID, Proxmox node, actual VirtIO bridge,
+`/opt/tailmox` `dev` checkout, `dev-tailmox` service label, and
+`ready-for-testing` recovery snapshot. The API helper uses the current
+compressed CID by default; pass `--template-cid` when deploying a template
+built from another image release.
 
 To ensure that the linked clones can get online, review the network adapter settings within each VM. The network adapter uses `vlan3` by default, but your environment may be different.
 

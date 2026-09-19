@@ -86,6 +86,8 @@ CLONE_COUNT="0"
 CLONE_PREFIX="tailmox-t"
 CLONE_VMID_START="50001"
 SNAPSHOT_NAME="ready-for-testing"
+TEMPLATE_CID=$(json_read ".template.versions.compressed.ipfs.cid_v1")
+[[ -n "$TEMPLATE_CID" ]] || die "Could not read the compressed template CID from template.json"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -277,8 +279,8 @@ cleanup_failed_template() {
 trap cleanup_failed_template EXIT
 
 echo "Creating VM $VMID ($NAME)..."
-TEMPLATE_DESCRIPTION=$(printf '%s\n\n- **Name:** `%s`\n- **Purpose:** Source for linked Tailmox development VMs\n- **Storage:** `%s`\n- **Default bridge:** `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Power policy:** Keep stopped; clone before use' \
-  '## Tailmox Development Template' "$NAME" "$STORAGE" "$BRIDGE")
+TEMPLATE_DESCRIPTION=$(printf '%s\n\n- **Name:** `%s`\n- **Purpose:** Source for linked Tailmox development VMs\n- **IPFS CID:** `%s`\n- **Storage:** `%s`\n- **Default bridge:** `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Power policy:** Keep stopped; clone before use' \
+  '## Tailmox Development Template' "$NAME" "$TEMPLATE_CID" "$STORAGE" "$BRIDGE")
 qm create "$VMID" \
   --name "$NAME" \
   --description "$TEMPLATE_DESCRIPTION" \
@@ -331,9 +333,9 @@ for ((index = 1; index <= CLONE_COUNT; index++)); do
   qm clone "$VMID" "$CLONE_VMID" \
     --name "$CLONE_NAME" \
     --full 0
-  CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **Proxmox node:** `%s`\n- **Network:** VirtIO on `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
+  CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **IPFS CID:** `%s`\n- **Proxmox node:** `%s`\n- **Network:** VirtIO on `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
     "## Tailmox Development Node $index" "$CLONE_VMID" "$CLONE_NAME" "$VMID" "$NAME" \
-    "$(hostname)" "$BRIDGE" "$SNAPSHOT_NAME")
+    "$TEMPLATE_CID" "$(hostname)" "$BRIDGE" "$SNAPSHOT_NAME")
   qm set "$CLONE_VMID" \
     --description "$CLONE_DESCRIPTION"
   qm snapshot "$CLONE_VMID" "$SNAPSHOT_NAME" \

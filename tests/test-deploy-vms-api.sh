@@ -97,6 +97,9 @@ grep -Fq 'newid=50001' "$TEST_STATE_DIR/clone-calls" &&
   { echo "FAIL: expected two network configuration calls" >&2; exit 1; }
 [[ "$(grep -c 'description=## Tailmox Development Node ' "$TEST_STATE_DIR/config-calls")" -eq 2 ]] ||
   { echo "FAIL: expected a useful note for each API-created clone" >&2; exit 1; }
+grep -Fq 'bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy' \
+  "$TEST_STATE_DIR/config-calls" ||
+  { echo "FAIL: expected the source IPFS CID in clone notes" >&2; exit 1; }
 [[ "$(grep -c '/status/start' "$TEST_STATE_DIR/start-calls")" -eq 2 ]] ||
   { echo "FAIL: expected two start calls" >&2; exit 1; }
 [[ "$(grep -c '/snapshot' "$TEST_STATE_DIR/snapshot-calls")" -eq 2 ]] ||
