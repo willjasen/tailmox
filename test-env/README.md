@@ -194,6 +194,11 @@ network/DNS dependencies, and Tailscale). Pass the same root-password file
 used for ISO installation with `--root-password-file`. It does not start any
 clone; use `stage-clone.sh` only after reviewing them.
 
+**Boot-order requirement:** keep the installed disk first with
+`boot: order=scsi0;ide2`. This prevents a completed ISO installation from
+rebooting into the installer again; `ide2` remains attached only as the
+fallback installer device until finalization removes it.
+
 To configure the outer Proxmox VM before starting a fresh guest, run:
 
 ```bash

@@ -301,6 +301,8 @@ install -m 0644 "$PREPARED_ISO" "$ISO_TARGET"
 
 DESCRIPTION="$(printf '%s\n\n- **Purpose:** Fresh Proxmox test image installed from a verified ISO\n- **ISO URL:** `%s`\n- **ISO SHA-256:** `%s`\n- **Guest hostname:** `%s`\n- **Network:** VirtIO on `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Guest agent:** enabled\n- **State:** Installer media attached; boot only with `--start`' \
   '## Tailmox ISO-installed Development Image' "$ISO_URL" "$ISO_SHA256" "$HOSTNAME" "$BRIDGE")"
+ # Keep the installed disk first: after the ISO installer reboots, the guest
+ # must boot Proxmox from scsi0 instead of looping back into the ISO.
 qm create "$VMID" \
   --name "$NAME" \
   --description "$DESCRIPTION" \
