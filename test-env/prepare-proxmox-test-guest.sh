@@ -31,7 +31,12 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y "${PACKAGES[@]}"
 if ! command -v tailscale >/dev/null 2>&1; then
   printf 'Installing Tailscale...\n'
   curl -fsSL https://tailscale.com/install.sh | sh
+else
+  printf 'Updating Tailscale...\n'
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade tailscale
 fi
+printf 'Updating installed Tailmox test dependencies...\n'
+DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade "${PACKAGES[@]}"
 
 printf 'Configuring DHCP networking and DNS...\n'
 mkdir -p "$ETC_DIR/network"

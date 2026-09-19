@@ -142,7 +142,7 @@ stage as root:
 ```
 
 The underlying `prepare-proxmox-test-guest.sh` helper runs `apt-get update`,
-installs Tailscale, `qemu-guest-agent`, `git`, `jq`, and
+installs or updates Tailscale, `qemu-guest-agent`, `git`, `jq`, and
 `expect` plus `isc-dhcp-client` and `resolvconf`. It configures the nested
 `vmbr0` bridge for DHCP, delegates `/etc/resolv.conf` to `resolvconf` so DNS
 also comes from DHCP, then enables and starts `qemu-guest-agent.service`,
