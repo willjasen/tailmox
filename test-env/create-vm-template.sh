@@ -287,7 +287,7 @@ qm create "$VMID" \
   --cpu "$CPU_TYPE" \
   --net0 "virtio,bridge=$BRIDGE" \
   --serial0 socket \
-  --vga serial0 \
+  --vga std \
   --onboot "$ONBOOT" \
   --boot c \
   --bootdisk scsi0 \

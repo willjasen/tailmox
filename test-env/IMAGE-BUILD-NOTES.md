@@ -43,8 +43,9 @@ next image should eliminate that bootstrap step.
 - Include and enable `qemu-guest-agent` so a clone can be prepared before SSH
   networking is available.
 - Include and enable `serial-getty@ttyS0.service`; the Proxmox clone
-  configuration provides `serial0: socket` and `vga: serial0`, but the guest
-  must run the getty before `qm terminal <VMID>` can provide a login shell.
+  configuration provides `serial0: socket` alongside a VGA display, but the
+  guest must run the getty before `qm terminal <VMID>` can provide a login
+  shell.
 - Place a clean Tailmox checkout at `/opt/tailmox`. Do not include uncommitted
   files, credentials, test output, or host-specific configuration.
 - Ensure `/usr/local/bin/tailmox` resolves to `/opt/tailmox/tailmox`.

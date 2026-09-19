@@ -352,7 +352,7 @@ for ((index = 1; index <= COUNT; index++)); do
   CONFIG_ARGS=(
     --data-urlencode "description=$CLONE_DESCRIPTION"
     --data-urlencode "serial0=socket"
-    --data-urlencode "vga=serial0"
+    --data-urlencode "vga=std"
   )
   if [[ -n "$BRIDGE" ]]; then
     CONFIG_ARGS+=(--data-urlencode "net0=virtio,bridge=$BRIDGE")

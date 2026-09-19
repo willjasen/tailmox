@@ -84,10 +84,10 @@ The local template helper uses the `host` CPU type so nested virtualization is a
 The default template resources are 2 vCPUs and 2048 MiB (2 GiB) of RAM;
 linked clones inherit these settings.
 
-Test VMs are configured with `serial0: socket` and `vga: serial0` so they can
-be accessed with `qm terminal <VMID>`. The guest image must also enable
-`serial-getty@ttyS0.service`; changing the Proxmox VM settings alone does not
-create a login prompt.
+Test VMs are configured with `serial0: socket` and `vga: std`, providing both
+the graphical VGA display and `qm terminal <VMID>` serial access. The guest
+image must also enable `serial-getty@ttyS0.service`; changing the Proxmox VM
+settings alone does not create a serial login prompt.
 
 Both deployment helpers add Proxmox Notes automatically. Imported templates are identified as stopped development sources, and linked clones record their source template and `ready-for-testing` recovery point.
 
