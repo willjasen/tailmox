@@ -21,8 +21,9 @@ The `create-vm-template.sh` script downloads the preconfigured image from an IPF
 
 Run this command as root on a Proxmox node. If `--storage` is omitted, the script chooses the first enabled, active storage that supports VM images. It validates the selected storage and bridge before creating anything.
 
-The standard test allocation is VM `50000` for `tailmox-template` and VMs
-`50001`, `50002`, and `50003` for `tailmox1`, `tailmox2`, and `tailmox3`.
+The standard test allocation is VM `50000` for `tailmox-template`. Linked
+clone hostnames use the format `tailmox-t####`, where `####` is a random
+four-character hexadecimal suffix.
 The helper checks that every requested VM ID and name is available before it
 creates the template or any clone.
 
@@ -50,14 +51,13 @@ export PVE_API_TOKEN_SECRET='TOKEN_SECRET'
   --vmid-start 50001
 ```
 
-The API helper prompts for any credentials that are not supplied through the environment. It creates stopped linked clones named `tailmox1`, `tailmox2`, and `tailmox3` by default. Every clone receives a `ready-for-testing` snapshot immediately after creation and before it can be started. Linked clones inherit the template storage. Use `--full --storage NAME` to place full clones on another storage, `--start` to start the clones after their snapshots exist, or `--bridge` to override the inherited template network.
+The API helper prompts for any credentials that are not supplied through the environment. It creates stopped linked clones with random `tailmox-t####` hostnames by default. Every clone receives a `ready-for-testing` snapshot immediately after creation and before it can be started. Linked clones inherit the template storage. Use `--full --storage NAME` to place full clones on another storage, `--start` to start the clones after their snapshots exist, or `--bridge` to override the inherited template network.
 
 The API helper defaults to clone IDs `50001` through `50003` when
-`--count 3` is used. It checks all requested IDs and names before creating any
-clone; use `--vmid-start` to choose a different contiguous range. For multiple
-isolated test environments, allocate another contiguous range and use
-`--name-by-vmid` so the VM IDs and Tailmox hostnames remain identical, for
-example:
+`--count 3` is used. It checks all requested IDs and generated names before
+creating any clone; use `--vmid-start` to choose a different contiguous range.
+For multiple isolated test environments, allocate another contiguous range,
+for example:
 
 ```bash
 ./deploy-vms-api.sh \
@@ -65,13 +65,12 @@ example:
   --node pve4 \
   --template tailmox-template \
   --count 3 \
-  --vmid-start 50011 \
-  --name-by-vmid
+  --vmid-start 50011
 ```
 
-This creates VMs `50011`, `50012`, and `50013` named `tailmox50011`,
-`tailmox50012`, and `tailmox50013`. Always check the full requested ID and
-name range before deployment; the helper refuses any collision.
+This creates VMs `50011`, `50012`, and `50013` with random `tailmox-t####`
+hostnames. Always check the full requested ID and name range before
+deployment; the helper refuses any collision.
 
 Each linked clone receives a Proxmox note describing its VM ID, hostname,
 source template, Proxmox node, actual VirtIO bridge, `/opt/tailmox` `dev`
@@ -85,13 +84,18 @@ The local template helper uses the `host` CPU type so nested virtualization is a
 The default template resources are 2 vCPUs and 2048 MiB (2 GiB) of RAM;
 linked clones inherit these settings.
 
+Test VMs are configured with `serial0: socket` and `vga: serial0` so they can
+be accessed with `qm terminal <VMID>`. The guest image must also enable
+`serial-getty@ttyS0.service`; changing the Proxmox VM settings alone does not
+create a login prompt.
+
 Both deployment helpers add Proxmox Notes automatically. Imported templates are identified as stopped development sources, and linked clones record their source template and `ready-for-testing` recovery point.
 
 Boot a new linked clone (the default credentials are `root` and
 `tailmox-test`), copy `prepare-linked-clone.sh` into it, and run:
 
 ```bash
-./prepare-linked-clone.sh --hostname tailmox1
+./prepare-linked-clone.sh --hostname tailmox-tabcd
 reboot
 ```
 
@@ -133,7 +137,7 @@ Be sure to include the "--auth-key" parameter as well.
 and branch preparation through the Proxmox guest agent when a clone still has
 the image's static `192.168.123.90` address and cannot yet be reached by SSH.
 For VM-ID-based environments, run it on the Proxmox host with
-`--vmid 50011`; it defaults the guest hostname to `tailmox50011`.
+`--vmid 50011`; it defaults the guest hostname to a random `tailmox-t####` name.
 
 `test-env/IMAGE-BUILD-NOTES.md` - records the next-image checklist and the image/preparation-helper versioning contract
 

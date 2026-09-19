@@ -2,6 +2,15 @@
 
 set -Eeuo pipefail
 
+openssl() {
+  local calls_file="${TEST_STATE_DIR}/openssl-calls"
+  local calls=0
+  [[ -f "$calls_file" ]] && calls=$(<"$calls_file")
+  printf '%s\n' "000${calls}"
+  printf '%s\n' "$((calls + 1))" >"$calls_file"
+}
+export -f openssl
+
 TEST_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 TEST_STATE_DIR=$(mktemp -d)
 trap 'rm -rf "$TEST_STATE_DIR"' EXIT
@@ -14,7 +23,7 @@ curl() {
     *"/cluster/resources?type=vm"*)
       if [[ "${MOCK_EXISTING_VM:-false}" == true ]]; then
         printf '%s\n' \
-          '{"data":[{"type":"qemu","template":1,"vmid":100,"name":"tailmox-template","node":"pve4"},{"type":"qemu","template":0,"vmid":150,"name":"tailmox2","node":"pve4"}]}'
+          '{"data":[{"type":"qemu","template":1,"vmid":100,"name":"tailmox-template","node":"pve4"},{"type":"qemu","template":0,"vmid":150,"name":"tailmox-t0000","node":"pve4"},{"type":"qemu","template":0,"vmid":151,"name":"tailmox-t0001","node":"pve4"}]}'
       else
         printf '%s\n' \
           '{"data":[{"type":"qemu","template":1,"vmid":100,"name":"tailmox-template","node":"pve4"}]}'
@@ -102,6 +111,7 @@ grep -q 'Created 2 VM(s) successfully.' <<<"$OUTPUT" ||
 echo "PASS: API deployment snapshots each clone before starting it"
 
 : >"$TEST_STATE_DIR/clone-calls"
+rm -f "$TEST_STATE_DIR/openssl-calls"
 if MOCK_EXISTING_VM=true \
   PVE_API_TOKEN_ID='root@pam!tailmox' \
   PVE_API_TOKEN_SECRET='test-secret' \

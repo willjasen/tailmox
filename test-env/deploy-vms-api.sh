@@ -17,8 +17,7 @@ Options:
   --template VALUE    Source template VM ID or name (default: tailmox-template)
   --count N           Number of VMs to create (default: 3)
   --vmid-start ID     First linked clone VM ID (default: 50001)
-  --name-prefix P     VM name prefix (default: tailmox)
-  --name-by-vmid      Name each VM as <name-prefix><VMID>
+  --name-prefix P     VM name prefix (default: tailmox-t)
   --storage NAME      Target image storage (default: template storage)
   --bridge NAME       Replace net0 with a VirtIO adapter on this bridge
   --full              Create full clones instead of linked clones
@@ -55,8 +54,7 @@ TEMPLATE="tailmox-template"
 SNAPSHOT_NAME="ready-for-testing"
 COUNT="3"
 VMID_START="50001"
-NAME_PREFIX="tailmox"
-NAME_BY_VMID=false
+NAME_PREFIX="tailmox-t"
 STORAGE=""
 BRIDGE=""
 FULL_CLONE="0"
@@ -95,10 +93,6 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || die "--name-prefix requires a value"
       NAME_PREFIX="$2"
       shift 2
-      ;;
-    --name-by-vmid)
-      NAME_BY_VMID=true
-      shift
       ;;
     --storage)
       [[ $# -ge 2 ]] || die "--storage requires a value"
@@ -140,6 +134,7 @@ done
 require_command curl
 require_command jq
 require_command mktemp
+require_command openssl
 
 [[ "$API_URL" == https://* ]] || die "--api-url must be an HTTPS URL"
 [[ -n "$NODE" ]] || die "--node is required"
@@ -307,13 +302,14 @@ if [[ -n "$BRIDGE" ]]; then
     die "Network bridge '$BRIDGE' was not found on node '$NODE'"
 fi
 
+VM_NAMES=()
 for ((index = 1; index <= COUNT; index++)); do
   VMID=$((VMID_START + index - 1))
-  if [[ "$NAME_BY_VMID" == true ]]; then
-    VM_NAME="${NAME_PREFIX}${VMID}"
-  else
-    VM_NAME="${NAME_PREFIX}${index}"
-  fi
+  VM_NAME="${NAME_PREFIX}$(openssl rand -hex 2)"
+  while [[ " ${VM_NAMES[*]-} " == *" ${VM_NAME} "* ]]; do
+    VM_NAME="${NAME_PREFIX}$(openssl rand -hex 2)"
+  done
+  VM_NAMES+=("$VM_NAME")
   if jq -e --arg name "$VM_NAME" '.data[] | select(.name == $name)' \
     <<<"$RESOURCES_RESPONSE" >/dev/null; then
     die "A VM named '$VM_NAME' already exists"
@@ -330,11 +326,7 @@ done
 
 for ((index = 1; index <= COUNT; index++)); do
   VMID=$((VMID_START + index - 1))
-  if [[ "$NAME_BY_VMID" == true ]]; then
-    VM_NAME="${NAME_PREFIX}${VMID}"
-  else
-    VM_NAME="${NAME_PREFIX}${index}"
-  fi
+  VM_NAME="${VM_NAMES[index-1]}"
 
   echo "Cloning template $TEMPLATE_VMID to VM $VMID ($VM_NAME)..."
   CLONE_ARGS=(
@@ -357,7 +349,11 @@ for ((index = 1; index <= COUNT; index++)); do
   CLONE_DESCRIPTION=$(printf '%s\n\n- **VM ID:** `%s`\n- **Hostname:** `%s`\n- **Source template:** `%s` (`%s`)\n- **Proxmox node:** `%s`\n- **Network:** VirtIO on `%s`\n- **Repository:** `/opt/tailmox` on `dev`\n- **Tailscale service:** `dev-tailmox`\n- **Recovery snapshot:** `%s`' \
     "## Tailmox Development Node $index" "$VMID" "$VM_NAME" "$TEMPLATE_VMID" "$TEMPLATE" \
     "$NODE" "$NETWORK_BRIDGE" "$SNAPSHOT_NAME")
-  CONFIG_ARGS=(--data-urlencode "description=$CLONE_DESCRIPTION")
+  CONFIG_ARGS=(
+    --data-urlencode "description=$CLONE_DESCRIPTION"
+    --data-urlencode "serial0=socket"
+    --data-urlencode "vga=serial0"
+  )
   if [[ -n "$BRIDGE" ]]; then
     CONFIG_ARGS+=(--data-urlencode "net0=virtio,bridge=$BRIDGE")
   fi

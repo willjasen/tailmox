@@ -22,7 +22,7 @@ Options:
   --cpu TYPE         Template CPU type (default: host)
   --onboot 0|1       Start clones when the host boots (default: 0)
   --clone-count N    Create N linked clones after the template (default: 0)
-  --clone-prefix P   Clone name prefix (default: tailmox)
+  --clone-prefix P   Clone name prefix (default: tailmox-t)
   --clone-vmid-start ID  First clone VM ID (default: 50001)
   --help              Show this help
 
@@ -83,7 +83,7 @@ CORES="2"
 CPU_TYPE="host"
 ONBOOT="0"
 CLONE_COUNT="0"
-CLONE_PREFIX="tailmox"
+CLONE_PREFIX="tailmox-t"
 CLONE_VMID_START="50001"
 SNAPSHOT_NAME="ready-for-testing"
 
@@ -164,6 +164,7 @@ require_command pvesh
 require_command pvesm
 require_command qm
 require_command ip
+require_command openssl
 
 [[ "$(id -u)" -eq 0 ]] || die "Run this script as root on a Proxmox node"
 [[ -f "$JSON_PATH" ]] || die "Missing metadata file: $JSON_PATH"
@@ -238,8 +239,15 @@ if vm_name_exists "$NAME"; then
   die "A VM or template named '$NAME' already exists"
 fi
 
+CLONE_NAMES=()
 for ((index = 1; index <= CLONE_COUNT; index++)); do
-  CLONE_NAME="${CLONE_PREFIX}${index}"
+  while true; do
+    CLONE_SUFFIX=$(openssl rand -hex 2)
+    CLONE_NAME="${CLONE_PREFIX}${CLONE_SUFFIX}"
+    [[ ! " ${CLONE_NAMES[*]-} " == *" ${CLONE_NAME} "* ]] || continue
+    break
+  done
+  CLONE_NAMES+=("$CLONE_NAME")
   [[ "$CLONE_NAME" != "$NAME" ]] ||
     die "Planned clone name '$CLONE_NAME' conflicts with the template name"
   if vm_name_exists "$CLONE_NAME"; then
@@ -279,7 +287,7 @@ qm create "$VMID" \
   --cpu "$CPU_TYPE" \
   --net0 "virtio,bridge=$BRIDGE" \
   --serial0 socket \
-  --vga std \
+  --vga serial0 \
   --onboot "$ONBOOT" \
   --boot c \
   --bootdisk scsi0 \
@@ -312,7 +320,7 @@ fi
 
 echo "Creating $CLONE_COUNT linked clone(s)..."
 for ((index = 1; index <= CLONE_COUNT; index++)); do
-  CLONE_NAME="${CLONE_PREFIX}${index}"
+  CLONE_NAME="${CLONE_NAMES[index-1]}"
   if [[ -n "$CLONE_VMID_START" ]]; then
     CLONE_VMID=$((CLONE_VMID_START + index - 1))
   else

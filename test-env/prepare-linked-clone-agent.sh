@@ -11,7 +11,7 @@ Usage: $0 --vmid ID [OPTIONS]
 
 Options:
   --vmid ID              Proxmox VM ID (required)
-  --hostname NAME        Guest hostname (default: tailmox<ID>)
+  --hostname NAME        Guest hostname (default: generated tailmox-t####)
   --ref REF              Tailmox Git ref to deploy (default: dev)
   --service-name NAME    Tailscale service label (default: dev-tailmox)
   --root-password PASS   Alphanumeric root password (optional)
@@ -79,9 +79,10 @@ while [[ $# -gt 0 ]]; do
 done
 
 require_command qm
+require_command openssl
 
 [[ "$VMID" =~ ^[1-9][0-9]*$ ]] || die "--vmid must be a positive integer"
-[[ -n "$HOST_NAME" ]] || HOST_NAME="tailmox${VMID}"
+[[ -n "$HOST_NAME" ]] || HOST_NAME="tailmox-t$(openssl rand -hex 2)"
 [[ "$HOST_NAME" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] ||
   die "--hostname must be a lowercase DNS label"
 [[ "$GIT_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ && "$GIT_REF" != *..* ]] ||

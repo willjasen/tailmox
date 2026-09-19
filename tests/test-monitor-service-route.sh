@@ -67,8 +67,8 @@ export TAILMOX_TEST_CALLS="$TEST_DIR/calls"
 : > "$TAILMOX_TEST_CALLS"
 TAILMOX_TEST_CURL_RESULT=success
 export TAILMOX_TEST_CURL_RESULT
-verify_monitor_url 'https://tailmox1.example.ts.net:8088/monitor' >/dev/null
-grep -Fq -- '--retry 5 --retry-delay 1 --retry-all-errors --output /dev/null --write-out %{http_code} https://tailmox1.example.ts.net:8088/monitor' "$TAILMOX_TEST_CALLS" || {
+verify_monitor_url 'https://tailmox-tabcd.example.ts.net:8088/monitor' >/dev/null
+grep -Fq -- '--retry 5 --retry-delay 1 --retry-all-errors --output /dev/null --write-out %{http_code} https://tailmox-tabcd.example.ts.net:8088/monitor' "$TAILMOX_TEST_CALLS" || {
     printf 'FAIL: monitor availability check did not use bounded retries, HTTP status capture, and the full URL\n'
     exit 1
 }

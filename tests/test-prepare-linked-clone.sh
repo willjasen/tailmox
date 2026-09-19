@@ -64,13 +64,13 @@ TAILMOX_ETC_DIR="$TEST_STATE_DIR/etc" \
 TAILMOX_INSTALL_DIR="$TEST_STATE_DIR/opt/tailmox" \
 TAILMOX_BIN_DIR="$TEST_STATE_DIR/usr-bin" \
 TAILMOX_DHCLIENT_PATH="$TEST_STATE_DIR/dhclient" \
-  "$TEST_ROOT/test-env/prepare-linked-clone.sh" --hostname tailmox4 >/dev/null
+  "$TEST_ROOT/test-env/prepare-linked-clone.sh" --hostname tailmox-tabcd >/dev/null
 
 grep -Fq 'iface vmbr0 inet dhcp' "$TEST_STATE_DIR/etc/network/interfaces" ||
   { printf 'FAIL: DHCP network configuration was not written\n' >&2; exit 1; }
 grep -Fq 'bridge-ports ens18' "$TEST_STATE_DIR/etc/network/interfaces" ||
   { printf 'FAIL: expected guest bridge port was not retained\n' >&2; exit 1; }
-grep -Fqx '127.0.1.1 tailmox4.local tailmox4' "$TEST_STATE_DIR/etc/hosts" ||
+grep -Fqx '127.0.1.1 tailmox-tabcd.local tailmox-tabcd' "$TEST_STATE_DIR/etc/hosts" ||
   { printf 'FAIL: hostname entry was not normalized\n' >&2; exit 1; }
 if grep -Fq '192.168.123.90' "$TEST_STATE_DIR/etc/hosts"; then
   printf 'FAIL: stale image address remains in hosts file\n' >&2

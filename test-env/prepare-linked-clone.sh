@@ -8,7 +8,7 @@ Usage: $0 --hostname NAME [OPTIONS]
 Prepare a newly booted linked clone of the Tailmox Proxmox test image.
 
 Options:
-  --hostname NAME       Unique guest hostname (required)
+  --hostname NAME       Unique guest hostname (required; use tailmox-t####)
   --ref REF             Git branch or ref to deploy (default: dev)
   --repo URL            Git repository URL (default: Tailmox GitHub repository)
   --service-name NAME   Shared Tailscale service label (default: dev-tailmox)

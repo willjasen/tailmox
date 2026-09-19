@@ -42,6 +42,9 @@ next image should eliminate that bootstrap step.
   `127.0.1.1`, not through a deployment-specific address.
 - Include and enable `qemu-guest-agent` so a clone can be prepared before SSH
   networking is available.
+- Include and enable `serial-getty@ttyS0.service`; the Proxmox clone
+  configuration provides `serial0: socket` and `vga: serial0`, but the guest
+  must run the getty before `qm terminal <VMID>` can provide a login shell.
 - Place a clean Tailmox checkout at `/opt/tailmox`. Do not include uncommitted
   files, credentials, test output, or host-specific configuration.
 - Ensure `/usr/local/bin/tailmox` resolves to `/opt/tailmox/tailmox`.
@@ -169,7 +172,7 @@ accept an exact release, allowing an older immutable image to be redeployed.
 The three release-0 clones required these post-image changes:
 
 - unique hostnames derived from the VM IDs when deploying additional
-  isolated test environments (for example `tailmox50011` for VM `50011`)
+  isolated test environments (for example `tailmox-tabcd` for VM `50011`)
 - DHCP on guest `vmbr0`, with their outer NICs attached to `vlan3`
 - installation of `isc-dhcp-client`
 - correction of the image's static hostname entry in `/etc/hosts`
