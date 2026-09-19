@@ -89,6 +89,26 @@ the graphical VGA display and `qm terminal <VMID>` serial access. The guest
 image must also enable `serial-getty@ttyS0.service`; changing the Proxmox VM
 settings alone does not create a serial login prompt.
 
+For a newly installed nested Proxmox guest, run the host-side helper on the
+outer Proxmox node:
+
+```bash
+./configure-proxmox-test-vm.sh --vmid 50051 --bridge vlan3 --start
+```
+
+It configures the VM's serial socket, VGA display, QEMU guest agent, and outer
+network bridge. After logging into the nested guest, run the guest-side helper
+as root:
+
+```bash
+./prepare-proxmox-test-guest.sh
+```
+
+It runs `apt-get update`, installs `qemu-guest-agent`, `git`, `jq`, and
+`expect`, then enables and starts `qemu-guest-agent.service` and
+`serial-getty@ttyS0.service`. Both helpers are idempotent and stop before
+template conversion; run `qm template <VMID>` only after verifying the guest.
+
 Both deployment helpers add Proxmox Notes automatically. Imported templates are identified as stopped development sources, and linked clones record their source template and `ready-for-testing` recovery point.
 
 Boot a new linked clone (the default credentials are `root` and
