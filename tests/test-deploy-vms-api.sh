@@ -24,7 +24,7 @@ curl() {
       printf '%s\n' '{"data":"200"}'
       ;;
     *"/nodes/pve4/qemu/100/config"*)
-      printf '%s\n' '{"data":{"net0":"virtio,bridge=vmbr0"}}'
+      printf '%s\n' '{"data":{"net0":"virtio,bridge=vlan3"}}'
       ;;
     *"/nodes/pve4/storage"*)
       printf '%s\n' \
@@ -32,7 +32,7 @@ curl() {
       ;;
     *"/nodes/pve4/network"*)
       printf '%s\n' \
-        '{"data":[{"iface":"vmbr0","type":"bridge"}]}'
+        '{"data":[{"iface":"vlan3","type":"bridge"}]}'
       ;;
     *"/clone"*)
       printf '%s\n' "$arguments" >>"$TEST_STATE_DIR/clone-calls"
@@ -74,7 +74,7 @@ OUTPUT=$(
       --node pve4 \
       --full \
       --storage local-zfs \
-      --bridge vmbr0 \
+      --bridge vlan3 \
       --count 2 \
       --start
 )

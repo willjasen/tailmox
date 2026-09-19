@@ -15,7 +15,7 @@ run create-vm-template.sh there. HOST defaults to pve-a2.
 
 Examples:
   $0
-  $0 --storage local-zfs --bridge vmbr0
+  $0 --storage local-zfs --bridge vlan3
   $0 --host pve-a2 --clone-count 3
 
 All options other than --host are passed to create-vm-template.sh.

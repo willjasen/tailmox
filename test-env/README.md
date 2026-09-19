@@ -14,7 +14,7 @@ The `create-vm-template.sh` script downloads the preconfigured image from an IPF
 ./create-vm-template.sh \
   --vmid 50000 \
   --storage local-zfs \
-  --bridge vmbr0 \
+  --bridge vlan3 \
   --clone-count 3 \
   --clone-vmid-start 50001
 ```
@@ -32,7 +32,7 @@ From a local Tailmox checkout, set up the image on `pve-a2` with:
 ./tailmox vm-image
 ```
 
-This connects with the local SSH key as `root`, copies only the image helpers to a temporary directory, runs the same checked template builder, and removes the temporary files afterward. Builder options pass through unchanged, for example `./tailmox vm-image --storage local-zfs --bridge vmbr0 --clone-count 3`. Use `--host HOST` or set `TAILMOX_PVE_HOST` to target a different Proxmox host.
+This connects with the local SSH key as `root`, copies only the image helpers to a temporary directory, runs the same checked template builder, and removes the temporary files afterward. Builder options pass through unchanged, for example `./tailmox vm-image --storage local-zfs --bridge vlan3 --clone-count 3`. Use `--host HOST` or set `TAILMOX_PVE_HOST` to target a different Proxmox host.
 
 Use `--vmid 50000 --clone-vmid-start 50001` when a deployment requires an exact sequential template and clone ID range. The helper validates every requested ID before creating the template.
 
@@ -78,7 +78,7 @@ source template, Proxmox node, actual VirtIO bridge, `/opt/tailmox` `dev`
 checkout, `dev-tailmox` service label, and `ready-for-testing` recovery
 snapshot.
 
-To ensure that the linked clones can get online, review the network adapter settings within each VM. The network adapter uses `vmbr0` with no VLAN by default, but your environment may be different.
+To ensure that the linked clones can get online, review the network adapter settings within each VM. The network adapter uses `vlan3` by default, but your environment may be different.
 
 The local template helper uses the `host` CPU type so nested virtualization is available and disables VM autostart by default. Use `--cpu TYPE` or `--onboot 1` to override those settings.
 

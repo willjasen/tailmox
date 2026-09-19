@@ -16,7 +16,7 @@ Options:
   --name NAME        Template name (default: tailmox-template)
   --template FILE    Source qcow2 file (default: value from template.json)
   --storage NAME     Proxmox image storage (default: first active image storage)
-  --bridge NAME      Proxmox network bridge (default: vmbr0)
+  --bridge NAME      Proxmox network bridge (default: vlan3)
   --memory MIB       Template memory in MiB (default: 1024)
   --cores COUNT      Template CPU core count (default: 1)
   --cpu TYPE         Template CPU type (default: host)
@@ -77,7 +77,7 @@ NAME="tailmox-template"
 TEMPLATE=""
 MANAGED_TEMPLATE=false
 STORAGE=""
-BRIDGE="vmbr0"
+BRIDGE="vlan3"
 MEMORY="1024"
 CORES="1"
 CPU_TYPE="host"

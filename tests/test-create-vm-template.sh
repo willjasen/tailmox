@@ -73,7 +73,7 @@ OUTPUT=$(
   "$TEST_ROOT/test-env/create-vm-template.sh" \
     --template "$TEST_STATE_DIR/tailmox.qcow2" \
     --storage local-zfs \
-    --bridge vmbr0 \
+    --bridge vlan3 \
     --vmid 50000 \
     --clone-count 2 \
     --clone-vmid-start 50001
