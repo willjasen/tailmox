@@ -24,9 +24,12 @@ Identifying values:
 - Initial hostname: `tailmox-image`
 - Initial network: static `192.168.123.90/24` on guest bridge `vmbr0`
 - Initial Tailmox checkout: `main` at `e8cf73d827b8ae45d5a098541d6545e35b331ea7`
-- Proxmox VM `50051` creation record: `2026-09-17 14:11:59 EDT`
-  (`ctime=1789668719`; this is the clone creation time, not a confirmed
-  filesystem/image-build timestamp)
+- Proxmox installation evidence: `2025-10-26`
+  (`proxmox-ve 9.0.0` first appeared in `/var/log/dpkg.log` at
+  `15:09:41`; `pve-manager 9.0.3` followed at `15:09:47`. The log timestamp
+  does not include a timezone.)
+- Root filesystem timestamp: `2025-10-26 11:11:13 EDT`, consistent with the
+  installation date above
 
 `test-env/template.json` is the artifact manifest for this image. Its
 `template.image` values and the Image 0 row below must match: release `0`,
@@ -46,7 +49,7 @@ does not need to be stored in a Proxmox VM note.
 
 | Image | Guest hostname | Source image CID | Status |
 | --- | --- | --- | --- |
-| 0 | `tailmox-image` | `bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy` | Original source image before Proxmox updates; observed in VM `50051` |
+| 0 | `tailmox-image` | `bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy` | Original source image before Proxmox updates; observed in VM `50051`; Proxmox installation evidence dates to 2025-10-26 |
 | 1 | *Record after update and reboot* | *New CID will be added after upload* | In preparation |
 
 The legacy image does not contain a DHCP client. Its clones therefore need a
