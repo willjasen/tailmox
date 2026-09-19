@@ -23,6 +23,9 @@ Identifying values:
 - Initial hostname: `tailmox-image`
 - Initial network: static `192.168.123.90/24` on guest bridge `vmbr0`
 - Initial Tailmox checkout: `main` at `e8cf73d827b8ae45d5a098541d6545e35b331ea7`
+- Proxmox VM `50051` creation record: `2026-09-17 14:11:59 EDT`
+  (`ctime=1789668719`; this is the clone creation time, not a confirmed
+  filesystem/image-build timestamp)
 
 ## Image identity log
 
@@ -32,9 +35,9 @@ when staging an image so the project repository remains the durable reference;
 the hostname does not need to be stored in a Proxmox VM note.
 
 | Image | Guest hostname | Source image CID | Status |
-|---|---|---|---|
-| 1 | `tailmox-i055b` | `bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy` | Original image before Proxmox updates |
-| 2 | _Record after update and reboot_ | _New CID will be added after upload_ | In preparation |
+| --- | --- | --- | --- |
+| 1 | `tailmox-i055b` | `bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy` | Original image before Proxmox updates; observed in VM `50051` |
+| 2 | *Record after update and reboot* | *New CID will be added after upload* | In preparation |
 
 The legacy image does not contain a DHCP client. Its clones therefore need a
 temporary route to install one before they can adopt the preferred DHCP
