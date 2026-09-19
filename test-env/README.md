@@ -115,7 +115,9 @@ The rapid testing workflow is split into three stages:
 1. **Stage the template guest.** Run `stage-template.sh` inside a fresh nested
    Proxmox installation. It installs Tailscale and project dependencies,
    configures DHCP for both the guest IP and DNS, and enables the guest agent
-   and serial console.
+   and serial console. It assigns a generated image hostname in the
+   `tailmox-i####` format and prints it; copy that exact hostname into the
+   resulting Proxmox template note.
 2. **Deploy the template.** Shut down the prepared guest, convert it to a
    template, then run `deploy-template.sh` on the outer Proxmox host. It uses
    the pinned IPFS image when a source image is needed and applies the

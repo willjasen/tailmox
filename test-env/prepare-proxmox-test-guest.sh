@@ -16,12 +16,24 @@ require_command() {
 require_command apt-get
 require_command systemctl
 require_command curl
+require_command openssl
 require_command mkdir
 require_command ln
 require_command rm
 
 if [[ "$(id -u)" -ne 0 ]]; then
   die "Run this script as root"
+fi
+
+IMAGE_HOSTNAME="${TAILMOX_IMAGE_HOSTNAME:-tailmox-i$(openssl rand -hex 2)}"
+[[ "$IMAGE_HOSTNAME" =~ ^tailmox-i[0-9a-f]{4}$ ]] ||
+  die "TAILMOX_IMAGE_HOSTNAME must match tailmox-i####"
+hostnamectl set-hostname "$IMAGE_HOSTNAME"
+HOSTS_FILE="$ETC_DIR/hosts"
+if grep -q '^127\.0\.1\.1[[:space:]]' "$HOSTS_FILE"; then
+  sed -i -E "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1 $IMAGE_HOSTNAME.local $IMAGE_HOSTNAME/" "$HOSTS_FILE"
+else
+  printf '127.0.1.1 %s.local %s\n' "$IMAGE_HOSTNAME" "$IMAGE_HOSTNAME" >>"$HOSTS_FILE"
 fi
 
 printf 'Refreshing package metadata...\n'
@@ -63,5 +75,6 @@ systemctl enable --now serial-getty@ttyS0.service
 systemctl enable --now resolvconf.service
 resolvconf -u
 
-printf 'Nested Proxmox guest preparation completed.\n'
+printf 'Nested Proxmox guest preparation completed for image hostname %s.\n' \
+  "$IMAGE_HOSTNAME"
 printf 'Enabled services: qemu-guest-agent.service, serial-getty@ttyS0.service, resolvconf.service\n'

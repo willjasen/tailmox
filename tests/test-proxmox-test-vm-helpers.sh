@@ -46,6 +46,10 @@ cat >"$TEST_STATE_DIR/bin/tailscale" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$TEST_STATE_DIR/tailscale-calls"
 EOF
+cat >"$TEST_STATE_DIR/bin/hostnamectl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$TEST_STATE_DIR/hostnamectl-calls"
+EOF
 chmod +x "$TEST_STATE_DIR/bin/"*
 
 PATH="$TEST_STATE_DIR/bin:$PATH" \
@@ -57,9 +61,11 @@ grep -Fqx 'start 50051' "$TEST_STATE_DIR/qm-calls" ||
   { printf 'FAIL: host helper did not start the requested VM\n' >&2; exit 1; }
 
 mkdir -p "$TEST_STATE_DIR/etc"
+: >"$TEST_STATE_DIR/etc/hosts"
 PATH="$TEST_STATE_DIR/bin:$PATH" \
   PATH="$TEST_STATE_DIR/bin:/usr/bin:/bin" \
   TAILMOX_ETC_DIR="$TEST_STATE_DIR/etc" \
+  TAILMOX_IMAGE_HOSTNAME=tailmox-iabcd \
   "$TEST_ROOT/test-env/prepare-proxmox-test-guest.sh"
 grep -Fqx 'update' "$TEST_STATE_DIR/apt-calls" ||
   { printf 'FAIL: guest helper did not update package metadata\n' >&2; exit 1; }
@@ -81,6 +87,8 @@ grep -Fqx -- '-u' "$TEST_STATE_DIR/resolvconf-calls" ||
   { printf 'FAIL: guest helper did not refresh DHCP-provided DNS\n' >&2; exit 1; }
 grep -Fq 'iface vmbr0 inet dhcp' "$TEST_STATE_DIR/etc/network/interfaces" ||
   { printf 'FAIL: guest helper did not configure DHCP on vmbr0\n' >&2; exit 1; }
+grep -Fqx 'set-hostname tailmox-iabcd' "$TEST_STATE_DIR/hostnamectl-calls" ||
+  { printf 'FAIL: guest helper did not set the generated image hostname\n' >&2; exit 1; }
 [[ -L "$TEST_STATE_DIR/etc/resolv.conf" ]] ||
   { printf 'FAIL: guest helper did not delegate DNS to resolvconf\n' >&2; exit 1; }
 
