@@ -246,7 +246,13 @@ cat >"$FIRST_BOOT" <<'EOF'
 set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect
+required_packages=(ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect)
+apt-get install -y "${required_packages[@]}"
+for package in "${required_packages[@]}"; do
+  dpkg-query -W -f='${Status}' "$package" 2>/dev/null |
+    grep -q '^install ok installed$' ||
+    { printf 'Required package was not installed: %s\n' "$package" >&2; exit 1; }
+done
 curl -fsSL https://tailscale.com/install.sh | sh
 hostnamectl set-hostname "__TAILMOX_HOSTNAME__"
 if grep -qE '^iface vmbr0 inet ' /etc/network/interfaces; then
