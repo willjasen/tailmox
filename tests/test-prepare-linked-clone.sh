@@ -6,7 +6,8 @@ TEST_STATE_DIR=$(mktemp -d)
 trap 'rm -rf "$TEST_STATE_DIR"' EXIT
 
 mkdir -p "$TEST_STATE_DIR/etc/network" "$TEST_STATE_DIR/etc/profile.d" \
-  "$TEST_STATE_DIR/opt/tailmox/.git" "$TEST_STATE_DIR/bin" "$TEST_STATE_DIR/usr-bin"
+  "$TEST_STATE_DIR/opt/tailmox/.git" "$TEST_STATE_DIR/bin" "$TEST_STATE_DIR/usr-bin" \
+  "$TEST_STATE_DIR/run/resolvconf"
 cat >"$TEST_STATE_DIR/etc/network/interfaces" <<'EOF'
 auto lo
 iface lo inet loopback
@@ -24,6 +25,15 @@ printf 'tailmox-image\n' >"$TEST_STATE_DIR/etc/hostname"
 printf 'EXISTING=value\nTAILMOX_TAILSCALE_SERVICE_NAME=old-name\n' >"$TEST_STATE_DIR/etc/environment"
 touch "$TEST_STATE_DIR/dhclient"
 chmod +x "$TEST_STATE_DIR/dhclient"
+cat >"$TEST_STATE_DIR/bin/resolvconf" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$TEST_STATE_DIR/resolvconf-calls"
+EOF
+cat >"$TEST_STATE_DIR/bin/systemctl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$TEST_STATE_DIR/systemctl-calls"
+EOF
+chmod +x "$TEST_STATE_DIR/bin/resolvconf" "$TEST_STATE_DIR/bin/systemctl"
 
 id() { [[ "${1:-}" == -u ]] && printf '0\n'; }
 hostname() { printf 'tailmox-image\n'; }
@@ -49,6 +59,7 @@ ln -sfn "$0" "$TAILMOX_BIN_DIR/tailmox"
 EOF
 chmod +x "$TEST_STATE_DIR/opt/tailmox/tailmox"
 
+PATH="$TEST_STATE_DIR/bin:$PATH" \
 TAILMOX_ETC_DIR="$TEST_STATE_DIR/etc" \
 TAILMOX_INSTALL_DIR="$TEST_STATE_DIR/opt/tailmox" \
 TAILMOX_BIN_DIR="$TEST_STATE_DIR/usr-bin" \
@@ -79,5 +90,11 @@ grep -Fq -- '-C '"$TEST_STATE_DIR/opt/tailmox"' merge --ff-only origin/dev' \
   { printf 'FAIL: root password was not updated\n' >&2; exit 1; }
 [[ ! -e "$TEST_STATE_DIR/apt-calls" ]] ||
   { printf 'FAIL: DHCP client was reinstalled unnecessarily\n' >&2; exit 1; }
+[[ -L "$TEST_STATE_DIR/etc/resolv.conf" ]] ||
+  { printf 'FAIL: resolv.conf was not delegated to resolvconf\n' >&2; exit 1; }
+grep -Fqx 'enable --now resolvconf.service' "$TEST_STATE_DIR/systemctl-calls" ||
+  { printf 'FAIL: resolvconf service was not enabled\n' >&2; exit 1; }
+grep -Fqx -- '-u' "$TEST_STATE_DIR/resolvconf-calls" ||
+  { printf 'FAIL: resolvconf was not refreshed\n' >&2; exit 1; }
 
 printf 'PASS: linked clone preparation is safe, repeatable, and deploys dev\n'

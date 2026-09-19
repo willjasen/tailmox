@@ -14,8 +14,8 @@ if ! grep -Fq \
     exit 1
 fi
 
-if ! grep -Fq 'resolvconf' "$INSTALLER"; then
-    printf 'FAIL: Tailscale DNS setup does not install resolvconf\n'
+if grep -Fq 'resolvconf' "$INSTALLER"; then
+    printf 'FAIL: production staging should not install resolvconf\n'
     exit 1
 fi
 

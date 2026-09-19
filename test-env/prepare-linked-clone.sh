@@ -108,6 +108,7 @@ require_command hostnamectl
 require_command install
 require_command awk
 require_command chpasswd
+require_command systemctl
 
 [[ -f "$INTERFACES_FILE" ]] || die "Missing network configuration: $INTERFACES_FILE"
 [[ -f "$HOSTS_FILE" ]] || die "Missing hosts file: $HOSTS_FILE"
@@ -118,10 +119,10 @@ if ! grep -Fq '192.168.123.90' "$INTERFACES_FILE" &&
   die "Refusing to replace an unrecognized network configuration"
 fi
 
-if [[ ! -x "$DHCLIENT_PATH" ]]; then
-  printf 'Installing the DHCP client...\n'
+if [[ ! -x "$DHCLIENT_PATH" ]] || ! command -v resolvconf >/dev/null 2>&1; then
+  printf 'Installing DHCP and DNS dependencies...\n'
   apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y isc-dhcp-client
+  DEBIAN_FRONTEND=noninteractive apt-get install -y isc-dhcp-client resolvconf
   [[ -x "$DHCLIENT_PATH" ]] || die "DHCP client installation did not create $DHCLIENT_PATH"
 fi
 
@@ -142,6 +143,10 @@ iface vmbr0 inet dhcp
 
 source /etc/network/interfaces.d/*
 EOF
+rm -f "$ETC_DIR/resolv.conf"
+ln -s /run/resolvconf/resolv.conf "$ETC_DIR/resolv.conf"
+systemctl enable --now resolvconf.service
+resolvconf -u
 
 OLD_HOST_NAME=$(hostname)
 HOSTS_TEMP=$(mktemp "$HOSTS_FILE.XXXXXX")

@@ -47,6 +47,7 @@ TAILSCALE_UP_CALLS=""
 TAILSCALE_SET_CALLS=""
 MOCK_SET_FAILURE=false
 MOCK_STATUS_FAILURE=false
+MOCK_GETENT_FAILURE=false
 
 function tailscale() {
     if [[ "${1:-}" == "status" && "${2:-}" == "--json" ]]; then
@@ -77,6 +78,11 @@ function tailscale() {
     return 2
 }
 
+function getent() {
+    [[ "$MOCK_GETENT_FAILURE" != "true" &&
+        "${1:-}" == "hosts" && "${2:-}" == "pve1.example.ts.net" ]]
+}
+
 PASS_COUNT=0
 FAIL_COUNT=0
 
@@ -93,6 +99,14 @@ function fail() {
 MOCK_STATUS="$CONNECTED_STATUS"
 TAILSCALE_UP_CALLS=""
 TAILSCALE_SET_CALLS=""
+MOCK_GETENT_FAILURE=true
+if start_tailscale "" >/dev/null 2>&1; then
+    fail "unresolvable MagicDNS name stops setup"
+else
+    pass "unresolvable MagicDNS name stops setup"
+fi
+MOCK_GETENT_FAILURE=false
+
 if start_tailscale "" >/dev/null 2>&1 && [[ -z "$TAILSCALE_UP_CALLS" ]] &&
     [[ "$TAILSCALE_SET_CALLS" == "set --accept-dns=true" ]]; then
     pass "connected tagged device preserves its login and enables Tailscale DNS"
