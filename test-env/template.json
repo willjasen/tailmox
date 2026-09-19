@@ -2,6 +2,11 @@
     "description": "Create a Proxmox VM template for testing tailmox.",
     "related_repo": "github.com/willjasen/tailmox",
     "template": {
+        "image": {
+            "release": 0,
+            "prepare_api": 0,
+            "hostname": "tailmox-image"
+        },
         "versions": {
             "compressed": {
                 "xz_compressed": true,

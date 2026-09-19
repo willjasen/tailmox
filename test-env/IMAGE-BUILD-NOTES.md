@@ -19,6 +19,7 @@ Identifying values:
 
 - Compressed CIDv1: `bafybeig3k2tpv33pcoveatirpbio4qgr7kltpnbau3ftlgpgi7emombzqy`
 - Compressed SHA-256: `5644986a684318f2a7e85bc413f810f41aa5d2a2454cb7a3bf5cf3da98a97e32`
+- Uncompressed CIDv1: `bafybeidxzo6vw73phymnsvqeb7ltulw3xj6yvrp4etd4vwcr7wweb6foya`
 - Uncompressed SHA-256: `2b4b219ca7974ef4921e0b9fc0f213b07e1b4e37400b5ca3ed9dee93588e30bb`
 - Initial hostname: `tailmox-image`
 - Initial network: static `192.168.123.90/24` on guest bridge `vmbr0`
@@ -27,18 +28,21 @@ Identifying values:
   (`ctime=1789668719`; this is the clone creation time, not a confirmed
   filesystem/image-build timestamp)
 
-`test-env/template.json` is the artifact manifest for this image: it records
-the downloadable filenames, hashes, sizes, and IPFS CIDs used by the template
-download and deployment helpers. It does not define the guest hostname. The
-hostname recorded for Image 1 is the hostname that was present in the source
-image itself.
+`test-env/template.json` is the artifact manifest for this image. Its
+`template.image` values and the Image 1 row below must match: release `0`,
+preparation API `0`, and hostname `tailmox-image`. Its
+`template.versions` values must match the filenames, hashes, sizes, and IPFS
+CIDs listed above. The download and deployment helpers read the manifest, so
+update this document and the manifest together whenever a new image is
+published.
 
 ## Image identity log
 
 Published source images may have a fixed hostname, while temporary image
-preparation VMs can receive generated `tailmox-i####` hostnames. Record the
-actual hostname here so the project repository remains the durable reference;
-the hostname does not need to be stored in a Proxmox VM note.
+preparation VMs can receive generated `tailmox-i####` hostnames. The manifest
+records the hostname of the published source image; record temporary staging
+hostnames here only when they are relevant to the image lineage. The hostname
+does not need to be stored in a Proxmox VM note.
 
 | Image | Guest hostname | Source image CID | Status |
 | --- | --- | --- | --- |
