@@ -337,7 +337,7 @@ for ((index = 1; index <= CLONE_COUNT; index++)); do
   qm set "$CLONE_VMID" \
     --description "$CLONE_DESCRIPTION"
   qm snapshot "$CLONE_VMID" "$SNAPSHOT_NAME" \
-    --description "Initial Tailmox test state before first boot"
+    --description "Initial Tailmox test state for linked clone $CLONE_NAME before first boot"
   echo "Created linked clone $CLONE_VMID ($CLONE_NAME) with snapshot $SNAPSHOT_NAME."
 done
 

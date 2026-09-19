@@ -368,7 +368,7 @@ for ((index = 1; index <= COUNT; index++)); do
   SNAPSHOT_RESPONSE=$(
     api_request POST "/nodes/$NODE/qemu/$VMID/snapshot" \
       --data-urlencode "snapname=$SNAPSHOT_NAME" \
-      --data-urlencode "description=Initial Tailmox test state before first boot"
+      --data-urlencode "description=Initial Tailmox test state for linked clone $VM_NAME before first boot"
   )
   SNAPSHOT_UPID=$(jq -er '.data' <<<"$SNAPSHOT_RESPONSE") ||
     die "Proxmox did not return a snapshot task ID for VM $VMID"
