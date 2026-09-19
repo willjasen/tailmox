@@ -35,6 +35,7 @@ LOG_FILE="$LOG_DIR/tailmox.log"
 STATE_FILE="${TAILMOX_STATE_FILE:-${TAILMOX_CLUSTER_STATE_FILE:-${TAILMOX_PVE_CONFIG_DIR:-/etc/pve}/tailmox/state.json}}"
 TAILMOX_TAILSCALE_SERVICE_NAME="${TAILMOX_TAILSCALE_SERVICE_NAME:-tailmox}"
 TAILMOX_AUTH_ENV_FILE="${TAILMOX_AUTH_ENV_FILE:-/etc/tailmox/tailscale.env}"
+TAILMOX_MIN_TAILSCALE_VERSION="${TAILMOX_MIN_TAILSCALE_VERSION:-1.86.0}"
 
 if [[ ! "$TAILMOX_TAILSCALE_SERVICE_NAME" =~ ^[a-z0-9][a-z0-9-]*[a-z0-9]$ ]]; then
     printf 'TAILMOX_TAILSCALE_SERVICE_NAME must be a lowercase DNS label.\n' >&2
@@ -1097,11 +1098,52 @@ function install_dependencies() {
     install_post_quantum_age || return 1
 }
 
-# Install Tailscale if it is not already installed
+function tailscale_version_at_least() {
+    local installed_version="$1"
+    local required_version="$2"
+    local installed_major installed_minor installed_patch
+    local required_major required_minor required_patch
+
+    [[ "$installed_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || return 1
+    installed_major="${BASH_REMATCH[1]}"
+    installed_minor="${BASH_REMATCH[2]}"
+    installed_patch="${BASH_REMATCH[3]}"
+    [[ "$required_version" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || return 1
+    required_major="${BASH_REMATCH[1]}"
+    required_minor="${BASH_REMATCH[2]}"
+    required_patch="${BASH_REMATCH[3]}"
+
+    ((10#$installed_major > 10#$required_major)) ||
+        ((10#$installed_major == 10#$required_major &&
+          10#$installed_minor > 10#$required_minor)) ||
+        ((10#$installed_major == 10#$required_major &&
+          10#$installed_minor == 10#$required_minor &&
+          10#$installed_patch >= 10#$required_patch))
+}
+
+function check_tailscale_version() {
+    local installed_version
+
+    installed_version=$(tailscale version 2>/dev/null | awk 'NR == 1 { print $1; exit }') ||
+        installed_version=""
+    if ! tailscale_version_at_least "$installed_version" "$TAILMOX_MIN_TAILSCALE_VERSION"; then
+        log_echo "${RED}Tailscale ${TAILMOX_MIN_TAILSCALE_VERSION} or newer is required for Tailscale Services (installed: ${installed_version:-unknown}).${RESET}"
+        return 1
+    fi
+}
+
+# Install or upgrade Tailscale to the version required by Tailscale Services.
 function install_tailscale() {
-    if ! command -v tailscale &>/dev/null; then
+    if command -v tailscale &>/dev/null; then
+        if check_tailscale_version; then
+            return 0
+        fi
+        log_echo "${YELLOW}Installed Tailscale is too old. Upgrading...${RESET}"
+    else
         log_echo "${YELLOW}Tailscale not found. Installing...${RESET}"
-        
+    fi
+
+    {
         # Check Proxmox version
         local pve_version=$(pveversion | grep -oP 'pve-manager/\K[0-9]+' | head -1)
         
@@ -1116,12 +1158,11 @@ function install_tailscale() {
             curl -fsSL https://tailscale.com/install.sh | sh
         else
             log_echo "${RED}Unsupported Proxmox version: $pve_version. Exiting...${RESET}"
-            exit 1
+            return 1
         fi
-    else
-        # log_echo "${GREEN}Tailscale is already installed.${RESET}"
-        :
-    fi
+    } || return 1
+
+    check_tailscale_version
 }
 
 # Configure Tailscale Serve without allowing an interactive prompt or daemon
