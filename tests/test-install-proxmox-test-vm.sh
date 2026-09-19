@@ -74,6 +74,9 @@ grep -q 'systemctl enable --now qemu-guest-agent.service serial-getty@ttyS0.serv
 grep -q 'systemctl enable --now tailscaled.service' \
   "$TEST_STATE_DIR/work/tailmox-first-boot.sh" ||
   { echo "FAIL: first-boot hook does not enable Tailscale" >&2; exit 1; }
+grep -q 'pve-enterprise.sources' "$TEST_STATE_DIR/work/tailmox-first-boot.sh" &&
+  grep -q 'pve-no-subscription.list' "$TEST_STATE_DIR/work/tailmox-first-boot.sh" ||
+  { echo "FAIL: first-boot hook does not configure Proxmox repositories" >&2; exit 1; }
 grep -q 'unattended installer media' <<<"$OUTPUT" ||
   { echo "FAIL: installer summary was not emitted" >&2; exit 1; }
 

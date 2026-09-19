@@ -245,6 +245,16 @@ cat >"$FIRST_BOOT" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
+proxmox_codename="$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")"
+for source_file in /etc/apt/sources.list.d/pve-enterprise.list \
+  /etc/apt/sources.list.d/pve-enterprise.sources; do
+  if [[ -f "$source_file" ]]; then
+    sed -i -E 's/^Enabled:[[:space:]]*yes/Enabled: no/; s|^deb |# deb |' "$source_file"
+  fi
+done
+cat >/etc/apt/sources.list.d/pve-no-subscription.list <<REPOS
+deb http://download.proxmox.com/debian/pve ${proxmox_codename} pve-no-subscription
+REPOS
 apt-get update
 required_packages=(ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect)
 apt-get install -y "${required_packages[@]}"
