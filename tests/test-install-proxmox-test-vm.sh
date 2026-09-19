@@ -12,7 +12,13 @@ printf 'iso\n' >"$TEST_STATE_DIR/source.iso"
 id() { [[ "${1:-}" == "-u" ]] && echo 0; }
 curl() { cp "$TEST_STATE_DIR/source.iso" "$TEST_STATE_DIR/downloaded.iso"; }
 sha256sum() { [[ "${1:-}" == "--check" ]]; }
-openssl() { echo '$6$test$hash'; }
+openssl() {
+  if [[ "${1:-}" == "rand" ]]; then
+    echo abcd
+  else
+    echo '$6$test$hash'
+  fi
+}
 ip() { [[ "$*" == "link show vlan3" ]]; }
 pvesh() {
   [[ "$*" == "get /cluster/nextid" ]] && { echo 50051; return; }

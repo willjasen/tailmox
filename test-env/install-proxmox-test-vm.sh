@@ -9,7 +9,7 @@ MANIFEST="$SCRIPT_DIR/proxmox-iso.json"
 WORK_DIR="${TAILMOX_ISO_WORK_DIR:-}"
 KEEP_WORK=false
 VMID=""
-NAME="tailmox-image"
+NAME=""
 ISO_URL=""
 ISO_SHA256=""
 STORAGE=""
@@ -21,9 +21,10 @@ CPU_TYPE="host"
 DISK_SIZE="64"
 START=false
 WAIT_FOR_AGENT=false
+INSECURE_DOWNLOAD=false
 ROOT_PASSWORD_FILE="${TAILMOX_PVE_ROOT_PASSWORD_FILE:-}"
 ROOT_PASSWORD_HASH="${TAILMOX_PVE_ROOT_PASSWORD_HASH:-}"
-HOSTNAME="tailmox-image"
+HOSTNAME=""
 
 usage() {
   cat <<EOF
@@ -36,8 +37,8 @@ Options:
   --iso-url URL       Official Proxmox ISO URL (or manifest value)
   --iso-sha256 HASH  Expected ISO SHA-256 (or manifest value)
   --vmid ID           New VM ID (default: next available ID)
-  --name NAME         VM name (default: tailmox-image)
-  --hostname NAME     Installed guest hostname (default: tailmox-image)
+  --name NAME         VM name (default: generated tailmox-i#### hostname)
+  --hostname NAME     Installed guest hostname (default: generated tailmox-i####)
   --storage NAME      VM disk storage (default: first active image storage)
   --iso-storage NAME  ISO storage (default: local)
   --bridge NAME       Outer network bridge (default: vlan3)
@@ -52,6 +53,7 @@ Options:
   --work-dir DIR      Directory for downloaded/prepared installer files
   --start             Start the VM after creating it
   --wait-for-agent    With --start, wait for QEMU guest agent availability
+  --insecure-download Allow curl TLS certificate errors; SHA-256 remains required
   --keep-work        Keep downloaded/prepared ISO files for inspection
   --help              Show this help
 
@@ -118,6 +120,7 @@ while [[ $# -gt 0 ]]; do
     --work-dir) [[ $# -ge 2 ]] || die "--work-dir requires a value"; WORK_DIR="$2"; KEEP_WORK=true; shift 2 ;;
     --start) START=true; shift ;;
     --wait-for-agent) WAIT_FOR_AGENT=true; shift ;;
+    --insecure-download) INSECURE_DOWNLOAD=true; shift ;;
     --keep-work) KEEP_WORK=true; shift ;;
     --help|-h) usage; exit 0 ;;
     *) die "Unknown argument: $1" ;;
@@ -133,11 +136,18 @@ require_command qm
 require_command ip
 require_command proxmox-auto-install-assistant
 require_command openssl
+require_command perl
 [[ "$(id -u)" -eq 0 ]] || die "Run this script as root on an outer Proxmox node"
 [[ -f "$MANIFEST" ]] || die "Missing ISO manifest: $MANIFEST"
 
 [[ -n "$ISO_URL" ]] || ISO_URL="$(json_read '.iso.url')"
 [[ -n "$ISO_SHA256" ]] || ISO_SHA256="$(json_read '.iso.sha256')"
+if [[ -z "$HOSTNAME" ]]; then
+  HOSTNAME="tailmox-i$(openssl rand -hex 2)"
+fi
+if [[ -z "$NAME" ]]; then
+  NAME="$HOSTNAME"
+fi
 [[ "$ISO_URL" =~ ^https:// ]] || die "ISO URL must use HTTPS"
 [[ "$ISO_SHA256" =~ ^[[:xdigit:]]{64}$ ]] ||
   die "ISO SHA-256 must be exactly 64 hexadecimal characters"
@@ -203,7 +213,13 @@ ANSWER_FILE="$WORK_DIR/answer.toml"
 FIRST_BOOT="$WORK_DIR/tailmox-first-boot.sh"
 
 printf 'Downloading Proxmox ISO to %s...\n' "$SOURCE_ISO"
-curl --fail --location --proto '=https' --tlsv1.2 --output "$SOURCE_ISO" "$ISO_URL"
+if [[ "$INSECURE_DOWNLOAD" == true ]]; then
+  curl --fail --location --proto '=https' --tlsv1.2 --insecure \
+    --output "$SOURCE_ISO" "$ISO_URL"
+else
+  curl --fail --location --proto '=https' --tlsv1.2 \
+    --output "$SOURCE_ISO" "$ISO_URL"
+fi
 printf '%s  %s\n' "$ISO_SHA256" "$SOURCE_ISO" | sha256sum --check --status ||
   die "Proxmox ISO SHA-256 verification failed"
 
@@ -211,7 +227,8 @@ cat >"$ANSWER_FILE" <<EOF
 [global]
 keyboard = "en-us"
 country = "us"
-fqdn = "$HOSTNAME"
+mailto = "root@localhost"
+fqdn = "__TAILMOX_HOSTNAME__.local"
 timezone = "America/New_York"
 root-password-hashed = "$ROOT_PASSWORD_HASH"
 reboot-mode = "reboot"
@@ -221,15 +238,16 @@ source = "from-dhcp"
 
 [disk-setup]
 filesystem = "ext4"
+disk-list = ["sda"]
 EOF
 
-cat >"$FIRST_BOOT" <<EOF
+cat >"$FIRST_BOOT" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect
-hostnamectl set-hostname "$HOSTNAME"
+hostnamectl set-hostname "__TAILMOX_HOSTNAME__"
 if grep -qE '^iface vmbr0 inet ' /etc/network/interfaces; then
   sed -i -E 's/^iface vmbr0 inet .*/iface vmbr0 inet dhcp/' /etc/network/interfaces
 fi
@@ -242,6 +260,9 @@ RELEASE
 chmod 0644 /etc/tailmox-image-release
 systemctl restart qemu-guest-agent.service || true
 EOF
+TAILMOX_INSTALL_HOSTNAME="$HOSTNAME" perl -0pi \
+  -e 's/__TAILMOX_HOSTNAME__/$ENV{TAILMOX_INSTALL_HOSTNAME}/g' \
+  "$ANSWER_FILE" "$FIRST_BOOT"
 chmod 0755 "$FIRST_BOOT"
 
 proxmox-auto-install-assistant prepare-iso "$SOURCE_ISO" \
@@ -249,6 +270,8 @@ proxmox-auto-install-assistant prepare-iso "$SOURCE_ISO" \
   --answer-file "$ANSWER_FILE" \
   --on-first-boot "$FIRST_BOOT" \
   --output "$PREPARED_ISO"
+[[ -s "$PREPARED_ISO" ]] ||
+  die "The unattended installer did not produce a prepared ISO"
 
 ISO_TARGET="$(pvesm path "$ISO_STORAGE:iso/$ISO_NAME")"
 mkdir -p "$(dirname "$ISO_TARGET")"
