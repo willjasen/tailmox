@@ -37,6 +37,11 @@ cat >"$TEST_STATE_DIR/bin/resolvconf" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >>"$TEST_STATE_DIR/resolvconf-calls"
 EOF
+cat >"$TEST_STATE_DIR/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$TEST_STATE_DIR/curl-calls"
+cat >/dev/null
+EOF
 chmod +x "$TEST_STATE_DIR/bin/"*
 
 PATH="$TEST_STATE_DIR/bin:$PATH" \
@@ -49,12 +54,15 @@ grep -Fqx 'start 50051' "$TEST_STATE_DIR/qm-calls" ||
 
 mkdir -p "$TEST_STATE_DIR/etc"
 PATH="$TEST_STATE_DIR/bin:$PATH" \
+  PATH="$TEST_STATE_DIR/bin:/usr/bin:/bin" \
   TAILMOX_ETC_DIR="$TEST_STATE_DIR/etc" \
   "$TEST_ROOT/test-env/prepare-proxmox-test-guest.sh"
 grep -Fqx 'update' "$TEST_STATE_DIR/apt-calls" ||
   { printf 'FAIL: guest helper did not update package metadata\n' >&2; exit 1; }
-grep -Fq -- 'install -y isc-dhcp-client resolvconf qemu-guest-agent git jq expect' "$TEST_STATE_DIR/apt-calls" ||
+grep -Fq -- 'install -y ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect' "$TEST_STATE_DIR/apt-calls" ||
   { printf 'FAIL: guest helper did not install required packages\n' >&2; exit 1; }
+grep -Fq 'https://tailscale.com/install.sh' "$TEST_STATE_DIR/curl-calls" ||
+  { printf 'FAIL: guest helper did not install Tailscale\n' >&2; exit 1; }
 grep -Fqx 'enable --now qemu-guest-agent.service' "$TEST_STATE_DIR/systemctl-calls" ||
   { printf 'FAIL: guest helper did not enable qemu-guest-agent\n' >&2; exit 1; }
 grep -Fqx 'enable --now serial-getty@ttyS0.service' "$TEST_STATE_DIR/systemctl-calls" ||

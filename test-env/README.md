@@ -110,22 +110,39 @@ the graphical VGA display and `qm terminal <VMID>` serial access. The guest
 image must also enable `serial-getty@ttyS0.service`; changing the Proxmox VM
 settings alone does not create a serial login prompt.
 
-For a newly installed nested Proxmox guest, run the host-side helper on the
-outer Proxmox node:
+The rapid testing workflow is split into three stages:
+
+1. **Stage the template guest.** Run `stage-template.sh` inside a fresh nested
+   Proxmox installation. It installs Tailscale and project dependencies,
+   configures DHCP for both the guest IP and DNS, and enables the guest agent
+   and serial console.
+2. **Deploy the template.** Shut down the prepared guest, convert it to a
+   template, then run `deploy-template.sh` on the outer Proxmox host. It uses
+   the pinned IPFS image when a source image is needed and applies the
+   `vlan3`, VGA, serial, guest-agent, resource, and note settings.
+3. **Stage each linked clone.** After a clone boots, run `stage-clone.sh`
+   inside it to set its DHCP identity, deploy the Tailmox checkout, and
+   configure the development service label.
+
+These scripts are test-environment tooling only; they are not part of the
+Tailmox runtime installed on production Proxmox hosts.
+
+To configure the outer Proxmox VM before starting a fresh guest, run:
 
 ```bash
 ./configure-proxmox-test-vm.sh --vmid 50051 --bridge vlan3 --start
 ```
 
 It configures the VM's serial socket, VGA display, QEMU guest agent, and outer
-network bridge. After logging into the nested guest, run the guest-side helper
-as root:
+network bridge. After logging into the nested guest, run the first workflow
+stage as root:
 
 ```bash
-./prepare-proxmox-test-guest.sh
+./stage-template.sh
 ```
 
-It runs `apt-get update`, installs `qemu-guest-agent`, `git`, `jq`, and
+The underlying `prepare-proxmox-test-guest.sh` helper runs `apt-get update`,
+installs Tailscale, `qemu-guest-agent`, `git`, `jq`, and
 `expect` plus `isc-dhcp-client` and `resolvconf`. It configures the nested
 `vmbr0` bridge for DHCP, delegates `/etc/resolv.conf` to `resolvconf` so DNS
 also comes from DHCP, then enables and starts `qemu-guest-agent.service`,
@@ -171,7 +188,13 @@ Be sure to include the "--auth-key" parameter as well.
 
 ### 🤓 The Scripts 🤓
 
-`test-env/create-vm-template.sh` - creates a VM template from the downloaded image and can create local linked clones
+`test-env/stage-template.sh` - prepares a fresh nested Proxmox guest for image capture
+
+`test-env/deploy-template.sh` - downloads the pinned IPFS image when needed and creates the Proxmox template
+
+`test-env/stage-clone.sh` - prepares a booted linked clone for Tailmox testing
+
+`test-env/create-vm-template.sh` - implementation used by `deploy-template.sh`; creates a VM template and can create local linked clones
 
 `test-env/setup-vm-image.sh` - stages and runs the template builder on `pve-a2` (or another selected Proxmox host) from a local checkout
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PACKAGES=(isc-dhcp-client resolvconf qemu-guest-agent git jq expect)
+PACKAGES=(ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect)
 ETC_DIR="${TAILMOX_ETC_DIR:-/etc}"
 
 die() {
@@ -15,6 +15,7 @@ require_command() {
 
 require_command apt-get
 require_command systemctl
+require_command curl
 require_command mkdir
 require_command ln
 require_command rm
@@ -27,6 +28,10 @@ printf 'Refreshing package metadata...\n'
 apt-get update
 printf 'Installing Tailmox test dependencies...\n'
 DEBIAN_FRONTEND=noninteractive apt-get install -y "${PACKAGES[@]}"
+if ! command -v tailscale >/dev/null 2>&1; then
+  printf 'Installing Tailscale...\n'
+  curl -fsSL https://tailscale.com/install.sh | sh
+fi
 
 printf 'Configuring DHCP networking and DNS...\n'
 mkdir -p "$ETC_DIR/network"
