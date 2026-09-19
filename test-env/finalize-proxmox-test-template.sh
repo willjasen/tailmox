@@ -11,6 +11,7 @@ CLONE_VMID_START="50001"
 CLONE_PREFIX="tailmox-t"
 SNAPSHOT_NAME="ready-for-testing"
 ISO_SHA256=""
+VERIFY_REBOOT=false
 
 usage() {
   cat <<EOF
@@ -24,6 +25,7 @@ Options:
   --clone-prefix PREFIX  Clone name prefix (default: tailmox-t)
   --snapshot NAME        Initial clone snapshot name (default: ready-for-testing)
   --iso-sha256 HASH      ISO hash to include in template and clone notes
+  --verify-reboot        Reboot and verify the guest agent before conversion
   --help                 Show this help
 EOF
 }
@@ -55,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --clone-prefix) [[ $# -ge 2 ]] || die "--clone-prefix requires a value"; CLONE_PREFIX="$2"; shift 2 ;;
     --snapshot) [[ $# -ge 2 ]] || die "--snapshot requires a value"; SNAPSHOT_NAME="$2"; shift 2 ;;
     --iso-sha256) [[ $# -ge 2 ]] || die "--iso-sha256 requires a value"; ISO_SHA256="$2"; shift 2 ;;
+    --verify-reboot) VERIFY_REBOOT=true; shift ;;
     --help|-h) usage; exit 0 ;;
     *) die "Unknown argument: $1" ;;
   esac
@@ -80,11 +83,39 @@ qm status "$VMID" >/dev/null 2>&1 || die "VM $VMID does not exist"
   die "VM $VMID must be stopped before template conversion"
 CONFIG="$(qm config "$VMID")"
 grep -q '^template: 1$' <<<"$CONFIG" && IS_TEMPLATE=true || IS_TEMPLATE=false
+if [[ "$VERIFY_REBOOT" == true && "$IS_TEMPLATE" != true ]]; then
+  qm start "$VMID"
+  for attempt in $(seq 1 60); do
+    qm agent "$VMID" ping >/dev/null 2>&1 && break
+    [[ "$attempt" -eq 60 ]] && die "QEMU guest agent did not become ready after boot"
+    sleep 5
+  done
+  qm reboot "$VMID" >/dev/null 2>&1 || die "Guest reboot failed for VM $VMID"
+  for attempt in $(seq 1 60); do
+    qm agent "$VMID" ping >/dev/null 2>&1 && break
+    [[ "$attempt" -eq 60 ]] && die "QEMU guest agent did not return after reboot"
+    sleep 5
+  done
+  qm terminal "$VMID" </dev/null >/dev/null 2>&1 ||
+    die "Serial console could not be opened for VM $VMID"
+  qm shutdown "$VMID" --timeout 120 >/dev/null 2>&1 ||
+    die "Could not shut down VM $VMID after reboot verification"
+  for attempt in $(seq 1 24); do
+    [[ "$(qm status "$VMID" | awk -F': ' '/^status:/ {print $2}')" == "stopped" ]] && break
+    [[ "$attempt" -eq 24 ]] && die "VM $VMID did not stop after verification"
+    sleep 5
+  done
+  CONFIG="$(qm config "$VMID")"
+fi
 if [[ -z "$NAME" ]]; then
   NAME="$(sed -n 's/^name: //p' <<<"$CONFIG")"
 fi
 [[ -n "$NAME" ]] || die "Could not determine template name"
 if [[ "$IS_TEMPLATE" != true ]]; then
+  qm set "$VMID" --cores 2 --memory 2048
+  if grep -q '^ide2:' <<<"$CONFIG"; then
+    qm set "$VMID" --delete ide2
+  fi
   TEMPLATE_NOTE="$(printf '%s\n\n- **State:** Prepared source VM converted to reusable template\n- **ISO SHA-256:** `%s`\n- **Consoles:** `serial0: socket`, `vga: std`\n- **Guest agent:** enabled\n- **Linked clones:** `%s`' \
     '## Tailmox Development Template' "$ISO_SHA256" "$CLONE_COUNT")"
   qm set "$VMID" --name "$NAME" --description "$TEMPLATE_NOTE"

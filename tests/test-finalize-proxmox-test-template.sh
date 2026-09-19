@@ -51,6 +51,8 @@ OUTPUT=$(
 
 grep -q '^template 50051$' "$TEST_STATE_DIR/qm-calls" ||
   { echo "FAIL: source VM was not converted to a template" >&2; exit 1; }
+grep -q '^set 50051 --cores 2 --memory 2048$' "$TEST_STATE_DIR/qm-calls" ||
+  { echo "FAIL: template resources were not normalized before conversion" >&2; exit 1; }
 grep -q '^clone 50051 50052 ' "$TEST_STATE_DIR/qm-calls" &&
   grep -q '^clone 50051 50053 ' "$TEST_STATE_DIR/qm-calls" ||
   { echo "FAIL: linked clones were not created" >&2; exit 1; }
