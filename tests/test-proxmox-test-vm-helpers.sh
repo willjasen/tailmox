@@ -62,21 +62,23 @@ grep -Fqx 'start 50051' "$TEST_STATE_DIR/qm-calls" ||
 
 mkdir -p "$TEST_STATE_DIR/etc/apt/sources.list.d"
 : >"$TEST_STATE_DIR/etc/hosts"
+# Proxmox 9's DEB822 .sources format uses a boolean "Enabled: true/false"
+# key, not the legacy "yes"/"no" used by one-line .list files.
 cat >"$TEST_STATE_DIR/etc/apt/sources.list.d/pve-enterprise.sources" <<'EOF'
 Types: deb
 URIs: https://enterprise.proxmox.com/debian/pve
 Suites: trixie
 Components: pve-enterprise
-Enabled: yes
+Enabled: true
 EOF
 # Proxmox ships the enterprise ceph repo under its own file name (not
-# pve-enterprise.*), which previously was not disabled.
+# pve-enterprise.*), which previously was not disabled. It also may omit
+# the Enabled key entirely, which defaults to enabled.
 cat >"$TEST_STATE_DIR/etc/apt/sources.list.d/ceph.sources" <<'EOF'
 Types: deb
 URIs: https://enterprise.proxmox.com/debian/ceph-squid
 Suites: trixie
 Components: enterprise
-Enabled: yes
 EOF
 PATH="$TEST_STATE_DIR/bin:$PATH" \
   PATH="$TEST_STATE_DIR/bin:/usr/bin:/bin" \
@@ -85,9 +87,9 @@ PATH="$TEST_STATE_DIR/bin:$PATH" \
   "$TEST_ROOT/test-env/prepare-proxmox-test-guest.sh"
 grep -Fqx 'update' "$TEST_STATE_DIR/apt-calls" ||
   { printf 'FAIL: guest helper did not update package metadata\n' >&2; exit 1; }
-grep -Fqx 'Enabled: no' "$TEST_STATE_DIR/etc/apt/sources.list.d/pve-enterprise.sources" ||
+grep -Fqx 'Enabled: false' "$TEST_STATE_DIR/etc/apt/sources.list.d/pve-enterprise.sources" ||
   { printf 'FAIL: guest helper did not disable the pve enterprise repository\n' >&2; exit 1; }
-grep -Fqx 'Enabled: no' "$TEST_STATE_DIR/etc/apt/sources.list.d/ceph.sources" ||
+grep -Fqx 'Enabled: false' "$TEST_STATE_DIR/etc/apt/sources.list.d/ceph.sources" ||
   { printf 'FAIL: guest helper did not disable the ceph enterprise repository\n' >&2; exit 1; }
 grep -Fq 'pve-no-subscription' "$TEST_STATE_DIR/etc/apt/sources.list.d/pve-no-subscription.list" ||
   { printf 'FAIL: guest helper did not enable the no-subscription repository\n' >&2; exit 1; }

@@ -45,7 +45,20 @@ APT_SOURCES_DIR="$ETC_DIR/apt/sources.list.d"
 shopt -s nullglob
 for source_file in "$APT_SOURCES_DIR"/*.list "$APT_SOURCES_DIR"/*.sources; do
   if grep -q 'enterprise\.proxmox\.com' "$source_file"; then
-    sed -i -E 's/^Enabled:[[:space:]]*yes/Enabled: no/; s|^deb |# deb |' "$source_file"
+    case "$source_file" in
+      *.sources)
+        # DEB822 format uses a boolean "Enabled: true/false" key (not
+        # "yes"/"no"), and the key defaults to enabled when absent.
+        if grep -q '^Enabled:' "$source_file"; then
+          sed -i -E 's/^Enabled:.*/Enabled: false/' "$source_file"
+        else
+          printf 'Enabled: false\n' >>"$source_file"
+        fi
+        ;;
+      *)
+        sed -i -E 's|^deb |# deb |' "$source_file"
+        ;;
+    esac
   fi
 done
 shopt -u nullglob
