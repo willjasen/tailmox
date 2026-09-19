@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PACKAGES=(ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect)
+PACKAGES=(ca-certificates curl isc-dhcp-client qemu-guest-agent git jq expect)
 ETC_DIR="${TAILMOX_ETC_DIR:-/etc}"
 
 die() {
@@ -95,14 +95,14 @@ iface vmbr0 inet dhcp
 
 source /etc/network/interfaces.d/*
 EOF
-rm -f "$ETC_DIR/resolv.conf"
-ln -s /run/resolvconf/resolv.conf "$ETC_DIR/resolv.conf"
+# rm -f "$ETC_DIR/resolv.conf"
+# ln -s /run/resolvconf/resolv.conf "$ETC_DIR/resolv.conf"
 systemctl restart networking.service
 
 systemctl enable --now qemu-guest-agent.service
 systemctl enable --now serial-getty@ttyS0.service
-systemctl enable --now resolvconf.service
-resolvconf -u
+# systemctl enable --now resolvconf.service
+# resolvconf -u
 
 printf 'Nested Proxmox guest preparation completed for image hostname %s.\n' \
   "$IMAGE_HOSTNAME"
