@@ -74,6 +74,10 @@ grep -q 'source = "from-url"' "$TEST_STATE_DIR/work/answer.toml" &&
   grep -q 'https://raw.githubusercontent.com/willjasen/tailmox/dev/test-env/prepare-proxmox-test-guest.sh' \
     "$TEST_STATE_DIR/work/answer.toml" ||
   { echo "FAIL: answer file does not configure the branch-pinned first-boot URL" >&2; exit 1; }
+grep -q 'fqdn = "tailmox-iabcd.local"' "$TEST_STATE_DIR/work/answer.toml" ||
+  { echo "FAIL: generated hostname was not written to the answer file" >&2; exit 1; }
+! grep -q '__TAILMOX_HOSTNAME__' "$TEST_STATE_DIR/work/answer.toml" ||
+  { echo "FAIL: answer file retained the hostname placeholder" >&2; exit 1; }
 grep -q 'unattended installer media' <<<"$OUTPUT" ||
   { echo "FAIL: installer summary was not emitted" >&2; exit 1; }
 grep -q 'qm sendkey "\$VMID" ret' "$TEST_ROOT/test-env/install-proxmox-test-vm.sh" ||

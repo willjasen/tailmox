@@ -234,7 +234,7 @@ cat >"$ANSWER_FILE" <<EOF
 keyboard = "en-us"
 country = "us"
 mailto = "root@localhost"
-fqdn = "__TAILMOX_HOSTNAME__.local"
+fqdn = "$HOSTNAME.local"
 timezone = "America/New_York"
 root-password-hashed = "$ROOT_PASSWORD_HASH"
 reboot-mode = "reboot"
