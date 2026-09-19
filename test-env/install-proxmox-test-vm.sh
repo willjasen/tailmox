@@ -253,13 +253,14 @@ for package in "${required_packages[@]}"; do
     grep -q '^install ok installed$' ||
     { printf 'Required package was not installed: %s\n' "$package" >&2; exit 1; }
 done
-curl -fsSL https://tailscale.com/install.sh | sh
 hostnamectl set-hostname "__TAILMOX_HOSTNAME__"
 if grep -qE '^iface vmbr0 inet ' /etc/network/interfaces; then
   sed -i -E 's/^iface vmbr0 inet .*/iface vmbr0 inet dhcp/' /etc/network/interfaces
 fi
 mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
 systemctl enable --now qemu-guest-agent.service serial-getty@ttyS0.service resolvconf.service
+curl -fsSL https://tailscale.com/install.sh | sh ||
+  { printf 'Tailscale installation failed\n' >&2; exit 1; }
 systemctl enable --now tailscaled.service
 tailscale version >/var/log/tailmox-first-boot-tailscale-version
 cat >/etc/tailmox-image-release <<'RELEASE'
