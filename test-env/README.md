@@ -129,6 +129,67 @@ The rapid testing workflow is split into three stages:
 These scripts are test-environment tooling only; they are not part of the
 Tailmox runtime installed on production Proxmox hosts.
 
+### Fresh ISO installation workflow
+
+The template workflow above is the fast path for deploying a known image. For
+building a fresh image from scratch, use the separate
+`install-proxmox-test-vm.sh` helper on the outer Proxmox node. It does not read
+or modify `template.json`; its source manifest is `proxmox-iso.json`.
+
+Before using it, fill in the official Proxmox ISO URL and SHA-256 in
+`proxmox-iso.json`, or pass both values explicitly. The helper requires
+`proxmox-auto-install-assistant` on the outer node and:
+
+1. downloads and verifies the ISO over HTTPS;
+2. prepares an unattended installer with DHCP networking and a root password;
+3. embeds a first-boot hook that installs `qemu-guest-agent`, DHCP/DNS
+   packages, the Tailmox development dependencies, and serial getty;
+4. creates a new nested VM with `serial0: socket`, `vga: std`, `agent: 1`,
+   `vlan3`, and a fresh installation disk; and
+5. optionally starts the VM and waits for the guest agent.
+
+The first-boot hook is intentionally small and leaves Tailmox authentication,
+cluster membership, and template conversion to the existing staging workflow.
+Cloud-init is not used: it cannot drive the Proxmox installer before the guest
+boots, while the Proxmox unattended installer provides the required first-boot
+hook directly.
+
+Example:
+
+```bash
+./install-proxmox-test-vm.sh \
+  --iso-url https://download.proxmox.com/iso/proxmox-ve_9.0-1.iso \
+  --iso-sha256 SHA256 \
+  --vmid 50051 \
+  --storage local-zfs \
+  --iso-storage local \
+  --root-password-file /root/tailmox-test-password \
+  --start \
+  --wait-for-agent
+```
+
+After the guest agent is available, use `qm terminal 50051` once
+`serial-getty@ttyS0.service` has started. Run `stage-template.sh` inside the
+guest after validating the fresh installation, then shut it down and capture
+the resulting image according to `IMAGE-BUILD-NOTES.md`.
+
+When the guest is prepared and stopped, convert it into a template and create
+the linked clones with the separate finalization helper:
+
+```bash
+./finalize-proxmox-test-template.sh \
+  --vmid 50051 \
+  --clone-count 3 \
+  --clone-vmid-start 50052 \
+  --iso-sha256 SHA256
+```
+
+The helper refuses to convert a running VM, preserves the serial/VGA and guest
+agent settings already applied by the installer, adds a `ready-for-testing`
+snapshot to every stopped linked clone, and records the ISO hash in the
+template and clone notes. It does not start any VM; use `stage-clone.sh` only
+after reviewing the clones.
+
 To configure the outer Proxmox VM before starting a fresh guest, run:
 
 ```bash

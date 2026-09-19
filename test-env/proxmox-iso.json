@@ -1,0 +1,10 @@
+{
+    "schema_version": 1,
+    "product": "Proxmox VE",
+    "version": "9.0-1",
+    "iso": {
+        "url": "",
+        "sha256": ""
+    },
+    "notes": "Fill in the official ISO URL and SHA-256 before using the ISO installer."
+}
