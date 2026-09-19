@@ -25,6 +25,7 @@ INSECURE_DOWNLOAD=false
 ROOT_PASSWORD_FILE="${TAILMOX_PVE_ROOT_PASSWORD_FILE:-}"
 ROOT_PASSWORD_HASH="${TAILMOX_PVE_ROOT_PASSWORD_HASH:-}"
 HOSTNAME=""
+FIRST_BOOT_URL="https://raw.githubusercontent.com/willjasen/tailmox/willjasen-issue-28/test-env/prepare-proxmox-test-guest.sh"
 
 usage() {
   cat <<EOF
@@ -138,7 +139,6 @@ require_command qm
 require_command ip
 require_command proxmox-auto-install-assistant
 require_command openssl
-require_command perl
 require_command mkfs.vfat
 require_command mount
 require_command umount
@@ -217,7 +217,6 @@ PREPARED_ISO="$WORK_DIR/prepared-$ISO_NAME"
 ANSWER_FILE="$WORK_DIR/answer.toml"
 ANSWER_DISK_IMAGE="$WORK_DIR/proxmox-ais.img"
 ANSWER_DISK_MOUNT="$WORK_DIR/proxmox-ais-mount"
-FIRST_BOOT="$WORK_DIR/tailmox-first-boot.sh"
 
 printf 'Downloading Proxmox ISO to %s...\n' "$SOURCE_ISO"
 if [[ "$INSECURE_DOWNLOAD" == true ]]; then
@@ -240,6 +239,11 @@ timezone = "America/New_York"
 root-password-hashed = "$ROOT_PASSWORD_HASH"
 reboot-mode = "reboot"
 
+[first-boot]
+source = "from-url"
+ordering = "network-online"
+url = "$FIRST_BOOT_URL"
+
 [network]
 source = "from-dhcp"
 
@@ -248,54 +252,9 @@ filesystem = "ext4"
 disk-list = ["sda"]
 EOF
 
-cat >"$FIRST_BOOT" <<'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-export DEBIAN_FRONTEND=noninteractive
-proxmox_codename="$(. /etc/os-release && printf '%s' "$VERSION_CODENAME")"
-for source_file in /etc/apt/sources.list.d/pve-enterprise.list \
-  /etc/apt/sources.list.d/pve-enterprise.sources; do
-  if [[ -f "$source_file" ]]; then
-    sed -i -E 's/^Enabled:[[:space:]]*yes/Enabled: no/; s|^deb |# deb |' "$source_file"
-  fi
-done
-cat >/etc/apt/sources.list.d/pve-no-subscription.list <<REPOS
-deb http://download.proxmox.com/debian/pve ${proxmox_codename} pve-no-subscription
-REPOS
-apt-get update
-required_packages=(ca-certificates curl isc-dhcp-client resolvconf qemu-guest-agent git jq expect)
-apt-get install -y "${required_packages[@]}"
-for package in "${required_packages[@]}"; do
-  dpkg-query -W -f='${Status}' "$package" 2>/dev/null |
-    grep -q '^install ok installed$' ||
-    { printf 'Required package was not installed: %s\n' "$package" >&2; exit 1; }
-done
-hostnamectl set-hostname "__TAILMOX_HOSTNAME__"
-if grep -qE '^iface vmbr0 inet ' /etc/network/interfaces; then
-  sed -i -E 's/^iface vmbr0 inet .*/iface vmbr0 inet dhcp/' /etc/network/interfaces
-fi
-mkdir -p /etc/systemd/system/serial-getty@ttyS0.service.d
-systemctl enable --now qemu-guest-agent.service serial-getty@ttyS0.service resolvconf.service
-curl -fsSL https://tailscale.com/install.sh | sh ||
-  { printf 'Tailscale installation failed\n' >&2; exit 1; }
-systemctl enable --now tailscaled.service
-tailscale version >/var/log/tailmox-first-boot-tailscale-version
-cat >/etc/tailmox-image-release <<'RELEASE'
-TAILMOX_IMAGE_RELEASE=0
-TAILMOX_PREPARE_API=0
-RELEASE
-chmod 0644 /etc/tailmox-image-release
-touch /etc/tailmox-first-boot-complete
-EOF
-TAILMOX_INSTALL_HOSTNAME="$HOSTNAME" perl -0pi \
-  -e 's/__TAILMOX_HOSTNAME__/$ENV{TAILMOX_INSTALL_HOSTNAME}/g' \
-  "$ANSWER_FILE" "$FIRST_BOOT"
-chmod 0755 "$FIRST_BOOT"
-
 proxmox-auto-install-assistant prepare-iso "$SOURCE_ISO" \
   --fetch-from partition \
   --partition-label proxmox-ais \
-  --on-first-boot "$FIRST_BOOT" \
   --output "$PREPARED_ISO"
 [[ -s "$PREPARED_ISO" ]] ||
   die "The unattended installer did not produce a prepared ISO"

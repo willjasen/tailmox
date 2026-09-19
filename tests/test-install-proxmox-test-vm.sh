@@ -69,18 +69,11 @@ grep -q -- '--agent 1' "$TEST_STATE_DIR/qm-calls" ||
 grep -q '^importdisk 50051 ' "$TEST_STATE_DIR/qm-calls" &&
   grep -q '^set 50051 --scsi1 local-zfs:vm-50051-disk-1$' "$TEST_STATE_DIR/qm-calls" ||
   { echo "FAIL: answer disk was not attached separately" >&2; exit 1; }
-grep -q 'curl -fsSL https://tailscale.com/install.sh | sh' \
-  "$TEST_STATE_DIR/work/tailmox-first-boot.sh" ||
-  { echo "FAIL: first-boot hook does not install Tailscale" >&2; exit 1; }
-grep -q 'systemctl enable --now qemu-guest-agent.service serial-getty@ttyS0.service' \
-  "$TEST_STATE_DIR/work/tailmox-first-boot.sh" ||
-  { echo "FAIL: first-boot hook does not enable guest agent and ttyS0" >&2; exit 1; }
-grep -q 'systemctl enable --now tailscaled.service' \
-  "$TEST_STATE_DIR/work/tailmox-first-boot.sh" ||
-  { echo "FAIL: first-boot hook does not enable Tailscale" >&2; exit 1; }
-grep -q 'pve-enterprise.sources' "$TEST_STATE_DIR/work/tailmox-first-boot.sh" &&
-  grep -q 'pve-no-subscription.list' "$TEST_STATE_DIR/work/tailmox-first-boot.sh" ||
-  { echo "FAIL: first-boot hook does not configure Proxmox repositories" >&2; exit 1; }
+grep -q 'source = "from-url"' "$TEST_STATE_DIR/work/answer.toml" &&
+  grep -q 'ordering = "network-online"' "$TEST_STATE_DIR/work/answer.toml" &&
+  grep -q 'https://raw.githubusercontent.com/willjasen/tailmox/willjasen-issue-28/test-env/prepare-proxmox-test-guest.sh' \
+    "$TEST_STATE_DIR/work/answer.toml" ||
+  { echo "FAIL: answer file does not configure the branch-pinned first-boot URL" >&2; exit 1; }
 grep -q 'unattended installer media' <<<"$OUTPUT" ||
   { echo "FAIL: installer summary was not emitted" >&2; exit 1; }
 grep -q 'qm sendkey "\$VMID" ret' "$TEST_ROOT/test-env/install-proxmox-test-vm.sh" ||

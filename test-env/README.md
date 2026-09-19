@@ -202,9 +202,12 @@ fallback installer device until finalization removes it.
 The installer answer file is supplied on a separate temporary FAT disk labeled
 `proxmox-ais`, attached as `scsi1`. The prepared ISO uses
 `--fetch-from partition --partition-label proxmox-ais` to find
-`answer.toml`. The finalizer removes both `ide2` and `scsi1` before converting
-the source VM into a template, so the answer disk and its root-password hash
-are not inherited by clones.
+`answer.toml`. The answer file downloads the branch-pinned
+`test-env/prepare-proxmox-test-guest.sh` script from raw GitHub after
+`network-online`, so package and service setup occurs from the repository
+version used to build the VM. The finalizer removes both `ide2` and `scsi1`
+before converting the source VM into a template, so the answer disk and its
+root-password hash are not inherited by clones.
 
 To configure the outer Proxmox VM before starting a fresh guest, run:
 
